@@ -3,9 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "bun run agent.ts"
+    "start": "bun run agent.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentgate/types": "workspace:*"
+    "@agentgate/types": "workspace:*",
+    "@agentgate/x402-adapter": "workspace:*",
+    "viem": "^2.21.0"
   }
 }

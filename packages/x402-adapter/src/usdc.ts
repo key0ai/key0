@@ -21,6 +21,16 @@ export const USDC_ABI = [
 		outputs: [{ name: "", type: "uint256" }],
 		stateMutability: "view",
 	},
+	{
+		type: "function",
+		name: "transfer",
+		inputs: [
+			{ name: "to", type: "address" },
+			{ name: "value", type: "uint256" },
+		],
+		outputs: [{ name: "", type: "bool" }],
+		stateMutability: "nonpayable",
+	},
 ] as const;
 
 /**
