@@ -1,0 +1,21 @@
+{
+  "name": "x402-poc",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test:viem": "bun run test-payment.ts",
+    "test:x402": "bun run test-x402-protocol.ts"
+  },
+  "dependencies": {
+    "@x402/core": "^2.5.0",
+    "@x402/evm": "^2.5.0",
+    "@x402/express": "^2.5.0",
+    "@x402/fetch": "^2.5.0",
+    "express": "^5.2.1",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.3.2"
+  }
+}
