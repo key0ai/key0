@@ -21,6 +21,8 @@ export type {
 	ProductTier,
 	ResourceVerifier,
 	SellerConfig,
+	TokenIssuanceResult,
+	IssueTokenParams,
 } from "./config.js";
 
 export { CHAIN_CONFIGS, USDC_DECIMALS } from "./config-shared.js";

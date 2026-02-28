@@ -2,6 +2,20 @@ import type { AccessGrant } from "./challenge.js";
 
 export type NetworkName = "mainnet" | "testnet";
 
+export type TokenIssuanceResult = {
+	readonly token: string;
+	readonly expiresAt: Date;
+	readonly tokenType?: string; // Default "Bearer"
+};
+
+export type IssueTokenParams = {
+	readonly requestId: string;
+	readonly challengeId: string;
+	readonly resourceId: string;
+	readonly tierId: string;
+	readonly txHash: string;
+};
+
 export type NetworkConfig = {
 	readonly name: NetworkName;
 	readonly chainId: number;
@@ -51,6 +65,20 @@ export type SellerConfig = {
 	// Lifecycle hooks (optional)
 	readonly onPaymentReceived?: (grant: AccessGrant) => Promise<void>;
 	readonly onChallengeExpired?: (challengeId: string) => Promise<void>;
+
+	// Token issuance mode
+	/**
+	 * How access tokens are generated.
+	 * - "native": AgentGate generates a JWT (default).
+	 * - "remote": AgentGate calls your backend to get a custom token/key.
+	 */
+	readonly tokenMode?: "native" | "remote";
+
+	/**
+	 * Only used if tokenMode="remote".
+	 * A callback that returns the token string from your backend.
+	 */
+	readonly onIssueToken?: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 
 	// Customization
 	readonly basePath?: string; // defaults to "/a2a"

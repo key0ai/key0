@@ -572,6 +572,176 @@ examples/
 
 Start with `testnet` for development. Switch to `mainnet` when ready for real payments — just change the `network` config field.
 
+## Architecture: Embedded vs Standalone Service
+
+AgentGate can be deployed in two ways:
+
+### Embedded Mode (Default)
+
+AgentGate runs as middleware within your existing application. This is the simplest setup and works great for single-service deployments.
+
+```typescript
+import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
+
+app.use(agentGateRouter({ config, adapter }));
+app.use("/api", validateAccessToken({ secret }));
+```
+
+**Pros:**
+- Simple setup — just add middleware
+- No network overhead
+- Direct access to your database/services
+
+**Cons:**
+- Scales with your app
+- Coupled deployment
+
+### Standalone Service Mode
+
+AgentGate runs as a separate service that communicates with your backend via HTTP. This enables independent scaling and deployment.
+
+**Setup:**
+
+1. **Deploy AgentGate Service** (see `examples/standalone-service/`):
+   ```typescript
+   import { agentGateRouter, createRemoteResourceVerifier } from "@agentgate/sdk/express";
+   
+   app.use(agentGateRouter({
+     config: {
+       onVerifyResource: createRemoteResourceVerifier({
+         url: "https://api.myapp.com/internal/verify",
+         secret: process.env.INTERNAL_AUTH_SECRET
+       }),
+       // ...
+     }
+   }));
+   ```
+
+2. **Your Backend Validates Tokens**:
+   ```typescript
+   import { validateAgentGateToken } from "@agentgate/sdk";
+   
+   app.use("/api", async (req, res, next) => {
+     const payload = await validateAgentGateToken(
+       req.headers.authorization,
+       { secret: process.env.AGENTGATE_SECRET }
+     );
+     req.agentGateToken = payload;
+     next();
+   });
+   ```
+
+**Pros:**
+- Independent scaling
+- Separate deployments
+- Technology flexibility
+
+**Cons:**
+- Network latency for token validation
+- Requires service-to-service auth
+
+### Token Issuance Modes
+
+When using standalone service mode, you can choose how tokens are generated:
+
+#### Native Mode (Default)
+
+AgentGate issues its own JWT tokens. Your backend validates them using `validateAgentGateToken`.
+
+```typescript
+// AgentGate Service
+const config = {
+  tokenMode: "native", // or omit (default)
+  // ...
+};
+
+// Backend
+const payload = await validateAgentGateToken(authHeader, {
+  secret: process.env.AGENTGATE_SECRET
+});
+```
+
+#### Remote Mode
+
+Your backend issues custom tokens (API keys, session IDs, etc.). AgentGate calls your backend to get the token.
+
+```typescript
+// AgentGate Service
+import { createRemoteTokenIssuer } from "@agentgate/sdk";
+
+const config = {
+  tokenMode: "remote",
+  onIssueToken: createRemoteTokenIssuer({
+    url: "https://api.myapp.com/internal/issue-token",
+    secret: process.env.INTERNAL_AUTH_SECRET
+  }),
+  // ...
+};
+
+// Backend endpoint
+app.post("/internal/issue-token", (req, res) => {
+  const { resourceId, tierId, txHash } = req.body;
+  const apiKey = generateApiKey(); // Your logic
+  res.json({ token: apiKey, expiresAt: new Date(...) });
+});
+```
+
+#### Remote Mode (Service-to-Service Auth)
+
+When AgentGate calls your backend (to verify resources or issue tokens), it needs to authenticate itself. You can choose from several strategies:
+
+**1. Shared Secret (Simplest)**
+AgentGate sends a secret in a header (e.g. `X-Internal-Auth`).
+
+```typescript
+// AgentGate Service
+import { sharedSecretAuth } from "@agentgate/sdk";
+
+const config = {
+  onVerifyResource: createRemoteResourceVerifier({
+    url: "...",
+    auth: sharedSecretAuth("X-Internal-Auth", process.env.INTERNAL_SECRET)
+  })
+};
+```
+
+**2. Signed JWT (Secure)**
+AgentGate signs a short-lived JWT using its private key (RS256). Your backend verifies it using the public key.
+
+```typescript
+// AgentGate Service
+import { signedJwtAuth } from "@agentgate/sdk";
+
+const config = {
+  onVerifyResource: createRemoteResourceVerifier({
+    url: "...",
+    auth: signedJwtAuth(tokenIssuer, "backend-service")
+  })
+};
+```
+
+**3. OAuth 2.0 Client Credentials (Standard)**
+AgentGate fetches an access token from an OAuth provider (e.g. Auth0) using client ID and secret.
+
+```typescript
+// AgentGate Service
+import { oauthClientCredentialsAuth } from "@agentgate/sdk";
+
+const config = {
+  onVerifyResource: createRemoteResourceVerifier({
+    url: "...",
+    auth: oauthClientCredentialsAuth({
+      tokenUrl: "https://auth.example.com/token",
+      clientId: process.env.CLIENT_ID,
+      clientSecret: process.env.CLIENT_SECRET,
+      audience: "my-backend-api"
+    })
+  })
+};
+```
+
+See `examples/standalone-service/` for a complete implementation.
+
 ## Documentation
 
 - [TECH.md](./TECH.md) — Detailed technical implementation blueprint

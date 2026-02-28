@@ -12,6 +12,8 @@ export type AgentGateErrorCode =
 	| "INVALID_PROOF"
 	| "ADAPTER_ERROR"
 	| "RESOURCE_VERIFY_TIMEOUT"
+	| "TOKEN_ISSUE_FAILED"
+	| "TOKEN_ISSUE_TIMEOUT"
 	| "INTERNAL_ERROR";
 
 export class AgentGateError extends Error {

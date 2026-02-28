@@ -316,29 +316,61 @@ export class ChallengeEngine {
 		const resourceEndpoint = this.buildResourceEndpoint(challenge.resourceId);
 		const explorerUrl = `${this.networkConfig.explorerBaseUrl}/tx/${proof.txHash}`;
 
-		const tokenTTL =
-			this.findTier(challenge.tierId)?.accessDurationSeconds ??
-			this.config.accessTokenTTLSeconds ??
-			3600;
+		const tokenMode = this.config.tokenMode || "native";
+		let accessToken: string;
+		let expiresAt: Date;
+		let tokenType = "Bearer";
 
-		const tokenResult = await this.tokenIssuer.sign(
-			{
-				sub: challenge.requestId,
-				jti: challenge.challengeId,
+		if (tokenMode === "remote") {
+			if (!this.config.onIssueToken) {
+				throw new AgentGateError(
+					"INVALID_REQUEST",
+					"tokenMode='remote' requires onIssueToken callback",
+					500,
+				);
+			}
+
+			// Call user's backend logic to get their token
+			const result = await this.config.onIssueToken({
+				requestId: challenge.requestId,
+				challengeId: challenge.challengeId,
 				resourceId: challenge.resourceId,
 				tierId: challenge.tierId,
 				txHash: proof.txHash,
-			},
-			tokenTTL,
-		);
+			});
+
+			accessToken = result.token;
+			expiresAt = result.expiresAt;
+			tokenType = result.tokenType || "Bearer";
+		} else {
+			// Default: Native JWT issuance
+			const tokenTTL =
+				this.findTier(challenge.tierId)?.accessDurationSeconds ??
+				this.config.accessTokenTTLSeconds ??
+				3600;
+
+			const tokenResult = await this.tokenIssuer.sign(
+				{
+					sub: challenge.requestId,
+					jti: challenge.challengeId,
+					resourceId: challenge.resourceId,
+					tierId: challenge.tierId,
+					txHash: proof.txHash,
+				},
+				tokenTTL,
+			);
+
+			accessToken = tokenResult.token;
+			expiresAt = tokenResult.expiresAt;
+		}
 
 		const grant: AccessGrant = {
 			type: "AccessGrant",
 			challengeId: challenge.challengeId,
 			requestId: challenge.requestId,
-			accessToken: tokenResult.token,
-			tokenType: "Bearer",
-			expiresAt: tokenResult.expiresAt.toISOString(),
+			accessToken,
+			tokenType: tokenType as "Bearer",
+			expiresAt: expiresAt.toISOString(),
 			resourceEndpoint,
 			resourceId: challenge.resourceId,
 			tierId: challenge.tierId,
