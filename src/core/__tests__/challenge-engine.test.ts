@@ -6,7 +6,6 @@ import {
 	type PaymentProof,
 	type SellerConfig,
 } from "../../types";
-import { AccessTokenIssuer } from "../access-token.js";
 import { ChallengeEngine, type ChallengeEngineConfig } from "../challenge-engine.js";
 import { InMemoryChallengeStore, InMemorySeenTxStore } from "../storage/memory.js";
 
@@ -26,9 +25,13 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		walletAddress: WALLET,
 		network: "testnet",
 		products: [{ tierId: "single", label: "Single Photo", amount: "$0.10", resourceType: "photo" }],
-		accessTokenSecret: SECRET,
 		challengeTTLSeconds: 900,
 		onVerifyResource: async () => true,
+		onIssueToken: async (params) => ({
+			token: `tok_${params.challengeId}`,
+			expiresAt: new Date(Date.now() + 3600 * 1000),
+			tokenType: "Bearer",
+		}),
 		...overrides,
 	};
 }
@@ -50,7 +53,6 @@ function makeEngine(opts?: {
 		store,
 		seenTxStore,
 		adapter,
-		tokenIssuer: new AccessTokenIssuer(SECRET),
 		...(opts?.clock ? { clock: opts.clock } : {}),
 	};
 
@@ -603,13 +605,9 @@ describe("ChallengeEngine lifecycle", () => {
 		expect(grant.type).toBe("AccessGrant");
 		expect(grant.accessToken).toBeTypeOf("string");
 
-		// 3. Verify the access token is valid
-		const issuer = new AccessTokenIssuer(SECRET);
-		const decoded = await issuer.verify(grant.accessToken);
-		expect(decoded.sub).toBe(req.requestId);
-		expect(decoded.resourceId).toBe("photo-42");
-		expect(decoded.tierId).toBe("single");
-		expect(decoded.txHash).toBe(txHash);
+		// 3. Verify the token was issued by our callback
+		expect(grant.accessToken).toBe(`tok_${challenge.challengeId}`);
+		expect(grant.txHash).toBe(txHash);
 
 		// 4. Check challenge record is PAID
 		const record = await engine.getChallenge(challenge.challengeId);

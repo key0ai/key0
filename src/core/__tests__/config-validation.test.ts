@@ -12,8 +12,11 @@ function makeValidConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		walletAddress: `0x${"ab".repeat(20)}` as `0x${string}`,
 		network: "testnet",
 		products: [{ tierId: "single", label: "Single", amount: "$0.10", resourceType: "photo" }],
-		accessTokenSecret: "a-very-long-secret-that-is-at-least-32-characters!",
 		onVerifyResource: async () => true,
+		onIssueToken: async (params) => ({
+			token: `tok_${params.challengeId}`,
+			expiresAt: new Date(Date.now() + 3600 * 1000),
+		}),
 		...overrides,
 	};
 }
@@ -53,9 +56,15 @@ describe("validateSellerConfig", () => {
 		);
 	});
 
-	test("rejects short accessTokenSecret", () => {
-		expect(() => validateSellerConfig(makeValidConfig({ accessTokenSecret: "short" }))).toThrow(
-			"at least 32 characters",
+	test("rejects missing onIssueToken", () => {
+		expect(() => validateSellerConfig(makeValidConfig({ onIssueToken: undefined as any }))).toThrow(
+			"onIssueToken must be a function",
+		);
+	});
+
+	test("rejects non-function onIssueToken", () => {
+		expect(() => validateSellerConfig(makeValidConfig({ onIssueToken: "not-a-function" as any }))).toThrow(
+			"onIssueToken must be a function",
 		);
 	});
 

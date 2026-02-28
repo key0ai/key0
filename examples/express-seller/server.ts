@@ -1,6 +1,6 @@
 import express from "express";
 import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
-import { X402Adapter } from "@agentgate/sdk";
+import { X402Adapter, AccessTokenIssuer } from "@agentgate/sdk";
 import type { NetworkName } from "@agentgate/sdk";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
@@ -21,6 +21,9 @@ const adapter = new X402Adapter({
   rpcUrl: process.env["AGENTGATE_RPC_URL"],
 });
 
+// Create token issuer (opt-in utility for JWT generation)
+const tokenIssuer = new AccessTokenIssuer(SECRET);
+
 // Mount AgentGate — serves agent card + A2A endpoint
 app.use(
   agentGateRouter({
@@ -33,8 +36,6 @@ app.use(
       providerUrl: "https://example.com",
       walletAddress: WALLET,
       network: NETWORK,
-      accessTokenSecret: SECRET,
-      accessTokenTTLSeconds: 3600,
       challengeTTLSeconds: 900,
       products: [
         {
@@ -56,6 +57,20 @@ app.use(
         // In a real app, check your database here
         const validResources = ["photo-1", "photo-2", "photo-3", "album-1"];
         return validResources.includes(resourceId);
+      },
+      onIssueToken: async (params) => {
+        // Generate JWT using the opt-in AccessTokenIssuer utility
+        const ttl = params.tierId === "single-photo" ? 3600 : 86400;
+        return tokenIssuer.sign(
+          {
+            sub: params.requestId,
+            jti: params.challengeId,
+            resourceId: params.resourceId,
+            tierId: params.tierId,
+            txHash: params.txHash,
+          },
+          ttl,
+        );
       },
       onPaymentReceived: async (grant) => {
         console.log(

@@ -23,10 +23,24 @@ function makeConfig(): SellerConfig {
 			{ tierId: "single", label: "Single Photo", amount: "$0.10", resourceType: "photo" },
 			{ tierId: "album", label: "Full Album", amount: "$1.00", resourceType: "album" },
 		],
-		accessTokenSecret: SECRET,
 		challengeTTLSeconds: 900,
 		onVerifyResource: async (resourceId: string) => {
 			return resourceId !== "nonexistent";
+		},
+		onIssueToken: async (params) => {
+			// Use AccessTokenIssuer for testing (opt-in pattern)
+			const { AccessTokenIssuer } = await import("../core/access-token.js");
+			const issuer = new AccessTokenIssuer(SECRET);
+			return issuer.sign(
+				{
+					sub: params.requestId,
+					jti: params.challengeId,
+					resourceId: params.resourceId,
+					tierId: params.tierId,
+					txHash: params.txHash,
+				},
+				3600,
+			);
 		},
 		resourceEndpointTemplate: "https://api.example.com/photos/{resourceId}",
 	};

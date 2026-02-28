@@ -15,7 +15,6 @@ import {
 } from "../types/index.js";
 
 import { parseDollarToUsdcMicro } from "../adapter/index.js";
-import type { AccessTokenIssuer } from "./access-token.js";
 import { CHAIN_CONFIGS } from "../types/index.js";
 import { validateSellerConfig } from "./config-validation.js";
 import {
@@ -29,7 +28,6 @@ export type ChallengeEngineConfig = {
 	readonly store: IChallengeStore;
 	readonly seenTxStore: ISeenTxStore;
 	readonly adapter: IPaymentAdapter;
-	readonly tokenIssuer: AccessTokenIssuer;
 	readonly clock?: (() => number) | undefined; // injectable, defaults to Date.now
 };
 
@@ -38,7 +36,6 @@ export class ChallengeEngine {
 	private readonly store: IChallengeStore;
 	private readonly seenTxStore: ISeenTxStore;
 	private readonly adapter: IPaymentAdapter;
-	private readonly tokenIssuer: AccessTokenIssuer;
 	private readonly clock: () => number;
 	private readonly networkConfig: NetworkConfig;
 	private readonly challengeTTL: number;
@@ -49,7 +46,6 @@ export class ChallengeEngine {
 		this.store = opts.store;
 		this.seenTxStore = opts.seenTxStore;
 		this.adapter = opts.adapter;
-		this.tokenIssuer = opts.tokenIssuer;
 		this.clock = opts.clock ?? Date.now;
 		this.networkConfig = CHAIN_CONFIGS[this.config.network];
 		this.challengeTTL = (this.config.challengeTTLSeconds ?? 900) * 1000;
@@ -312,57 +308,21 @@ export class ChallengeEngine {
 			);
 		}
 
-		// 11. Issue access token
+		// 11. Issue access token — always delegated to user
 		const resourceEndpoint = this.buildResourceEndpoint(challenge.resourceId);
 		const explorerUrl = `${this.networkConfig.explorerBaseUrl}/tx/${proof.txHash}`;
 
-		const tokenMode = this.config.tokenMode || "native";
-		let accessToken: string;
-		let expiresAt: Date;
-		let tokenType = "Bearer";
+		const tokenResult = await this.config.onIssueToken({
+			requestId: challenge.requestId,
+			challengeId: challenge.challengeId,
+			resourceId: challenge.resourceId,
+			tierId: challenge.tierId,
+			txHash: proof.txHash,
+		});
 
-		if (tokenMode === "remote") {
-			if (!this.config.onIssueToken) {
-				throw new AgentGateError(
-					"INVALID_REQUEST",
-					"tokenMode='remote' requires onIssueToken callback",
-					500,
-				);
-			}
-
-			// Call user's backend logic to get their token
-			const result = await this.config.onIssueToken({
-				requestId: challenge.requestId,
-				challengeId: challenge.challengeId,
-				resourceId: challenge.resourceId,
-				tierId: challenge.tierId,
-				txHash: proof.txHash,
-			});
-
-			accessToken = result.token;
-			expiresAt = result.expiresAt;
-			tokenType = result.tokenType || "Bearer";
-		} else {
-			// Default: Native JWT issuance
-			const tokenTTL =
-				this.findTier(challenge.tierId)?.accessDurationSeconds ??
-				this.config.accessTokenTTLSeconds ??
-				3600;
-
-			const tokenResult = await this.tokenIssuer.sign(
-				{
-					sub: challenge.requestId,
-					jti: challenge.challengeId,
-					resourceId: challenge.resourceId,
-					tierId: challenge.tierId,
-					txHash: proof.txHash,
-				},
-				tokenTTL,
-			);
-
-			accessToken = tokenResult.token;
-			expiresAt = tokenResult.expiresAt;
-		}
+		const accessToken = tokenResult.token;
+		const expiresAt = tokenResult.expiresAt;
+		const tokenType = tokenResult.tokenType || "Bearer";
 
 		const grant: AccessGrant = {
 			type: "AccessGrant",

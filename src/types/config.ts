@@ -51,10 +51,6 @@ export type SellerConfig = {
 	// Product catalog
 	readonly products: readonly ProductTier[];
 
-	// Access token
-	readonly accessTokenSecret: string;
-	readonly accessTokenTTLSeconds?: number; // defaults to 3600
-
 	// Challenge
 	readonly challengeTTLSeconds?: number; // defaults to 900
 
@@ -62,23 +58,16 @@ export type SellerConfig = {
 	readonly onVerifyResource: ResourceVerifier;
 	readonly resourceVerifyTimeoutMs?: number; // defaults to 5000
 
+	// Token issuance callback (required)
+	/**
+	 * Callback that issues an access token after payment is verified.
+	 * The implementation is fully up to you — generate a JWT, call another service, return an API key, etc.
+	 */
+	readonly onIssueToken: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+
 	// Lifecycle hooks (optional)
 	readonly onPaymentReceived?: (grant: AccessGrant) => Promise<void>;
 	readonly onChallengeExpired?: (challengeId: string) => Promise<void>;
-
-	// Token issuance mode
-	/**
-	 * How access tokens are generated.
-	 * - "native": AgentGate generates a JWT (default).
-	 * - "remote": AgentGate calls your backend to get a custom token/key.
-	 */
-	readonly tokenMode?: "native" | "remote";
-
-	/**
-	 * Only used if tokenMode="remote".
-	 * A callback that returns the token string from your backend.
-	 */
-	readonly onIssueToken?: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 
 	// Customization
 	readonly basePath?: string; // defaults to "/a2a"

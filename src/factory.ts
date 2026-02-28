@@ -1,5 +1,4 @@
 import {
-	AccessTokenIssuer,
 	ChallengeEngine,
 	InMemoryChallengeStore,
 	InMemorySeenTxStore,
@@ -32,14 +31,12 @@ export type AgentGateInstance = {
 export function createAgentGate(opts: AgentGateConfig): AgentGateInstance {
 	const store = opts.store ?? new InMemoryChallengeStore();
 	const seenTxStore = opts.seenTxStore ?? new InMemorySeenTxStore();
-	const tokenIssuer = new AccessTokenIssuer(opts.config.accessTokenSecret);
 
 	const engine = new ChallengeEngine({
 		config: opts.config,
 		store,
 		seenTxStore,
 		adapter: opts.adapter,
-		tokenIssuer,
 	});
 
 	const executor = new AgentGateExecutor(engine);

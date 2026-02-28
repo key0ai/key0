@@ -34,11 +34,6 @@ export function validateSellerConfig(config: SellerConfig): void {
 		);
 	}
 
-	// Validate access token secret length
-	if (!config.accessTokenSecret || config.accessTokenSecret.length < 32) {
-		throw new Error("SellerConfig: accessTokenSecret must be at least 32 characters");
-	}
-
 	// Validate products array
 	if (!config.products || config.products.length === 0) {
 		throw new Error("SellerConfig: products must contain at least one tier");
@@ -68,5 +63,10 @@ export function validateSellerConfig(config: SellerConfig): void {
 	// Validate onVerifyResource is a function
 	if (typeof config.onVerifyResource !== "function") {
 		throw new Error("SellerConfig: onVerifyResource must be a function");
+	}
+
+	// Validate onIssueToken is a function
+	if (typeof config.onIssueToken !== "function") {
+		throw new Error("SellerConfig: onIssueToken must be a function");
 	}
 }

@@ -81,22 +81,22 @@ const adapter = new X402Adapter({
 let authProvider: AuthHeaderProvider;
 
 // We need an issuer instance if using JWT auth strategy
-// This reuses the same secret/key configured for AgentGate tokens, or you could load a separate key
-const tokenIssuer = new AccessTokenIssuer(SECRET);
+// This is used for service-to-service auth, not for access tokens issued to agents
+const serviceTokenIssuer = new AccessTokenIssuer(SECRET);
 
 if (AUTH_STRATEGY === "jwt") {
 	// Strategy 2: Signed JWT
 	// Requires SECRET to be a private key (PEM) if algorithm is RS256, or shared secret for HS256
 	// The backend must have the corresponding public key or shared secret
 	console.log("Using Signed JWT auth strategy for backend communication");
-	authProvider = signedJwtAuth(tokenIssuer, "backend-service");
+	authProvider = signedJwtAuth(serviceTokenIssuer, "backend-service");
 } else {
 	// Strategy 1: Shared Secret (default)
 	console.log("Using Shared Secret auth strategy for backend communication");
 	authProvider = sharedSecretAuth("X-Internal-Auth", INTERNAL_AUTH_SECRET);
 }
 
-// Determine token mode
+// Determine token issuance mode
 const tokenMode = (process.env.TOKEN_MODE || "native") as "native" | "remote";
 
 // Create remote verifier (calls backend to verify resources)
@@ -106,15 +106,35 @@ const remoteVerifier = createRemoteResourceVerifier({
 	timeoutMs: 5000,
 });
 
-// Create remote token issuer (only used if tokenMode="remote")
-const remoteTokenIssuer =
-	tokenMode === "remote"
-		? createRemoteTokenIssuer({
-				url: `${BACKEND_API_URL}/internal/issue-token`,
-				auth: authProvider,
-				timeoutMs: 10000,
-			})
-		: undefined;
+// Create token issuer callback based on mode
+let onIssueToken: (params: any) => Promise<any>;
+
+if (tokenMode === "remote") {
+	// Remote mode: Call backend to issue tokens
+	console.log("Using Remote token issuance mode");
+	const remoteTokenIssuer = createRemoteTokenIssuer({
+		url: `${BACKEND_API_URL}/internal/issue-token`,
+		auth: authProvider,
+		timeoutMs: 10000,
+	});
+	onIssueToken = remoteTokenIssuer;
+} else {
+	// Native mode: Generate JWT locally using AccessTokenIssuer utility
+	console.log("Using Native token issuance mode (local JWT)");
+	const localTokenIssuer = new AccessTokenIssuer(SECRET);
+	onIssueToken = async (params) => {
+		return localTokenIssuer.sign(
+			{
+				sub: params.requestId,
+				jti: params.challengeId,
+				resourceId: params.resourceId,
+				tierId: params.tierId,
+				txHash: params.txHash,
+			},
+			3600, // Default TTL, could be made configurable
+		);
+	};
+}
 
 // Product catalog
 const products = [
@@ -148,13 +168,10 @@ app.use(
 			walletAddress: (process.env.AGENTGATE_WALLET_ADDRESS ||
 				"0x0000000000000000000000000000000000000000") as `0x${string}`,
 			network: NETWORK,
-			accessTokenSecret: SECRET,
-			accessTokenTTLSeconds: Number(process.env.ACCESS_TOKEN_TTL_SECONDS ?? 3600),
 			challengeTTLSeconds: Number(process.env.CHALLENGE_TTL_SECONDS ?? 900),
 			products,
 			onVerifyResource: remoteVerifier,
-			tokenMode,
-			onIssueToken: remoteTokenIssuer,
+			onIssueToken,
 			onPaymentReceived: async (grant) => {
 				// Notify backend when payment is received
 				try {
