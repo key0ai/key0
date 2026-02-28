@@ -98,6 +98,11 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 		},
 	];
 
+	const basePath = config.basePath ?? "/agent";
+	// Ensure no double slashes if agentUrl ends with /
+	const baseUrl = config.agentUrl.replace(/\/$/, "");
+	const endpointUrl = `${baseUrl}${basePath}`;
+
 	return {
 		name: config.agentName,
 		description: config.agentDescription,
@@ -116,5 +121,15 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 			name: config.providerName,
 			url: config.providerUrl,
 		},
+		additionalInterfaces: [
+			{
+				url: endpointUrl,
+				transport: "JSONRPC",
+			},
+			{
+				url: `${endpointUrl}/rest`,
+				transport: "HTTP+JSON",
+			},
+		],
 	};
 }

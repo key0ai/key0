@@ -1,6 +1,6 @@
 import { type NextFunction, type Request, type Response, Router } from "express";
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
-import { agentCardHandler, jsonRpcHandler, UserBuilder } from "@a2a-js/sdk/server/express";
+import { agentCardHandler, jsonRpcHandler, restHandler, UserBuilder } from "@a2a-js/sdk/server/express";
 import { type AgentGateConfig, createAgentGate } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { AgentGateError } from "../types/index.js";
@@ -26,6 +26,7 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 	// A2A endpoint
 	const basePath = opts.config.basePath ?? "/agent";
 	router.use(basePath, jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
+	router.use(`${basePath}/rest`, restHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
 
 	return router;
 }

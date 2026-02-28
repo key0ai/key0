@@ -4,6 +4,7 @@ import { X402Adapter } from "@agentgate/sdk";
 import type { NetworkName } from "@agentgate/sdk";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
+const PUBLIC_URL = process.env["PUBLIC_URL"] ?? `http://localhost:${PORT}`;
 const NETWORK = (process.env["AGENTGATE_NETWORK"] ?? "testnet") as NetworkName;
 const WALLET = (process.env["AGENTGATE_WALLET_ADDRESS"] ??
   "0x0000000000000000000000000000000000000000") as `0x${string}`;
@@ -27,7 +28,7 @@ app.use(
       agentName: "Photo Gallery Agent",
       agentDescription:
         "Purchase access to premium photos via USDC payments on Base",
-      agentUrl: `http://localhost:${PORT}`,
+      agentUrl: PUBLIC_URL,
       providerName: "Example Corp",
       providerUrl: "https://example.com",
       walletAddress: WALLET,
@@ -62,7 +63,7 @@ app.use(
         );
         console.log(`  TX: ${grant.explorerUrl}`);
       },
-      resourceEndpointTemplate: `http://localhost:${PORT}/api/photos/{resourceId}`,
+      resourceEndpointTemplate: `${PUBLIC_URL}/api/photos/{resourceId}`,
     },
     adapter,
   }),
@@ -86,9 +87,9 @@ app.get("/api/photos/:id", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\nPhoto Gallery Agent running on http://localhost:${PORT}`);
-  console.log(`  Agent card: http://localhost:${PORT}/.well-known/agent.json`);
-  console.log(`  A2A endpoint: http://localhost:${PORT}/agent`);
+  console.log(`\nPhoto Gallery Agent running on ${PUBLIC_URL}`);
+  console.log(`  Agent card: ${PUBLIC_URL}/.well-known/agent.json`);
+  console.log(`  A2A endpoint: ${PUBLIC_URL}/agent`);
   console.log(`  Network: ${NETWORK}`);
   console.log(`  Wallet: ${WALLET}\n`);
 });
