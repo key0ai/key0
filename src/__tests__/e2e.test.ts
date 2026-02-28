@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { Message, Task } from "@a2a-js/sdk";
-import type { AgentExecutionEvent, ExecutionEventBus, ExecutionEventName, RequestContext } from "@a2a-js/sdk/server";
+import type {
+	AgentExecutionEvent,
+	ExecutionEventBus,
+	ExecutionEventName,
+	RequestContext,
+} from "@a2a-js/sdk/server";
 import { v4 as uuidv4 } from "uuid";
 import { createAgentGate } from "../factory.js";
 import { validateToken } from "../middleware.js";
@@ -265,7 +270,9 @@ describe("E2E: Full AgentGate lifecycle (Executor)", () => {
 		expect(failedTask).toBeDefined();
 		const errorMsg = doubleSpendEvents.find((e) => e.kind === "message");
 		// biome-ignore lint/suspicious/noExplicitAny: SDK Message parts have loose text typing
-		expect(((errorMsg as any)?.parts as Array<{ text?: string }>)[0]?.text).toContain("already been redeemed");
+		expect(((errorMsg as any)?.parts as Array<{ text?: string }>)[0]?.text).toContain(
+			"already been redeemed",
+		);
 		// Or whatever error message core returns (AgentGateError messages are usually descriptive)
 	});
 });
