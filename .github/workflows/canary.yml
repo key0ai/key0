@@ -29,6 +29,6 @@ jobs:
         run: npx changeset version --snapshot canary
 
       - name: Publish canary
-        run: npx changeset publish --tag canary
+        run: npx changeset publish --tag canary --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

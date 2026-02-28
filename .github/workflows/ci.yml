@@ -18,6 +18,9 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Audit dependencies
+        run: npm install --package-lock-only --ignore-scripts && npm audit --audit-level=high
+
       - name: Typecheck
         run: bun run typecheck
 
