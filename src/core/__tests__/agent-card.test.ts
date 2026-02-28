@@ -19,7 +19,7 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 				resourceType: "photo",
 			},
 		],
-		accessTokenSecret: "a-very-long-secret-that-is-at-least-32-characters!",
+		onIssueToken: async () => ({ token: "test-token", expiresAt: new Date() }),
 		onVerifyResource: async () => true,
 		...overrides,
 	};

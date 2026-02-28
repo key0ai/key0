@@ -38,7 +38,7 @@ export function makeSellerConfig(overrides?: Partial<SellerConfig>): SellerConfi
 		walletAddress: DEFAULT_WALLET,
 		network: "testnet",
 		products: [{ tierId: "single", label: "Single Photo", amount: "$0.10", resourceType: "photo" }],
-		accessTokenSecret: DEFAULT_SECRET,
+		onIssueToken: async () => ({ token: "test-token", expiresAt: new Date() }),
 		onVerifyResource: async () => true,
 		...overrides,
 	};
