@@ -21,12 +21,17 @@
   },
   "homepage": "https://github.com/Riklr/api-agentic-commerce#readme",
   "dependencies": {
+    "@a2a-js/sdk": "^0.3.10",
+    "@google/generative-ai": "^0.24.1",
+    "@types/uuid": "^10.0.0",
     "axios": "^1.13.5",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "uuid": "^13.0.0",
     "viem": "^2.46.3"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "ts-node": "^10.9.2",
     "tsx": "^4.7.1",
     "typescript": "^5.9.3"
