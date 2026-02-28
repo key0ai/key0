@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AccessTokenIssuer } from "../core";
-import { AgentGateError } from "../types";
 import { validateToken } from "../middleware.js";
+import { AgentGateError } from "../types";
 
 const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const CLAIMS = {

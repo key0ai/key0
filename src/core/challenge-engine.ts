@@ -17,11 +17,7 @@ import {
 import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import { CHAIN_CONFIGS } from "../types/index.js";
 import { validateSellerConfig } from "./config-validation.js";
-import {
-	validateNonEmpty,
-	validateTxHash,
-	validateUUID,
-} from "./validation.js";
+import { validateNonEmpty, validateTxHash, validateUUID } from "./validation.js";
 
 export type ChallengeEngineConfig = {
 	readonly config: SellerConfig;

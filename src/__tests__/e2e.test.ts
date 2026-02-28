@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type { Message, Task } from "@a2a-js/sdk";
+import type { AgentExecutionEvent, ExecutionEventBus, ExecutionEventName, RequestContext } from "@a2a-js/sdk/server";
+import { v4 as uuidv4 } from "uuid";
+import { createAgentGate } from "../factory.js";
+import { validateToken } from "../middleware.js";
 import { MockPaymentAdapter } from "../test-utils";
 import type { SellerConfig } from "../types";
-import { validateToken } from "../middleware.js";
-import { createAgentGate } from "../factory.js";
-import { v4 as uuidv4 } from "uuid";
-import type { ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
-import type { Message, Task } from "@a2a-js/sdk";
 
 const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
@@ -47,41 +47,39 @@ function makeConfig(): SellerConfig {
 }
 
 class MockEventBus implements ExecutionEventBus {
-	public events: any[] = [];
-	
-	publish(event: any): void {
+	public events: AgentExecutionEvent[] = [];
+
+	publish(event: AgentExecutionEvent): void {
 		this.events.push(event);
 	}
-	
+
 	finished(): void {}
-	
-	// Deprecated or alternative method depending on SDK version, but publish covers most
-	send(message: any): void {
-		this.events.push(message);
-	}
 
-	on(eventName: any, listener: any): this {
+	on(eventName: ExecutionEventName, listener: (event: AgentExecutionEvent) => void): this {
 		return this;
 	}
 
-	off(eventName: any, listener: any): this {
+	off(eventName: ExecutionEventName, listener: (event: AgentExecutionEvent) => void): this {
 		return this;
 	}
 
-	once(eventName: any, listener: any): this {
+	once(eventName: ExecutionEventName, listener: (event: AgentExecutionEvent) => void): this {
 		return this;
 	}
 
-	removeAllListeners(eventName?: any): this {
+	removeAllListeners(eventName?: ExecutionEventName): this {
 		return this;
 	}
 }
 
-async function runTask(executor: any, payload: any) {
+async function runTask(
+	executor: { execute: (context: RequestContext, eventBus: ExecutionEventBus) => Promise<void> },
+	payload: Record<string, unknown>,
+) {
 	const eventBus = new MockEventBus();
 	const taskId = uuidv4();
 	const contextId = uuidv4();
-	
+
 	const userMessage: Message = {
 		kind: "message",
 		messageId: uuidv4(),
@@ -89,21 +87,22 @@ async function runTask(executor: any, payload: any) {
 		parts: [{ kind: "data", data: payload }],
 		contextId,
 	};
-	
+
 	const context: RequestContext = {
 		taskId,
 		contextId,
 		userMessage,
 	};
-	
+
 	await executor.execute(context, eventBus);
 	return eventBus.events;
 }
 
-function extractData(events: any[]): any {
-	const message = events.find(e => e.kind === "message" && e.role === "agent");
+function extractData(events: AgentExecutionEvent[]): Record<string, unknown> {
+	const message = events.find((e) => e.kind === "message" && "role" in e && e.role === "agent");
 	if (!message) throw new Error("No agent message found");
-	return message.parts[0].data;
+	// biome-ignore lint/suspicious/noExplicitAny: event parts are typed loosely by the SDK
+	return ((message as any).parts as Array<{ data: Record<string, unknown> }>)[0]?.data ?? {};
 }
 
 function makeTxHash(): `0x${string}` {
@@ -133,7 +132,7 @@ describe("E2E: Full AgentGate lifecycle (Executor)", () => {
 			tierId: "single",
 			clientAgentId: "agent://e2e-test",
 		});
-		
+
 		const challenge = extractData(events1);
 		expect(challenge["type"]).toBe("X402Challenge");
 		expect(challenge["amount"]).toBe("$0.10");
@@ -152,7 +151,7 @@ describe("E2E: Full AgentGate lifecycle (Executor)", () => {
 			asset: "USDC",
 			fromAgentId: "agent://e2e-test",
 		});
-		
+
 		const grant = extractData(events2);
 		expect(grant["type"]).toBe("AccessGrant");
 		expect(grant["tokenType"]).toBe("Bearer");
@@ -171,7 +170,7 @@ describe("E2E: Full AgentGate lifecycle (Executor)", () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
 		const { executor } = createAgentGate({ config, adapter });
-		
+
 		const requestId = uuidv4();
 		const reqData = {
 			type: "AccessRequest",
@@ -193,7 +192,7 @@ describe("E2E: Full AgentGate lifecycle (Executor)", () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
 		const { executor } = createAgentGate({ config, adapter });
-		
+
 		const events = await runTask(executor, {
 			type: "AccessRequest",
 			requestId: uuidv4(),
@@ -201,12 +200,12 @@ describe("E2E: Full AgentGate lifecycle (Executor)", () => {
 			tierId: "single",
 			clientAgentId: "agent://e2e-test",
 		});
-		
+
 		// Expect error message or failed task
-		const failedTask = events.find(e => e.kind === "task" && e.status.state === "failed");
+		const failedTask = events.find((e) => e.kind === "task" && e.status.state === "failed");
 		expect(failedTask).toBeDefined();
-		
-		const errorMsg = events.find(e => e.kind === "message" && e.parts[0].kind === "text");
+
+		const errorMsg = events.find((e) => e.kind === "message" && e.parts[0]?.kind === "text");
 		expect(errorMsg).toBeDefined();
 		// In a real scenario we'd check the error message content, but here we just check failure
 	});
@@ -259,11 +258,14 @@ describe("E2E: Full AgentGate lifecycle (Executor)", () => {
 			asset: "USDC",
 			fromAgentId: "agent://e2e-test",
 		});
-		
-		const failedTask = doubleSpendEvents.find(e => e.kind === "task" && e.status.state === "failed");
+
+		const failedTask = doubleSpendEvents.find(
+			(e) => e.kind === "task" && e.status.state === "failed",
+		);
 		expect(failedTask).toBeDefined();
-		const errorMsg = doubleSpendEvents.find(e => e.kind === "message");
-		expect(errorMsg.parts[0].text).toContain("already been redeemed"); 
+		const errorMsg = doubleSpendEvents.find((e) => e.kind === "message");
+		// biome-ignore lint/suspicious/noExplicitAny: SDK Message parts have loose text typing
+		expect(((errorMsg as any)?.parts as Array<{ text?: string }>)[0]?.text).toContain("already been redeemed");
 		// Or whatever error message core returns (AgentGateError messages are usually descriptive)
 	});
 });

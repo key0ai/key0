@@ -57,15 +57,15 @@ describe("validateSellerConfig", () => {
 	});
 
 	test("rejects missing onIssueToken", () => {
-		expect(() => validateSellerConfig(makeValidConfig({ onIssueToken: undefined as any }))).toThrow(
-			"onIssueToken must be a function",
-		);
+		expect(() =>
+			validateSellerConfig(makeValidConfig({ onIssueToken: undefined as unknown as never })),
+		).toThrow("onIssueToken must be a function");
 	});
 
 	test("rejects non-function onIssueToken", () => {
-		expect(() => validateSellerConfig(makeValidConfig({ onIssueToken: "not-a-function" as any }))).toThrow(
-			"onIssueToken must be a function",
-		);
+		expect(() =>
+			validateSellerConfig(makeValidConfig({ onIssueToken: "not-a-function" as unknown as never })),
+		).toThrow("onIssueToken must be a function");
 	});
 
 	test("rejects empty products array", () => {

@@ -1,3 +1,5 @@
+import { http, type PublicClient, createPublicClient } from "viem";
+import { base, baseSepolia } from "viem/chains";
 import type {
 	ChallengePayload,
 	IPaymentAdapter,
@@ -7,8 +9,6 @@ import type {
 	VerificationResult,
 	VerifyProofParams,
 } from "../types/index.js";
-import { http, type PublicClient, createPublicClient } from "viem";
-import { base, baseSepolia } from "viem/chains";
 import { CHAIN_CONFIGS } from "./chain-config.js";
 import { verifyTransfer } from "./verify-transfer.js";
 

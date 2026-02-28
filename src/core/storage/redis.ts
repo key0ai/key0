@@ -1,3 +1,4 @@
+import type Redis from "ioredis";
 import type {
 	AccessGrant,
 	ChallengeRecord,
@@ -5,7 +6,6 @@ import type {
 	IChallengeStore,
 	ISeenTxStore,
 } from "../../types";
-import type Redis from "ioredis";
 
 // ─── Serialization helpers ───────────────────────────────────────────
 

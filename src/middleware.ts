@@ -1,5 +1,5 @@
-import { AgentGateError } from "./types/index.js";
 import { type JWTPayload, jwtVerify } from "jose";
+import { AgentGateError } from "./types/index.js";
 
 export type AccessTokenPayload = JWTPayload & {
 	readonly sub: string; // requestId

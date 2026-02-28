@@ -1,9 +1,9 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { type AgentGateConfig, createAgentGate } from "../factory.js";
-import { type ValidateAccessTokenConfig } from "../middleware.js";
-import { AgentGateError } from "../types/index.js";
+import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
+import { AgentGateError } from "../types/index.js";
 
 /**
  * Fastify plugin that serves the agent card and A2A endpoint.

@@ -13,7 +13,10 @@ export type { AccessTokenPayload, ValidateAccessTokenConfig } from "./middleware
 
 // Validator (lightweight for backend services)
 export { validateAgentGateToken } from "./validator/index.js";
-export type { AccessTokenPayload as ValidatorAccessTokenPayload, ValidatorConfig } from "./validator/index.js";
+export type {
+	AccessTokenPayload as ValidatorAccessTokenPayload,
+	ValidatorConfig,
+} from "./validator/index.js";
 
 // Remote Helpers (for separate service deployments)
 export { createRemoteResourceVerifier, createRemoteTokenIssuer } from "./helpers/remote.js";

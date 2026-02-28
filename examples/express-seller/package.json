@@ -1,16 +1,16 @@
 {
-  "name": "express-seller-example",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "start": "bun run server.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@agentgate/sdk": "file:../..",
-    "express": "^4.21.0"
-  },
-  "devDependencies": {
-    "@types/express": "^5.0.0"
-  }
+	"name": "express-seller-example",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "bun run server.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@agentgate/sdk": "file:../..",
+		"express": "^4.21.0"
+	},
+	"devDependencies": {
+		"@types/express": "^5.0.0"
+	}
 }

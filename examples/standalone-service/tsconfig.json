@@ -1,21 +1,21 @@
 {
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "rootDir": "../..",
-    "outDir": "./dist",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "target": "ESNext",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "noPropertyAccessFromIndexSignature": false,
-    "exactOptionalPropertyTypes": false,
-    "paths": {
-      "@agentgate/sdk": ["../../src/index.ts"],
-      "@agentgate/sdk/*": ["../../src/integrations/*.ts"]
-    }
-  },
-  "include": ["server.ts"]
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "../..",
+		"outDir": "./dist",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"target": "ESNext",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"noPropertyAccessFromIndexSignature": false,
+		"exactOptionalPropertyTypes": false,
+		"paths": {
+			"@agentgate/sdk": ["../../src/index.ts"],
+			"@agentgate/sdk/*": ["../../src/integrations/*.ts"]
+		}
+	},
+	"include": ["server.ts"]
 }

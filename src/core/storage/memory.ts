@@ -1,9 +1,4 @@
-import type {
-	ChallengeRecord,
-	ChallengeState,
-	IChallengeStore,
-	ISeenTxStore,
-} from "../../types";
+import type { ChallengeRecord, ChallengeState, IChallengeStore, ISeenTxStore } from "../../types";
 
 export type InMemoryStoreConfig = {
 	readonly cleanupIntervalMs?: number | undefined; // default: 300_000 (5 min)

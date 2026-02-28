@@ -1,10 +1,15 @@
-import { type NextFunction, type Request, type Response, Router } from "express";
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
-import { agentCardHandler, jsonRpcHandler, restHandler, UserBuilder } from "@a2a-js/sdk/server/express";
+import {
+	UserBuilder,
+	agentCardHandler,
+	jsonRpcHandler,
+	restHandler,
+} from "@a2a-js/sdk/server/express";
+import { type NextFunction, type Request, type Response, Router } from "express";
 import { type AgentGateConfig, createAgentGate } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
-import { AgentGateError } from "../types/index.js";
 import { validateToken } from "../middleware.js";
+import { AgentGateError } from "../types/index.js";
 
 /**
  * Create an Express router that serves the agent card and A2A endpoint.
@@ -22,12 +27,18 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 
 	// Agent Card
 	router.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: requestHandler }));
-	router.use('/.well-known/agent.json', agentCardHandler({ agentCardProvider: requestHandler }));
+	router.use("/.well-known/agent.json", agentCardHandler({ agentCardProvider: requestHandler }));
 
 	// A2A endpoint
 	const basePath = opts.config.basePath ?? "/a2a";
-	router.use(`${basePath}/jsonrpc`, jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
-	router.use(`${basePath}/rest`, restHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
+	router.use(
+		`${basePath}/jsonrpc`,
+		jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }),
+	);
+	router.use(
+		`${basePath}/rest`,
+		restHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }),
+	);
 
 	return router;
 }

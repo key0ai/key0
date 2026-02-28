@@ -1,13 +1,13 @@
 {
-  "name": "client-agent-example",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "start": "bun run agent.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@agentgate/sdk": "file:../..",
-    "viem": "^2.21.0"
-  }
+	"name": "client-agent-example",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "bun run agent.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@agentgate/sdk": "file:../..",
+		"viem": "^2.21.0"
+	}
 }

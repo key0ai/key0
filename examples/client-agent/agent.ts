@@ -16,11 +16,11 @@
  *   bun run start
  */
 
-import type { AgentCard, X402Challenge, AccessGrant, NetworkName } from "@agentgate/sdk";
+import type { AccessGrant, AgentCard, NetworkName, X402Challenge } from "@agentgate/sdk";
 import { CHAIN_CONFIGS, USDC_ABI, parseDollarToUsdcMicro } from "@agentgate/sdk";
-import { createWalletClient, createPublicClient, http, formatUnits } from "viem";
+import { http, createPublicClient, createWalletClient, formatUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { baseSepolia, base } from "viem/chains";
+import { base, baseSepolia } from "viem/chains";
 
 // ---------------------------------------------------------------------------
 // Configuration from environment
@@ -79,7 +79,9 @@ async function main() {
 	console.log(`  Balance:  ${balance} USDC\n`);
 
 	if (Number.parseFloat(balance) === 0) {
-		console.error("ERROR: Your wallet has 0 USDC. Get testnet USDC from https://faucet.circle.com/");
+		console.error(
+			"ERROR: Your wallet has 0 USDC. Get testnet USDC from https://faucet.circle.com/",
+		);
 		process.exit(1);
 	}
 
@@ -161,7 +163,9 @@ async function main() {
 	// -----------------------------------------------------------------------
 	console.log("3. Paying USDC on-chain...");
 	const amountRaw = parseDollarToUsdcMicro(challenge.amount);
-	console.log(`   Sending ${challenge.amount} (${amountRaw} micro-units) to ${challenge.destination}`);
+	console.log(
+		`   Sending ${challenge.amount} (${amountRaw} micro-units) to ${challenge.destination}`,
+	);
 
 	const txHash = await walletClient.writeContract({
 		address: chainConfig.usdcAddress,
@@ -215,7 +219,9 @@ async function main() {
 	const proofBody = await proofRes.json();
 
 	if (proofBody.result?.status?.state === "failed") {
-		console.error(`   Proof verification failed: ${JSON.stringify(proofBody.result.status.message)}`);
+		console.error(
+			`   Proof verification failed: ${JSON.stringify(proofBody.result.status.message)}`,
+		);
 		process.exit(1);
 	}
 

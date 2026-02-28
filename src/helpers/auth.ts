@@ -16,10 +16,7 @@ export type AuthHeaderProvider = () => Promise<Record<string, string>>;
  * const auth = sharedSecretAuth("X-Internal-Auth", process.env.INTERNAL_SECRET);
  * ```
  */
-export function sharedSecretAuth(
-	headerName: string,
-	secret: string,
-): AuthHeaderProvider {
+export function sharedSecretAuth(headerName: string, secret: string): AuthHeaderProvider {
 	return async () => ({ [headerName]: secret });
 }
 
@@ -130,11 +127,7 @@ export function oauthClientCredentialsAuth(config: {
 			return { Authorization: `Bearer ${cachedToken}` };
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : String(err);
-			throw new AgentGateError(
-				"INTERNAL_ERROR",
-				`Failed to authenticate via OAuth: ${msg}`,
-				500,
-			);
+			throw new AgentGateError("INTERNAL_ERROR", `Failed to authenticate via OAuth: ${msg}`, 500);
 		}
 	};
 }

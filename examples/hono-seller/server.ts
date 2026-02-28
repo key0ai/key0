@@ -1,15 +1,14 @@
-import { Hono } from "hono";
-import { agentGateApp, honoValidateAccessToken } from "@agentgate/sdk/hono";
-import { X402Adapter, AccessTokenIssuer } from "@agentgate/sdk";
+import { AccessTokenIssuer, X402Adapter } from "@agentgate/sdk";
 import type { NetworkName } from "@agentgate/sdk";
+import { agentGateApp, honoValidateAccessToken } from "@agentgate/sdk/hono";
+import { Hono } from "hono";
 
 const PORT = Number(process.env["PORT"] ?? 3001);
 const NETWORK = (process.env["AGENTGATE_NETWORK"] ?? "testnet") as NetworkName;
 const WALLET = (process.env["AGENTGATE_WALLET_ADDRESS"] ??
 	"0x0000000000000000000000000000000000000000") as `0x${string}`;
 const SECRET =
-	process.env["AGENTGATE_ACCESS_TOKEN_SECRET"] ??
-	"dev-secret-change-me-in-production-32chars!";
+	process.env["AGENTGATE_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
 
 // Create the x402 payment adapter
 const adapter = new X402Adapter({
@@ -24,8 +23,7 @@ const tokenIssuer = new AccessTokenIssuer(SECRET);
 const gate = agentGateApp({
 	config: {
 		agentName: "Photo Gallery Agent",
-		agentDescription:
-			"Purchase access to premium photos via USDC payments on Base",
+		agentDescription: "Purchase access to premium photos via USDC payments on Base",
 		agentUrl: `http://localhost:${PORT}`,
 		providerName: "Example Corp",
 		providerUrl: "https://example.com",
@@ -67,9 +65,7 @@ const gate = agentGateApp({
 			);
 		},
 		onPaymentReceived: async (grant) => {
-			console.log(
-				`[Payment] Received payment for ${grant.resourceId} (${grant.tierId})`,
-			);
+			console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.tierId})`);
 			console.log(`  TX: ${grant.explorerUrl}`);
 		},
 		resourceEndpointTemplate: `http://localhost:${PORT}/api/photos/{resourceId}`,

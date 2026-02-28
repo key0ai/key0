@@ -16,20 +16,22 @@
  *   bun run start
  */
 
-import express from "express";
-import { agentGateRouter } from "@agentgate/sdk/express";
 import {
+	AccessTokenIssuer,
+	type AuthHeaderProvider,
+	type IssueTokenParams,
+	type NetworkName,
+	RedisChallengeStore,
+	RedisSeenTxStore,
+	type TokenIssuanceResult,
 	X402Adapter,
 	createRemoteResourceVerifier,
 	createRemoteTokenIssuer,
 	sharedSecretAuth,
 	signedJwtAuth,
-	type AuthHeaderProvider,
-	AccessTokenIssuer,
-	RedisChallengeStore,
-	RedisSeenTxStore,
-	type NetworkName,
 } from "@agentgate/sdk";
+import { agentGateRouter } from "@agentgate/sdk/express";
+import express from "express";
 import Redis from "ioredis";
 
 const PORT = Number(process.env.AGENTGATE_PORT ?? 3001);
@@ -107,7 +109,7 @@ const remoteVerifier = createRemoteResourceVerifier({
 });
 
 // Create token issuer callback based on mode
-let onIssueToken: (params: any) => Promise<any>;
+let onIssueToken: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 
 if (tokenMode === "remote") {
 	// Remote mode: Call backend to issue tokens
@@ -159,9 +161,7 @@ app.use(
 	agentGateRouter({
 		config: {
 			agentName: process.env.AGENT_NAME || "AgentGate Service",
-			agentDescription:
-				process.env.AGENT_DESCRIPTION ||
-				"Payment-gated API access for AI agents",
+			agentDescription: process.env.AGENT_DESCRIPTION || "Payment-gated API access for AI agents",
 			agentUrl: process.env.AGENTGATE_PUBLIC_URL || `http://localhost:${PORT}`,
 			providerName: process.env.PROVIDER_NAME || "Example Corp",
 			providerUrl: process.env.PROVIDER_URL || "https://example.com",
@@ -218,11 +218,15 @@ app.get("/.well-known/token-info", (req, res) => {
 });
 
 app.listen(PORT, () => {
-	console.log(`\n🚀 AgentGate Standalone Service`);
+	console.log("\n🚀 AgentGate Standalone Service");
 	console.log(`   Port: ${PORT}`);
 	console.log(`   Network: ${NETWORK}`);
 	console.log(`   Token Mode: ${tokenMode}`);
 	console.log(`   Backend URL: ${BACKEND_API_URL}`);
-	console.log(`   Agent Card: ${process.env.AGENTGATE_PUBLIC_URL || `http://localhost:${PORT}`}/.well-known/agent.json`);
-	console.log(`   A2A Endpoint: ${process.env.AGENTGATE_PUBLIC_URL || `http://localhost:${PORT}`}/agent\n`);
+	console.log(
+		`   Agent Card: ${process.env.AGENTGATE_PUBLIC_URL || `http://localhost:${PORT}`}/.well-known/agent.json`,
+	);
+	console.log(
+		`   A2A Endpoint: ${process.env.AGENTGATE_PUBLIC_URL || `http://localhost:${PORT}`}/agent\n`,
+	);
 });

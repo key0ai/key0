@@ -1,19 +1,19 @@
 {
-  "name": "agentgate-standalone-service",
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "start": "bun run server.ts",
-    "dev": "bun --watch server.ts"
-  },
-  "dependencies": {
-    "@agentgate/sdk": "file:../..",
-    "express": "^4.21.0",
-    "ioredis": "^5.0.0"
-  },
-  "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/node": "^20.0.0",
-    "typescript": "^5.7.0"
-  }
+	"name": "agentgate-standalone-service",
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"start": "bun run server.ts",
+		"dev": "bun --watch server.ts"
+	},
+	"dependencies": {
+		"@agentgate/sdk": "file:../..",
+		"express": "^4.21.0",
+		"ioredis": "^5.0.0"
+	},
+	"devDependencies": {
+		"@types/express": "^5.0.0",
+		"@types/node": "^20.0.0",
+		"typescript": "^5.7.0"
+	}
 }

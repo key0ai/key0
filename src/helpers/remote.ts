@@ -1,9 +1,5 @@
 import { AgentGateError } from "../types/index.js";
-import type {
-	ResourceVerifier,
-	IssueTokenParams,
-	TokenIssuanceResult,
-} from "../types/index.js";
+import type { IssueTokenParams, ResourceVerifier, TokenIssuanceResult } from "../types/index.js";
 import { type AuthHeaderProvider, sharedSecretAuth } from "./auth.js";
 
 export type RemoteVerifierConfig = {
@@ -66,17 +62,12 @@ function resolveAuth(
  * });
  * ```
  */
-export function createRemoteResourceVerifier(
-	config: RemoteVerifierConfig,
-): ResourceVerifier {
+export function createRemoteResourceVerifier(config: RemoteVerifierConfig): ResourceVerifier {
 	const getAuthHeaders = resolveAuth(config.auth, config.secret, config.headerName);
 
 	return async (resourceId: string, tierId: string): Promise<boolean> => {
 		const controller = new AbortController();
-		const timeout = setTimeout(
-			() => controller.abort(),
-			config.timeoutMs ?? 5000,
-		);
+		const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 5000);
 
 		try {
 			const headers = await getAuthHeaders();
@@ -110,11 +101,7 @@ export function createRemoteResourceVerifier(
 			clearTimeout(timeout);
 
 			if (err instanceof Error && err.name === "AbortError") {
-				throw new AgentGateError(
-					"RESOURCE_VERIFY_TIMEOUT",
-					"Remote verification timed out",
-					504,
-				);
+				throw new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Remote verification timed out", 504);
 			}
 
 			console.error("[RemoteVerifier] Network error:", err);
@@ -149,10 +136,7 @@ export function createRemoteTokenIssuer(
 
 	return async (params: IssueTokenParams): Promise<TokenIssuanceResult> => {
 		const controller = new AbortController();
-		const timeout = setTimeout(
-			() => controller.abort(),
-			config.timeoutMs ?? 10000,
-		);
+		const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 10000);
 
 		try {
 			const headers = await getAuthHeaders();
@@ -190,10 +174,7 @@ export function createRemoteTokenIssuer(
 
 			return {
 				token: data.token,
-				expiresAt:
-					data.expiresAt instanceof Date
-						? data.expiresAt
-						: new Date(data.expiresAt),
+				expiresAt: data.expiresAt instanceof Date ? data.expiresAt : new Date(data.expiresAt),
 				tokenType: data.tokenType || "Bearer",
 			};
 		} catch (err: unknown) {
@@ -204,11 +185,7 @@ export function createRemoteTokenIssuer(
 			}
 
 			if (err instanceof Error && err.name === "AbortError") {
-				throw new AgentGateError(
-					"TOKEN_ISSUE_TIMEOUT",
-					"Remote token issuance timed out",
-					504,
-				);
+				throw new AgentGateError("TOKEN_ISSUE_TIMEOUT", "Remote token issuance timed out", 504);
 			}
 
 			throw new AgentGateError(

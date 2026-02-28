@@ -1,8 +1,8 @@
 import type { Message, Task } from "@a2a-js/sdk";
 import type { AgentExecutor, ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
+import { v4 as uuidv4 } from "uuid";
 import type { ChallengeEngine } from "./core/index.js";
 import type { AccessRequest, PaymentProof } from "./types/index.js";
-import { v4 as uuidv4 } from "uuid";
 
 export class AgentGateExecutor implements AgentExecutor {
 	constructor(private engine: ChallengeEngine) {}
@@ -14,17 +14,12 @@ export class AgentGateExecutor implements AgentExecutor {
 			// Parse message payload
 			const payload = this.parseMessage(userMessage);
 			if (!payload) {
-				const partsInfo = userMessage.parts?.map((p: any) => p.kind).join(", ") || "none";
-				this.sendErrorResponse(
-					eventBus,
-					contextId,
-					taskId,
-					userMessage,
-					{
-						error: "Invalid message format",
-						message: `No data part found in message. Available parts: [${partsInfo}]. Expected a part with kind="data" or a text part containing valid JSON.`,
-					},
-				);
+				const partsInfo =
+					userMessage.parts?.map((p: { kind?: string }) => p.kind).join(", ") || "none";
+				this.sendErrorResponse(eventBus, contextId, taskId, userMessage, {
+					error: "Invalid message format",
+					message: `No data part found in message. Available parts: [${partsInfo}]. Expected a part with kind="data" or a text part containing valid JSON.`,
+				});
 				return;
 			}
 
@@ -35,16 +30,10 @@ export class AgentGateExecutor implements AgentExecutor {
 			} else if (payload["type"] === "PaymentProof" || this.isPaymentProof(payload)) {
 				resultData = await this.engine.submitProof(payload as unknown as PaymentProof);
 			} else {
-				this.sendErrorResponse(
-					eventBus,
-					contextId,
-					taskId,
-					userMessage,
-					{
-						error: "Unknown message type",
-						message: `Unsupported message type: ${payload["type"]}`,
-					},
-				);
+				this.sendErrorResponse(eventBus, contextId, taskId, userMessage, {
+					error: "Unknown message type",
+					message: `Unsupported message type: ${payload["type"]}`,
+				});
 				return;
 			}
 
@@ -52,16 +41,10 @@ export class AgentGateExecutor implements AgentExecutor {
 			this.publishTaskUpdate(eventBus, taskId, contextId, userMessage, "completed");
 			this.sendSuccessResponse(eventBus, contextId, resultData);
 		} catch (err: unknown) {
-			this.sendErrorResponse(
-				eventBus,
-				contextId,
-				taskId,
-				userMessage,
-				{
-					error: "Execution error",
-					message: err instanceof Error ? err.message : String(err),
-				},
-			);
+			this.sendErrorResponse(eventBus, contextId, taskId, userMessage, {
+				error: "Execution error",
+				message: err instanceof Error ? err.message : String(err),
+			});
 		} finally {
 			eventBus.finished();
 		}

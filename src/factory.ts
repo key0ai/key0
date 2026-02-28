@@ -1,9 +1,11 @@
+import { DefaultRequestHandler, InMemoryTaskStore } from "@a2a-js/sdk/server";
 import {
 	ChallengeEngine,
 	InMemoryChallengeStore,
 	InMemorySeenTxStore,
 	buildAgentCard,
 } from "./core/index.js";
+import { AgentGateExecutor } from "./executor.js";
 import type {
 	AgentCard,
 	IChallengeStore,
@@ -11,8 +13,6 @@ import type {
 	ISeenTxStore,
 	SellerConfig,
 } from "./types/index.js";
-import { DefaultRequestHandler, InMemoryTaskStore } from "@a2a-js/sdk/server";
-import { AgentGateExecutor } from "./executor.js";
 
 export type AgentGateConfig = {
 	readonly config: SellerConfig;
@@ -43,7 +43,8 @@ export function createAgentGate(opts: AgentGateConfig): AgentGateInstance {
 	const agentCard = buildAgentCard(opts.config);
 
 	const requestHandler = new DefaultRequestHandler(
-		agentCard as any, // Cast because our AgentCard type might have extra/different fields vs SDK's strict type
+		// biome-ignore lint/suspicious/noExplicitAny: our AgentCard type has extra fields vs the SDK's strict type
+		agentCard as any,
 		new InMemoryTaskStore(),
 		executor,
 	);
