@@ -88,7 +88,7 @@ If you are unsure whether something qualifies as large, open a Discussion first 
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/<your-username>/key2a.git
+git clone https://github.com/Riklr/key2a.git
 cd key2a
 
 # 2. Install dependencies
