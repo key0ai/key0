@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Next.js (website)
+website/.next/
+website/out/
+
+# Build / cache
+.next/
+out/
+*.tsbuildinfo
+
+# Env
+.env
+.env.*
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Vercel
+.vercel

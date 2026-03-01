@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+/* ─── Design Tokens ─────────────────────────────────────── */
+
+@theme {
+  --color-surface: #E8E8E8;
+  --color-surface-raised: #EFEFEF;
+  --color-foreground: #1a1a1a;
+  --color-muted: #737373;
+  --color-accent: #1a1a1a;
+  --color-accent-light: #404040;
+  --color-accent-secondary: #525252;
+  --color-white: #ffffff;
+
+  --font-display: var(--font-jakarta);
+  --font-body: var(--font-dm-sans);
+
+  --radius-card: 32px;
+  --radius-button: 16px;
+  --radius-inner: 12px;
+}
+
+/* ─── Neumorphic Shadow Utilities ───────────────────────── */
+
+@utility shadow-neu {
+  box-shadow:
+    9px 9px 16px rgba(0, 0, 0, 0.14),
+    -9px -9px 16px rgba(255, 255, 255, 0.6);
+}
+
+@utility shadow-neu-hover {
+  box-shadow:
+    12px 12px 20px rgba(0, 0, 0, 0.18),
+    -12px -12px 20px rgba(255, 255, 255, 0.65);
+}
+
+@utility shadow-neu-inset {
+  box-shadow:
+    inset 6px 6px 10px rgba(0, 0, 0, 0.14),
+    inset -6px -6px 10px rgba(255, 255, 255, 0.55);
+}
+
+@utility shadow-neu-inset-deep {
+  box-shadow:
+    inset 10px 10px 20px rgba(0, 0, 0, 0.18),
+    inset -10px -10px 20px rgba(255, 255, 255, 0.6);
+}
+
+/* ─── Neumorphic Shadow (small variant for inner elements) */
+
+@utility shadow-neu-sm {
+  box-shadow:
+    4px 4px 8px rgba(0, 0, 0, 0.1),
+    -4px -4px 8px rgba(255, 255, 255, 0.5);
+}
+
+/* ─── Base ──────────────────────────────────────────────── */
+
+html {
+  scroll-behavior: smooth;
+  width: 100%;
+}
+
+body {
+  background: #E8E8E8;
+  color: #1a1a1a;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* ─── Progress Bar Animation (How it Works tabs) ────────── */
+
+@keyframes progress-fill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+.progress-bar-active {
+  animation: progress-fill 5s linear forwards;
+}
+
+.progress-bar-paused {
+  animation-play-state: paused;
+}
+
+/* ─── Floating Key (hero decoration) ────────────────────── */
+
+@keyframes float {
+  0%, 100% { transform: rotate(15deg) translateY(0); }
+  50%      { transform: rotate(15deg) translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ─── Focus Visible (accessibility) ─────────────────────── */
+
+*:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
