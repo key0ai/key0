@@ -43,7 +43,7 @@ export function createAgentGate(opts: AgentGateConfig): AgentGateInstance {
 	const agentCard = buildAgentCard(opts.config);
 
 	const requestHandler = new DefaultRequestHandler(
-		agentCard as any, // Cast because our AgentCard type might have extra/different fields vs SDK's strict type
+		agentCard as any, // TODO: Remove cast once @a2a-js/sdk types are updated
 		new InMemoryTaskStore(),
 		executor,
 	);

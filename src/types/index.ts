@@ -3,8 +3,26 @@ export type {
 	SkillPricing,
 	AgentSkillInputSchema,
 	AgentSkill,
+	AgentExtension,
 	AgentCard,
 } from "./agent-card.js";
+
+export type {
+	PaymentRequirements,
+	ResourceInfo,
+	X402PaymentRequiredResponse,
+	X402PaymentPayload,
+	X402SettleResponse,
+	X402PaymentStatus,
+	FacilitatorVerifyResponse,
+} from "./x402-extension.js";
+
+export {
+	X402_EXTENSION_URI,
+	X402_METADATA_KEYS,
+	CHAIN_ID_TO_NETWORK,
+	NETWORK_TO_CHAIN_ID,
+} from "./x402-extension.js";
 
 export type {
 	ChallengeState,

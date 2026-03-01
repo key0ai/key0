@@ -5,6 +5,7 @@ import { type AgentGateConfig, createAgentGate } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { AgentGateError } from "../types/index.js";
 import { validateToken } from "../middleware.js";
+import { createX402HttpMiddleware } from "./x402-http-middleware.js";
 
 /**
  * Create an Express router that serves the agent card and A2A endpoint.
@@ -17,7 +18,7 @@ import { validateToken } from "../middleware.js";
  *   POST {config.basePath} (A2A tasks/send)
  */
 export function agentGateRouter(opts: AgentGateConfig): Router {
-	const { requestHandler } = createAgentGate(opts);
+	const { requestHandler, engine } = createAgentGate(opts);
 	const router = Router();
 
 	// Agent Card
@@ -26,7 +27,11 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 
 	// A2A endpoint
 	const basePath = opts.config.basePath ?? "/a2a";
-	router.use(`${basePath}/jsonrpc`, jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
+	router.use(
+		`${basePath}/jsonrpc`,
+		createX402HttpMiddleware(engine, opts.config), // x402 HTTP middleware (before A2A handler)
+		jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }),
+	);
 	router.use(`${basePath}/rest`, restHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
 
 	return router;

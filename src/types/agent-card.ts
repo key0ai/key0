@@ -26,6 +26,7 @@ export type AgentSkill = {
 	readonly name: string;
 	readonly description: string;
 	readonly tags: readonly string[];
+	readonly examples?: readonly string[]; // Example usage of the skill
 	readonly inputSchema: AgentSkillInputSchema;
 	readonly outputSchema: AgentSkillInputSchema;
 	readonly pricing?: readonly SkillPricing[];
@@ -33,8 +34,14 @@ export type AgentSkill = {
 
 export type AgentInterface = {
 	readonly url: string;
-	readonly protocolBinding: "JSONRPC" | "HTTP+JSON" | "GRPC";
-	readonly protocolVersion: string;
+	readonly transport: "JSONRPC" | "HTTP+JSON" | "GRPC";
+};
+
+export type AgentExtension = {
+	readonly uri: string;
+	readonly description?: string;
+	readonly required?: boolean;
+	readonly params?: Record<string, unknown>;
 };
 
 export type AgentCard = {
@@ -42,21 +49,19 @@ export type AgentCard = {
 	readonly description: string;
 	readonly url: string;
 	readonly version: string;
-	readonly protocolVersion: "1.0.0";
+	readonly protocolVersion: string;
 	readonly capabilities: {
-		readonly a2a: true; // Keep for backward compat/internal flag
-		readonly paymentProtocols: readonly PaymentProtocol[];
+		readonly extensions?: readonly AgentExtension[];
 		readonly pushNotifications?: boolean;
 		readonly streaming?: boolean;
 		readonly stateTransitionHistory?: boolean;
-		readonly extendedAgentCard?: boolean;
 	};
 	readonly defaultInputModes: readonly string[];
 	readonly defaultOutputModes: readonly string[];
 	readonly skills: readonly AgentSkill[];
 	readonly provider?: {
-		readonly name: string;
+		readonly organization: string;
 		readonly url: string;
 	};
-	readonly supportedInterfaces?: readonly AgentInterface[];
+	readonly additionalInterfaces?: readonly AgentInterface[];
 };

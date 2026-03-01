@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SellerConfig } from "../../types";
+import { X402_EXTENSION_URI } from "../../types";
 import { buildAgentCard } from "../agent-card.js";
 
 function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
@@ -19,8 +20,11 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 				resourceType: "photo",
 			},
 		],
-		accessTokenSecret: "a-very-long-secret-that-is-at-least-32-characters!",
 		onVerifyResource: async () => true,
+		onIssueToken: async () => ({
+			token: "test-token",
+			expiresAt: new Date(),
+		}),
 		...overrides,
 	};
 }
@@ -29,7 +33,14 @@ describe("buildAgentCard", () => {
 	test("returns card with correct name and description", () => {
 		const card = buildAgentCard(makeConfig());
 		expect(card.name).toBe("Test Agent");
-		expect(card.description).toBe("A test agent");
+		expect(card.description).toContain("A test agent");
+	});
+
+	test("description includes workflow explanation", () => {
+		const card = buildAgentCard(makeConfig());
+		expect(card.description).toContain("WORKFLOW");
+		expect(card.description).toContain("2-step");
+		expect(card.description).toContain("x402");
 	});
 
 	test("returns card with correct url and version", () => {
@@ -43,10 +54,22 @@ describe("buildAgentCard", () => {
 		expect(card.version).toBe("1.0.0");
 	});
 
-	test("includes a2a capability and x402 protocol", () => {
+	test("includes standard A2A capabilities", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.capabilities.a2a).toBe(true);
-		expect(card.capabilities.paymentProtocols).toContain("x402");
+		expect(card.capabilities.pushNotifications).toBe(false);
+		expect(card.capabilities.streaming).toBe(false);
+		expect(card.capabilities.stateTransitionHistory).toBe(false);
+	});
+
+	test("declares x402 extension in capabilities", () => {
+		const card = buildAgentCard(makeConfig());
+		expect(card.capabilities.extensions).toBeDefined();
+		expect(card.capabilities.extensions!.length).toBe(1);
+
+		const ext = card.capabilities.extensions![0]!;
+		expect(ext.uri).toBe(X402_EXTENSION_URI);
+		expect(ext.required).toBe(true);
+		expect(ext.description).toContain("x402");
 	});
 
 	test("has two skills: request-access and submit-proof", () => {
@@ -54,6 +77,18 @@ describe("buildAgentCard", () => {
 		expect(card.skills).toHaveLength(2);
 		expect(card.skills[0]!.id).toBe("request-access");
 		expect(card.skills[1]!.id).toBe("submit-proof");
+	});
+
+	test("request-access skill mentions 'Step 1' and 'input-required'", () => {
+		const card = buildAgentCard(makeConfig());
+		expect(card.skills[0]!.description).toContain("Step 1");
+		expect(card.skills[0]!.description).toContain("input-required");
+	});
+
+	test("submit-proof skill mentions 'Step 2' and metadata option", () => {
+		const card = buildAgentCard(makeConfig());
+		expect(card.skills[1]!.description).toContain("Step 2");
+		expect(card.skills[1]!.description).toContain("metadata");
 	});
 
 	test("request-access skill has pricing from product tiers", () => {
@@ -91,13 +126,18 @@ describe("buildAgentCard", () => {
 
 	test("provider info is correct", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.provider!.name).toBe("Test Provider");
+		expect(card.provider!.organization).toBe("Test Provider");
 		expect(card.provider!.url).toBe("https://provider.example.com");
 	});
 
-	test("default modes are application/json", () => {
+	test("protocol version matches A2A v0.3.0 spec", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.defaultInputModes).toContain("application/json");
-		expect(card.defaultOutputModes).toContain("application/json");
+		expect(card.protocolVersion).toBe("0.3.0");
+	});
+
+	test("default modes are text (A2A standard)", () => {
+		const card = buildAgentCard(makeConfig());
+		expect(card.defaultInputModes).toContain("text");
+		expect(card.defaultOutputModes).toContain("text");
 	});
 });

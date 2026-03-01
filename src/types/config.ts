@@ -23,6 +23,11 @@ export type NetworkConfig = {
 	readonly usdcAddress: `0x${string}`;
 	readonly facilitatorUrl: string;
 	readonly explorerBaseUrl: string;
+	/** EIP-712 domain parameters for USDC contract */
+	readonly usdcDomain: {
+		readonly name: string;
+		readonly version: string;
+	};
 };
 
 export type ProductTier = {
