@@ -72,6 +72,131 @@ Authorization: Bearer eyJhbG…
   },
 ];
 
+function DiscoveryAnimation() {
+  return (
+    <svg
+      viewBox="0 0 800 500"
+      className="w-full h-full object-contain"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <path id="discovery-arc-path" d="M 200 300 Q 400 150 600 300" />
+      </defs>
+      <ellipse cx="200" cy="355" rx="40" ry="15" fill="rgba(0,0,0,0.06)" />
+      <ellipse cx="600" cy="355" rx="50" ry="15" fill="rgba(0,0,0,0.06)" />
+      <use
+        href="#discovery-arc-path"
+        fill="none"
+        stroke="#1a1a1a"
+        strokeWidth="2"
+        strokeDasharray="6 6"
+        opacity="0.5"
+      />
+      <text
+        x="400"
+        y="140"
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontSize="18"
+        fontWeight="bold"
+        fill="#1a1a1a"
+        opacity="0"
+      >
+        /.well-known/agent.json
+        <animate
+          attributeName="opacity"
+          dur="3.7s"
+          repeatCount="indefinite"
+          keyTimes="0; 0.3243; 0.3783; 0.95; 1"
+          values="0; 0; 1; 1; 0"
+        />
+      </text>
+      <text
+        x="200"
+        y="410"
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontSize="14"
+        fontWeight="bold"
+        fill="#4a4a4a"
+        letterSpacing="2"
+      >
+        AGENT
+      </text>
+      <text
+        x="600"
+        y="410"
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontSize="14"
+        fontWeight="bold"
+        fill="#4a4a4a"
+        letterSpacing="2"
+      >
+        SERVER
+      </text>
+      <g transform="translate(160, 290)">
+        <path d="M 40 0 L 80 20 L 40 40 L 0 20 Z" fill="#e8e8e8" />
+        <path d="M 0 20 L 40 40 L 40 70 L 0 50 Z" fill="#a0a0a0" />
+        <path d="M 40 40 L 80 20 L 80 50 L 40 70 Z" fill="#808080" />
+      </g>
+      <g transform="translate(555, 240)">
+        <path d="M 45 0 L 90 25 L 45 50 L 0 25 Z" fill="#e8e8e8" />
+        <path d="M 0 25 L 45 50 L 45 110 L 0 85 Z" fill="#a0a0a0" />
+        <path d="M 45 50 L 90 25 L 90 85 L 45 110 Z" fill="#808080" />
+      </g>
+      <g opacity="1">
+        <rect x="-12" y="-12" width="24" height="24" rx="3" fill="#1a1a1a" />
+        <line x1="-6" y1="-4" x2="6" y2="-4" stroke="#f0f0f0" strokeWidth="2" />
+        <line x1="-6" y1="1" x2="6" y2="1" stroke="#f0f0f0" strokeWidth="2" />
+        <line x1="-6" y1="6" x2="2" y2="6" stroke="#f0f0f0" strokeWidth="2" />
+        <animateMotion
+          dur="3.7s"
+          repeatCount="indefinite"
+          calcMode="spline"
+          keyTimes="0; 0.3243; 1"
+          keyPoints="0; 1; 1"
+          keySplines="0.45 0 0.55 1; 0 0 1 1"
+        >
+          <mpath href="#discovery-arc-path" />
+        </animateMotion>
+        <animate
+          attributeName="opacity"
+          dur="3.7s"
+          repeatCount="indefinite"
+          calcMode="discrete"
+          keyTimes="0; 0.3242; 0.3243; 1"
+          values="1; 1; 0; 0"
+        />
+      </g>
+      <g opacity="0">
+        <rect x="-14" y="-18" width="28" height="36" rx="4" fill="#1a1a1a" />
+        <circle cx="0" cy="-6" r="4" fill="#f0f0f0" />
+        <line x1="-7" y1="4" x2="7" y2="4" stroke="#f0f0f0" strokeWidth="2" />
+        <line x1="-7" y1="9" x2="3" y2="9" stroke="#f0f0f0" strokeWidth="2" />
+        <animateMotion
+          dur="3.7s"
+          repeatCount="indefinite"
+          calcMode="spline"
+          keyTimes="0; 0.4054; 0.7297; 1"
+          keyPoints="1; 1; 0; 0"
+          keySplines="0 0 1 1; 0.45 0 0.55 1; 0 0 1 1"
+        >
+          <mpath href="#discovery-arc-path" />
+        </animateMotion>
+        <animate
+          attributeName="opacity"
+          dur="3.7s"
+          repeatCount="indefinite"
+          calcMode="discrete"
+          keyTimes="0; 0.4053; 0.4054; 0.999; 1"
+          values="0; 0; 1; 1; 0"
+        />
+      </g>
+    </svg>
+  );
+}
+
 export default function HowItWorks() {
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -114,10 +239,11 @@ export default function HowItWorks() {
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
         >
-          {/* Animation area */}
-          <div className="rounded-card bg-surface shadow-neu-inset-deep p-6 md:p-8 h-[320px] md:h-[380px] flex flex-col">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-inner bg-surface shadow-neu-sm flex items-center justify-center">
+          {/* Single section: header full width, then two columns (code | animation) */}
+          <div className="rounded-card bg-surface shadow-neu-inset-deep p-6 md:p-8 flex flex-col min-h-0 h-[424px] md:h-[484px]">
+            {/* Step header — full width above columns */}
+            <div className="flex items-center gap-3 mb-4 shrink-0">
+              <div className="w-10 h-10 rounded-inner bg-surface shadow-neu-sm flex items-center justify-center shrink-0">
                 <Icon size={18} className="text-foreground" strokeWidth={2} />
               </div>
               <div>
@@ -129,9 +255,22 @@ export default function HowItWorks() {
                 </h3>
               </div>
             </div>
-            <pre className="flex-1 overflow-auto rounded-inner bg-surface shadow-neu-inset p-4 md:p-5 font-mono text-xs md:text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-              {tabs[active].code}
-            </pre>
+
+            {/* Two columns: code left, animation right — one block, gutter between */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 flex-1 min-h-0">
+              <pre className="overflow-auto rounded-inner bg-surface shadow-neu-inset p-4 md:p-5 font-mono text-xs md:text-sm leading-relaxed text-foreground whitespace-pre-wrap min-h-0">
+                {tabs[active].code}
+              </pre>
+              <div className="flex items-center justify-center min-h-[160px] lg:min-h-0 overflow-hidden">
+                {active === 0 ? (
+                  <DiscoveryAnimation />
+                ) : (
+                  <span className="font-body text-sm text-muted">
+                    Animation (step {active + 1})
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Tabs */}
