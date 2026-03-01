@@ -30,7 +30,7 @@ Please take a few minutes to read this guide before opening an issue or pull req
 If you have a question about how to use Key2A, join our community:
 
 - **Discord:** [Key2A Discord](https://discord.gg/placeholder) *(link coming soon)*
-- **GitHub Discussions:** [github.com/key2a/key2a/discussions](https://github.com/key2a/key2a/discussions)
+- **GitHub Discussions:** [github.com/key2a/key2a/discussions](https://github.com/Riklr/key2a/discussions)
 
 Reserve GitHub Issues for confirmed bugs and feature proposals only. This keeps the issue tracker actionable for maintainers.
 
@@ -249,7 +249,7 @@ Key2A handles payment flows, private key management patterns, EIP-3009 authoriza
 
 If you discover a security vulnerability, please report it privately:
 
-**Email:** `security@key2a.dev` *(placeholder — update before going public)*
+**Email:** `founders@riklr.com`
 
 Include in your report:
 - Description of the vulnerability and the potential impact
