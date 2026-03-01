@@ -28,3 +28,7 @@ export { validateSellerConfig } from "./config-validation.js";
 // Challenge Engine
 export { ChallengeEngine } from "./challenge-engine.js";
 export type { ChallengeEngineConfig } from "./challenge-engine.js";
+
+// Refund Utility
+export { processRefunds } from "./refund.js";
+export type { RefundConfig, RefundResult } from "./refund.js";

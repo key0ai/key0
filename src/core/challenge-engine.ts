@@ -122,7 +122,7 @@ export class ChallengeEngine {
 			if (existing.state === "PENDING" && existing.expiresAt > new Date(this.now())) {
 				return this.challengeToResponse(existing);
 			}
-			if (existing.state === "PAID" && existing.accessGrant) {
+			if (existing.state === "DELIVERED" && existing.accessGrant) {
 				throw new AgentGateError(
 					"PROOF_ALREADY_REDEEMED",
 					"This request has already been paid. Returning existing access grant.",
@@ -185,7 +185,7 @@ export class ChallengeEngine {
 		}
 
 		// 3. Check state
-		if (challenge.state === "PAID" && challenge.accessGrant) {
+		if (challenge.state === "DELIVERED" && challenge.accessGrant) {
 			throw new AgentGateError(
 				"PROOF_ALREADY_REDEEMED",
 				"This challenge has already been paid. Returning existing access grant.",
@@ -277,11 +277,12 @@ export class ChallengeEngine {
 		const transitioned = await this.store.transition(challenge.challengeId, "PENDING", "PAID", {
 			txHash: proof.txHash,
 			paidAt: new Date(this.now()),
+			...(result.fromAddress ? { fromAddress: result.fromAddress } : {}),
 		});
 		if (!transitioned) {
 			// Another concurrent request already transitioned — reload and return
 			const updated = await this.store.get(challenge.challengeId);
-			if (updated?.accessGrant) {
+			if (updated?.state === "DELIVERED" && updated?.accessGrant) {
 				throw new AgentGateError(
 					"PROOF_ALREADY_REDEEMED",
 					"This challenge has already been paid. Returning existing access grant.",
@@ -334,12 +335,13 @@ export class ChallengeEngine {
 			explorerUrl,
 		};
 
-		// 12. Store grant on challenge record
-		await this.store.transition(challenge.challengeId, "PAID", "PAID", {
+		// 14. Store grant and mark as delivered — SDK auto-transitions to DELIVERED
+		await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", {
 			accessGrant: grant,
+			deliveredAt: new Date(this.now()),
 		});
 
-		// 13. Fire hook
+		// 15. Fire hook
 		if (this.config.onPaymentReceived) {
 			this.config.onPaymentReceived(grant).catch((err: unknown) => {
 				console.error("[AgentGate] onPaymentReceived hook error:", err);

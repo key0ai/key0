@@ -1,4 +1,12 @@
-export type ChallengeState = "PENDING" | "PAID" | "EXPIRED" | "CANCELLED";
+export type ChallengeState =
+	| "PENDING"
+	| "PAID" // payment verified, access token issued, awaiting delivery confirmation
+	| "DELIVERED" // seller confirmed resource was served — final success state
+	| "REFUND_PENDING" // cron claimed this, refund tx being broadcast
+	| "REFUNDED" // refund sent on-chain — final state
+	| "REFUND_FAILED" // refund tx threw — needs operator attention
+	| "EXPIRED"
+	| "CANCELLED";
 
 export type AccessRequest = {
 	readonly requestId: string; // UUID, client-generated, idempotency key
@@ -65,4 +73,9 @@ export type ChallengeRecord = {
 	readonly paidAt?: Date;
 	readonly txHash?: `0x${string}`;
 	readonly accessGrant?: AccessGrant;
+	readonly fromAddress?: `0x${string}`; // payer's wallet — set on PENDING→PAID
+	readonly deliveredAt?: Date; // set on PAID→DELIVERED
+	readonly refundTxHash?: `0x${string}`; // set on REFUND_PENDING→REFUNDED
+	readonly refundedAt?: Date; // set on REFUND_PENDING→REFUNDED
+	readonly refundError?: string; // set on REFUND_PENDING→REFUND_FAILED
 };

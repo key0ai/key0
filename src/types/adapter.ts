@@ -34,6 +34,7 @@ export type VerifyProofParams = {
 export type VerificationResult = {
 	readonly verified: boolean;
 	readonly txHash?: `0x${string}`;
+	readonly fromAddress?: `0x${string}`; // payer's wallet, extracted from Transfer event
 	readonly confirmedAmount?: bigint;
 	readonly confirmedChainId?: number;
 	readonly confirmedAt?: Date;

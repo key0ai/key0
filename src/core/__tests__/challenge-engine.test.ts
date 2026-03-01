@@ -347,7 +347,7 @@ describe("ChallengeEngine.submitProof", () => {
 		}
 	});
 
-	test("PROOF_ALREADY_REDEEMED: submitProof on PAID challenge returns grant info", async () => {
+	test("PROOF_ALREADY_REDEEMED: submitProof on DELIVERED challenge returns grant info", async () => {
 		const { engine } = makeEngine();
 		const req = makeRequest();
 		const challenge = await engine.requestAccess(req);
@@ -609,9 +609,10 @@ describe("ChallengeEngine lifecycle", () => {
 		expect(grant.accessToken).toBe(`tok_${challenge.challengeId}`);
 		expect(grant.txHash).toBe(txHash);
 
-		// 4. Check challenge record is PAID
+		// 4. Check challenge record is DELIVERED with accessGrant stored
 		const record = await engine.getChallenge(challenge.challengeId);
-		expect(record!.state).toBe("PAID");
+		expect(record!.state).toBe("DELIVERED");
 		expect(record!.accessGrant).toBeDefined();
+		expect(record!.deliveredAt).toBeDefined();
 	});
 });

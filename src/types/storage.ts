@@ -1,5 +1,20 @@
 import type { ChallengeRecord, ChallengeState } from "./challenge.js";
 
+/** Fields that may be written alongside a state transition. */
+export type ChallengeTransitionUpdates = Partial<
+	Pick<
+		ChallengeRecord,
+		| "txHash"
+		| "paidAt"
+		| "accessGrant"
+		| "fromAddress"
+		| "deliveredAt"
+		| "refundTxHash"
+		| "refundedAt"
+		| "refundError"
+	>
+>;
+
 export interface IChallengeStore {
 	/**
 	 * Get a challenge by its challengeId.
@@ -29,8 +44,14 @@ export interface IChallengeStore {
 		challengeId: string,
 		fromState: ChallengeState,
 		toState: ChallengeState,
-		updates?: Partial<Pick<ChallengeRecord, "txHash" | "paidAt" | "accessGrant">>,
+		updates?: ChallengeTransitionUpdates,
 	): Promise<boolean>;
+
+	/**
+	 * Return PAID records where paidAt + minAgeMs <= now and fromAddress is set.
+	 * Used by the refund cron to find undelivered payments eligible for refund.
+	 */
+	findPendingForRefund(minAgeMs: number): Promise<ChallengeRecord[]>;
 }
 
 export interface ISeenTxStore {

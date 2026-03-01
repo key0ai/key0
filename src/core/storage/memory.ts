@@ -1,10 +1,17 @@
-import type { ChallengeRecord, ChallengeState, IChallengeStore, ISeenTxStore } from "../../types";
+import type {
+	ChallengeRecord,
+	ChallengeState,
+	ChallengeTransitionUpdates,
+	IChallengeStore,
+	ISeenTxStore,
+} from "../../types";
 
 export type InMemoryStoreConfig = {
 	readonly cleanupIntervalMs?: number | undefined; // default: 300_000 (5 min)
 	readonly maxEntries?: number | undefined; // default: 100_000
 	readonly expiredRetentionMs?: number | undefined; // default: 3_600_000 (1 hour)
-	readonly paidRetentionMs?: number | undefined; // default: 86_400_000 (24 hours)
+	readonly paidRetentionMs?: number | undefined; // default: 604_800_000 (7 days) — PAID/REFUNDED/REFUND_FAILED
+	readonly deliveredRetentionMs?: number | undefined; // default: 43_200_000 (12 hours) — measured from deliveredAt
 };
 
 export class InMemoryChallengeStore implements IChallengeStore {
@@ -13,12 +20,14 @@ export class InMemoryChallengeStore implements IChallengeStore {
 	private readonly maxEntries: number;
 	private readonly expiredRetentionMs: number;
 	private readonly paidRetentionMs: number;
+	private readonly deliveredRetentionMs: number;
 	private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
 	constructor(config?: InMemoryStoreConfig) {
 		this.maxEntries = config?.maxEntries ?? 100_000;
 		this.expiredRetentionMs = config?.expiredRetentionMs ?? 3_600_000;
-		this.paidRetentionMs = config?.paidRetentionMs ?? 86_400_000;
+		this.paidRetentionMs = config?.paidRetentionMs ?? 604_800_000; // 7 days
+		this.deliveredRetentionMs = config?.deliveredRetentionMs ?? 43_200_000; // 12 hours
 
 		const cleanupIntervalMs = config?.cleanupIntervalMs ?? 300_000;
 		if (cleanupIntervalMs > 0) {
@@ -69,7 +78,7 @@ export class InMemoryChallengeStore implements IChallengeStore {
 		challengeId: string,
 		fromState: ChallengeState,
 		toState: ChallengeState,
-		updates?: Partial<Pick<ChallengeRecord, "txHash" | "paidAt" | "accessGrant">>,
+		updates?: ChallengeTransitionUpdates,
 	): Promise<boolean> {
 		const record = this.challenges.get(challengeId);
 		if (!record || record.state !== fromState) return false;
@@ -81,6 +90,22 @@ export class InMemoryChallengeStore implements IChallengeStore {
 			...updates,
 		});
 		return true;
+	}
+
+	async findPendingForRefund(minAgeMs: number): Promise<ChallengeRecord[]> {
+		const cutoff = Date.now() - minAgeMs;
+		const results: ChallengeRecord[] = [];
+		for (const record of this.challenges.values()) {
+			if (
+				record.state === "PAID" &&
+				record.fromAddress &&
+				record.paidAt &&
+				record.paidAt.getTime() <= cutoff
+			) {
+				results.push(record);
+			}
+		}
+		return results;
 	}
 
 	/** Remove stale challenge records based on retention policy. */
@@ -98,7 +123,23 @@ export class InMemoryChallengeStore implements IChallengeStore {
 				this.challenges.delete(id);
 				this.requestIndex.delete(record.requestId);
 				removed++;
-			} else if (record.state === "PAID" && age > this.paidRetentionMs) {
+			} else if (record.state === "DELIVERED") {
+				// Measure from deliveredAt so the 12-hour window starts when delivery was confirmed
+				const deliveredAge = record.deliveredAt
+					? now - record.deliveredAt.getTime()
+					: age;
+				if (deliveredAge > this.deliveredRetentionMs) {
+					this.challenges.delete(id);
+					this.requestIndex.delete(record.requestId);
+					removed++;
+				}
+			} else if (
+				(record.state === "PAID" ||
+					record.state === "REFUND_PENDING" ||
+					record.state === "REFUNDED" ||
+					record.state === "REFUND_FAILED") &&
+				age > this.paidRetentionMs
+			) {
 				this.challenges.delete(id);
 				this.requestIndex.delete(record.requestId);
 				removed++;

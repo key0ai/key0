@@ -108,6 +108,82 @@ describe("InMemoryChallengeStore — cleanup", () => {
 		store.stopCleanup();
 	});
 
+	test("removes old REFUNDED records based on createdAt", async () => {
+		const store = new InMemoryChallengeStore({
+			cleanupIntervalMs: 0,
+			paidRetentionMs: 1000,
+		});
+
+		const record = makeChallengeRecord({
+			state: "REFUNDED",
+			createdAt: new Date(Date.now() - 2000),
+		});
+		await store.create(record);
+
+		const removed = store.cleanup();
+		expect(removed).toBe(1);
+
+		store.stopCleanup();
+	});
+
+	test("removes old REFUND_FAILED records based on createdAt", async () => {
+		const store = new InMemoryChallengeStore({
+			cleanupIntervalMs: 0,
+			paidRetentionMs: 1000,
+		});
+
+		const record = makeChallengeRecord({
+			state: "REFUND_FAILED",
+			createdAt: new Date(Date.now() - 2000),
+		});
+		await store.create(record);
+
+		const removed = store.cleanup();
+		expect(removed).toBe(1);
+
+		store.stopCleanup();
+	});
+
+	test("removes old DELIVERED records based on deliveredAt, not createdAt", async () => {
+		const store = new InMemoryChallengeStore({
+			cleanupIntervalMs: 0,
+			deliveredRetentionMs: 1000,
+		});
+
+		// createdAt is recent but deliveredAt is old enough to expire
+		const record = makeChallengeRecord({
+			state: "DELIVERED",
+			createdAt: new Date(), // just now — would NOT be removed by paidRetentionMs
+			deliveredAt: new Date(Date.now() - 2000),
+		});
+		await store.create(record);
+
+		const removed = store.cleanup();
+		expect(removed).toBe(1);
+
+		store.stopCleanup();
+	});
+
+	test("keeps recent DELIVERED records within deliveredRetentionMs", async () => {
+		const store = new InMemoryChallengeStore({
+			cleanupIntervalMs: 0,
+			deliveredRetentionMs: 60_000, // 1 minute
+		});
+
+		const record = makeChallengeRecord({
+			state: "DELIVERED",
+			createdAt: new Date(Date.now() - 999_999), // very old by createdAt
+			deliveredAt: new Date(), // just delivered — should be kept
+		});
+		await store.create(record);
+
+		const removed = store.cleanup();
+		expect(removed).toBe(0);
+		expect(store.size).toBe(1);
+
+		store.stopCleanup();
+	});
+
 	test("keeps recent EXPIRED records", async () => {
 		const store = new InMemoryChallengeStore({
 			cleanupIntervalMs: 0,
@@ -151,23 +227,36 @@ describe("InMemoryChallengeStore — cleanup", () => {
 			cleanupIntervalMs: 0,
 			expiredRetentionMs: 1000,
 			paidRetentionMs: 1000,
+			deliveredRetentionMs: 1000,
 		});
 
-		// Old expired — should be removed
+		// Old EXPIRED — should be removed
 		await store.create(
 			makeChallengeRecord({ state: "EXPIRED", createdAt: new Date(Date.now() - 5000) }),
 		);
-		// Recent pending — should be kept
+		// Recent PENDING — should be kept
 		await store.create(makeChallengeRecord({ state: "PENDING" }));
-		// Old paid — should be removed
+		// Old PAID — should be removed
 		await store.create(
 			makeChallengeRecord({ state: "PAID", createdAt: new Date(Date.now() - 5000) }),
 		);
+		// Old DELIVERED (deliveredAt old) — should be removed
+		await store.create(
+			makeChallengeRecord({
+				state: "DELIVERED",
+				createdAt: new Date(),
+				deliveredAt: new Date(Date.now() - 5000),
+			}),
+		);
+		// Recent DELIVERED (deliveredAt just now) — should be kept
+		await store.create(
+			makeChallengeRecord({ state: "DELIVERED", deliveredAt: new Date() }),
+		);
 
-		expect(store.size).toBe(3);
+		expect(store.size).toBe(5);
 		const removed = store.cleanup();
-		expect(removed).toBe(2);
-		expect(store.size).toBe(1);
+		expect(removed).toBe(3);
+		expect(store.size).toBe(2);
 
 		store.stopCleanup();
 	});

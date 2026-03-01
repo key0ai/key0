@@ -7,6 +7,8 @@ import { RedisChallengeStore, RedisSeenTxStore } from "../storage/redis.js";
 function createMockRedis() {
 	const store = new Map<string, string | Map<string, string>>();
 	const ttls = new Map<string, number>();
+	// Sorted sets: key → Map<member, score>
+	const sortedSets = new Map<string, Map<string, number>>();
 
 	type PipelineOp = () => void;
 
@@ -110,9 +112,39 @@ function createMockRedis() {
 			return pipe;
 		},
 
+		zadd(key: string, score: number, member: string): number {
+			let zset = sortedSets.get(key);
+			if (!zset) {
+				zset = new Map();
+				sortedSets.set(key, zset);
+			}
+			const isNew = !zset.has(member);
+			zset.set(member, score);
+			return isNew ? 1 : 0;
+		},
+
+		zrem(key: string, member: string): number {
+			const zset = sortedSets.get(key);
+			if (!zset) return 0;
+			return zset.delete(member) ? 1 : 0;
+		},
+
+		zrangebyscore(key: string, min: number, max: number): string[] {
+			const zset = sortedSets.get(key);
+			if (!zset) return [];
+			const results: string[] = [];
+			for (const [member, score] of zset) {
+				if (score >= min && score <= max) {
+					results.push(member);
+				}
+			}
+			return results;
+		},
+
 		// Expose internals for test assertions
 		_store: store,
 		_ttls: ttls,
+		_sortedSets: sortedSets,
 	};
 
 	return mock;
@@ -242,18 +274,19 @@ describe("RedisChallengeStore", () => {
 		const redis = createMockRedis();
 		const store = new RedisChallengeStore({
 			redis: redis as never,
-			challengeTTLSeconds: 900,
+			challengeTTLSeconds: 900, // request index key TTL
 		});
 
 		const record = makeChallengeRecord();
 		await store.create(record);
 
-		const expectedTTL = 900 + 3600;
 		const challengeKey = `agentgate:challenge:${record.challengeId}`;
 		const requestKey = `agentgate:request:${record.requestId}`;
 
-		expect(redis._ttls.get(challengeKey)).toBe(expectedTTL);
-		expect(redis._ttls.get(requestKey)).toBe(expectedTTL);
+		// Challenge hash key uses the full 7-day lifecycle TTL
+		expect(redis._ttls.get(challengeKey)).toBe(604_800);
+		// Request index key uses challengeTTLSeconds (idempotency window only)
+		expect(redis._ttls.get(requestKey)).toBe(900);
 	});
 
 	test("findActiveByRequestId returns record", async () => {
@@ -324,6 +357,66 @@ describe("RedisChallengeStore", () => {
 
 		const loaded = await store.get(record.challengeId);
 		expect(loaded!.accessGrant).toEqual(grant);
+	});
+
+	test("create uses 7-day recordTTL for the challenge hash key", async () => {
+		const redis = createMockRedis();
+		const store = new RedisChallengeStore({ redis: redis as never });
+
+		const record = makeChallengeRecord();
+		await store.create(record);
+
+		const key = `agentgate:challenge:${record.challengeId}`;
+		expect(redis._ttls.get(key)).toBe(604_800); // 7 days
+	});
+
+	test("create uses challengeTTLSeconds for the request index key", async () => {
+		const redis = createMockRedis();
+		const store = new RedisChallengeStore({
+			redis: redis as never,
+			challengeTTLSeconds: 1800,
+		});
+
+		const record = makeChallengeRecord();
+		await store.create(record);
+
+		const reqKey = `agentgate:request:${record.requestId}`;
+		expect(redis._ttls.get(reqKey)).toBe(1800);
+	});
+
+	test("transition to DELIVERED resets TTL to 12 hours", async () => {
+		const redis = createMockRedis();
+		const store = new RedisChallengeStore({ redis: redis as never });
+
+		const record = makeChallengeRecord({ state: "PAID" });
+		await store.create(record);
+
+		const key = `agentgate:challenge:${record.challengeId}`;
+		expect(redis._ttls.get(key)).toBe(604_800); // 7 days at creation
+
+		await store.transition(record.challengeId, "PAID", "DELIVERED", {
+			deliveredAt: new Date(),
+		});
+
+		expect(redis._ttls.get(key)).toBe(43_200); // reset to 12 hours
+	});
+
+	test("transition to REFUNDED does not change TTL", async () => {
+		const redis = createMockRedis();
+		const store = new RedisChallengeStore({ redis: redis as never });
+
+		const record = makeChallengeRecord({ state: "REFUND_PENDING" });
+		await store.create(record);
+
+		const key = `agentgate:challenge:${record.challengeId}`;
+		const ttlBefore = redis._ttls.get(key);
+
+		await store.transition(record.challengeId, "REFUND_PENDING", "REFUNDED", {
+			refundTxHash: `0x${"aa".repeat(32)}` as `0x${string}`,
+			refundedAt: new Date(),
+		});
+
+		expect(redis._ttls.get(key)).toBe(ttlBefore); // unchanged
 	});
 
 	test("uses custom keyPrefix", async () => {
