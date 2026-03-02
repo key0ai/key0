@@ -1,9 +1,7 @@
-import { CreditCard, Smartphone } from "lucide-react";
-
 const rails = [
-  { label: "Mastercard", icon: CreditCard },
-  { label: "Visa", icon: CreditCard },
-  { label: "UPI", icon: Smartphone },
+  { label: "Mastercard", src: "/MC.png" },
+  { label: "Visa", src: "/visa.png" },
+  { label: "UPI", src: "/upi.png" },
 ];
 
 export default function ComingSoon() {
@@ -22,22 +20,23 @@ export default function ComingSoon() {
         </p>
 
         <div className="mt-10 flex flex-wrap justify-center gap-4 md:gap-6">
-          {rails.map((rail) => {
-            const Icon = rail.icon;
-            return (
-              <div
-                key={rail.label}
-                className="flex items-center gap-3 rounded-button bg-surface shadow-neu px-5 py-3.5 transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-neu-hover"
-              >
-                <div className="w-9 h-9 rounded-inner bg-surface shadow-neu-inset flex items-center justify-center">
-                  <Icon size={16} className="text-muted" strokeWidth={2} />
-                </div>
-                <span className="font-body text-sm font-medium text-foreground">
-                  {rail.label}
-                </span>
+          {rails.map((rail) => (
+            <div
+              key={rail.label}
+              className="flex items-center gap-3 rounded-button bg-surface shadow-neu px-5 py-3.5 transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-neu-hover"
+            >
+              <div className="w-9 h-9 rounded-inner bg-surface shadow-neu-inset flex items-center justify-center overflow-hidden">
+                <img
+                  src={rail.src}
+                  alt={rail.label}
+                  className="h-5 w-auto object-contain"
+                />
               </div>
-            );
-          })}
+              <span className="font-body text-sm font-medium text-foreground">
+                {rail.label}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </section>

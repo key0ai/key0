@@ -17,8 +17,8 @@ export default function Hero() {
           {/* Copy */}
           <div className="max-w-xl">
             <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-foreground leading-[1.08]">
-              Let AI agents pay for your API and get to work
-              <span className="text-muted"> — instantly</span>
+              Let AI agents automatically pay and access your APIs
+              <span className="text-muted"> - instantly</span>
             </h1>
 
             <p className="mt-6 font-body text-lg md:text-xl text-muted leading-relaxed">

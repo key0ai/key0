@@ -27,7 +27,7 @@ export default function ValueProps() {
   return (
     <section className="py-20 md:py-32">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {cards.map((card) => {
             const Icon = card.icon;
             return (

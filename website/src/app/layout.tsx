@@ -19,7 +19,10 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "Key2A — Payment-Gated APIs for AI Agents",
   description:
-    "Let AI agents pay for your API and get to work instantly. Add a USDC paywall to any API — no smart contracts needed.",
+    "Let AI agents automatically pay and access your APIs - instantly. Add a USDC paywall to any API — no smart contracts needed.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
