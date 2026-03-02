@@ -724,25 +724,7 @@ function PayAnimation() {
             keyTimes="0; 0.02; 0.36; 0.44; 1"
             values="0; 1; 1; 0; 0"
           />
-          {/* Coin edge (thickness) – visible when edge-on */}
-          <rect
-            x="-7.5"
-            y="-15"
-            width="15"
-            height="30"
-            rx="4"
-            fill="#888888"
-            opacity="0"
-          >
-            <animate
-              attributeName="opacity"
-              dur="1s"
-              repeatCount="indefinite"
-              keyTimes="0;0.35;0.5;0.65;1"
-              values="0;0;1;0;0"
-            />
-          </rect>
-          {/* Coin face – scales to suggest spin */}
+          {/* Coin stack facing viewer, spinning around Y axis via horizontal scale */}
           <g>
             <animateTransform
               attributeName="transform"
@@ -752,7 +734,19 @@ function PayAnimation() {
               dur="1s"
               repeatCount="indefinite"
             />
+            {/* Back to front stack of coins */}
+            <circle cx="4.5" cy="2.7" r="13" fill="#666666" opacity="0.65" />
+            <circle cx="4.0" cy="2.4" r="13.2" fill="#5f5f5f" opacity="0.68" />
+            <circle cx="3.5" cy="2.1" r="13.4" fill="#585858" opacity="0.72" />
+            <circle cx="3.0" cy="1.8" r="13.6" fill="#515151" opacity="0.75" />
+            <circle cx="2.5" cy="1.5" r="13.8" fill="#4a4a4a" opacity="0.78" />
+            <circle cx="2.0" cy="1.2" r="14.0" fill="#434343" opacity="0.82" />
+            <circle cx="1.5" cy="0.9" r="14.2" fill="#3c3c3c" opacity="0.86" />
+            <circle cx="1.0" cy="0.6" r="14.4" fill="#333333" opacity="0.9" />
+            <circle cx="0.5" cy="0.3" r="14.7" fill="#262626" opacity="0.95" />
+            {/* Front coin */}
             <circle cx="0" cy="0" r="15" fill="#1a1a1a" />
+            {/* Dollar symbol on front */}
             <text
               x="0"
               y="0"
@@ -1018,6 +1012,52 @@ function AccessAnimation() {
           filter="url(#step4-neu-card)"
         />
 
+        {/* Connection lines: above container, below cubes and logo */}
+        {/* Arc track: Agent → Server */}
+        <use
+          href="#step4-arc-out"
+          stroke="#CCCCCC"
+          strokeWidth="2"
+          strokeDasharray="6 6"
+          opacity="0.7"
+        />
+
+        {/* Dashed connector: Server → Key2A (phase 1) */}
+        <path
+          d="M 418 183 L 322 224"
+          stroke="#CCCCCC"
+          strokeWidth="2"
+          strokeDasharray="6 6"
+          fill="none"
+          opacity="0"
+        >
+          <animate
+            attributeName="opacity"
+            dur="5s"
+            repeatCount="indefinite"
+            keyTimes="0; 0.08; 0.12; 0.34; 0.38; 1"
+            values="0; 0; 0.9; 0.9; 0; 0"
+          />
+        </path>
+
+        {/* Dashed connector: Key2A → Agent (phase 2) */}
+        <path
+          d="M 262 228 L 148 228"
+          stroke="#CCCCCC"
+          strokeWidth="2"
+          strokeDasharray="6 6"
+          fill="none"
+          opacity="0"
+        >
+          <animate
+            attributeName="opacity"
+            dur="5s"
+            repeatCount="indefinite"
+            keyTimes="0; 0.36; 0.40; 0.60; 0.64; 1"
+            values="0; 0; 0.9; 0.9; 0; 0"
+          />
+        </path>
+
         {/* Key2A logo */}
         <g transform="translate(316, 278) scale(0.204) translate(-153, -316)">
           <path
@@ -1132,7 +1172,7 @@ function AccessAnimation() {
             attributeName="opacity"
             dur="5s"
             repeatCount="indefinite"
-            keyTimes="0; 0.66; 0.72; 0.86; 0.90; 1"
+            keyTimes="0; 0.66; 0.72; 0.90; 0.96; 1"
             values="0; 0; 1; 1; 0; 0"
           />
         </text>
@@ -1245,7 +1285,7 @@ function AccessAnimation() {
           <animateMotion
             dur="5s"
             repeatCount="indefinite"
-            keyTimes="0; 0.64; 0.88; 1"
+            keyTimes="0; 0.64; 0.92; 1"
             keyPoints="0; 0; 1; 1"
             calcMode="spline"
             keySplines="0 0 1 1; 0.45 0 0.55 1; 0 0 1 1"
@@ -1256,7 +1296,7 @@ function AccessAnimation() {
             attributeName="opacity"
             dur="5s"
             repeatCount="indefinite"
-            keyTimes="0; 0.64; 0.68; 0.84; 0.88; 1"
+            keyTimes="0; 0.64; 0.72; 0.92; 0.96; 1"
             values="0; 0; 1; 1; 0; 0"
           />
           <rect x="-9" y="-10" width="18" height="20" rx="2" fill="#1a1a1a" />
@@ -1280,52 +1320,6 @@ function AccessAnimation() {
           />
           <line x1="-5" y1="3" x2="2" y2="3" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" />
         </g>
-
-        {/* Connection lines drawn above all nodes */}
-        {/* Arc track: Agent → Server */}
-        <use
-          href="#step4-arc-out"
-          stroke="#CCCCCC"
-          strokeWidth="2"
-          strokeDasharray="6 6"
-          opacity="0.7"
-        />
-
-        {/* Dashed connector: Server → Key2A (phase 1) */}
-        <path
-          d="M 418 183 L 322 224"
-          stroke="#CCCCCC"
-          strokeWidth="2"
-          strokeDasharray="6 6"
-          fill="none"
-          opacity="0"
-        >
-          <animate
-            attributeName="opacity"
-            dur="5s"
-            repeatCount="indefinite"
-            keyTimes="0; 0.08; 0.12; 0.34; 0.38; 1"
-            values="0; 0; 0.9; 0.9; 0; 0"
-          />
-        </path>
-
-        {/* Dashed connector: Key2A → Agent (phase 2) */}
-        <path
-          d="M 262 228 L 148 228"
-          stroke="#CCCCCC"
-          strokeWidth="2"
-          strokeDasharray="6 6"
-          fill="none"
-          opacity="0"
-        >
-          <animate
-            attributeName="opacity"
-            dur="5s"
-            repeatCount="indefinite"
-            keyTimes="0; 0.36; 0.40; 0.60; 0.64; 1"
-            values="0; 0; 0.9; 0.9; 0; 0"
-          />
-        </path>
       </g>
     </svg>
   );
