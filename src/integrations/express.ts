@@ -12,17 +12,21 @@ import { validateToken } from "../middleware.js";
 import { AgentGateError } from "../types/index.js";
 
 /**
- * Create an Express router that serves the agent card and A2A endpoint.
+ * Create an Express router that serves the agent card, A2A endpoint,
+ * and optionally an MCP endpoint (when `mcp: true`).
  *
  * Usage:
- *   app.use(agentGateRouter({ config, adapter }));
+ *   app.use(agentGateRouter({ config, adapter, mcp: true }));
  *
  * This auto-serves:
  *   GET  /.well-known/agent.json
- *   POST {config.basePath} (A2A tasks/send)
+ *   POST {basePath}/jsonrpc   (A2A)
+ *   POST /mcp                 (MCP, when enabled)
+ *   GET  /mcp                 (MCP SSE, when enabled)
+ *   DELETE /mcp               (MCP session close, when enabled)
  */
 export function agentGateRouter(opts: AgentGateConfig): Router {
-	const { requestHandler } = createAgentGate(opts);
+	const { requestHandler, mcpServer } = createAgentGate(opts);
 	const router = Router();
 
 	// Agent Card
@@ -39,6 +43,22 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 		`${basePath}/rest`,
 		restHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }),
 	);
+
+	// MCP endpoint (Streamable HTTP transport on /mcp)
+	if (mcpServer) {
+		const { StreamableHTTPServerTransport } = require(
+			"@modelcontextprotocol/sdk/server/streamableHttp.js",
+		) as typeof import("@modelcontextprotocol/sdk/server/streamableHttp.js");
+
+		// Stateless mode — no session tracking needed
+		const transport = new StreamableHTTPServerTransport({} as Record<string, never>);
+		// biome-ignore lint/suspicious/noExplicitAny: MCP SDK's Transport type has exactOptionalPropertyTypes mismatch
+		mcpServer.connect(transport as any);
+
+		router.all("/mcp", (req: Request, res: Response) => {
+			transport.handleRequest(req, res, req.body);
+		});
+	}
 
 	return router;
 }
