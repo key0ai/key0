@@ -86,24 +86,24 @@ Build from source: `docker build -t riklr/agentgate .`
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `AGENTGATE_WALLET_ADDRESS` | ✅ | — | USDC-receiving wallet |
-| `ISSUE_TOKEN_API` | ✅ | — | URL to POST to after payment |
-| `AGENTGATE_NETWORK` | | `testnet` | `mainnet` or `testnet` |
-| `PORT` | | `3000` | HTTP listen port |
-| `AGENT_NAME` | | `AgentGate Server` | Display name in agent card |
-| `AGENT_DESCRIPTION` | | `Payment-gated A2A endpoint` | Agent card description |
-| `AGENT_URL` | | `http://localhost:PORT` | Public URL of this server |
-| `PROVIDER_NAME` | | `AgentGate` | Provider display name |
-| `PROVIDER_URL` | | `https://agentgate.dev` | Provider URL |
-| `PRODUCTS` | | `[{"tierId":"basic","label":"Basic","amount":"$0.10","resourceType":"api","accessDurationSeconds":3600}]` | JSON array of product tiers |
-| `CHALLENGE_TTL_SECONDS` | | `900` | Challenge expiry in seconds |
-| `BASE_PATH` | ✅ | — | A2A endpoint mount path (e.g. `/a2a`) |
-| `ISSUE_TOKEN_API_SECRET` | | — | Adds `Authorization: Bearer` to token API requests |
-| `REDIS_URL` | ✅ | — | Redis URL for persistent storage |
-| `GAS_WALLET_PRIVATE_KEY` | | — | Private key for self-contained settlement |
-| `AGENTGATE_WALLET_PRIVATE_KEY` | | — | Private key of `AGENTGATE_WALLET_ADDRESS` — enables automatic refunds |
-| `REFUND_INTERVAL_MS` | | `60000` | How often the refund cron scans for eligible records |
-| `REFUND_MIN_AGE_MS` | | `300000` | Grace period before a `PAID` record is eligible for refund |
+| `AGENTGATE_WALLET_ADDRESS` | ✅ | — | Your wallet address (`0x…`) that receives USDC payments from agents |
+| `ISSUE_TOKEN_API` | ✅ | — | Your endpoint that AgentGate POSTs to after payment is verified to issue access tokens |
+| `AGENTGATE_NETWORK` | | `testnet` | Blockchain network — `mainnet` for Base, `testnet` for Base Sepolia |
+| `PORT` | | `3000` | Port the HTTP server listens on |
+| `AGENT_NAME` | | `AgentGate Server` | Name of your agent as shown in `/.well-known/agent.json` |
+| `AGENT_DESCRIPTION` | | `Payment-gated A2A endpoint` | Short description of your agent shown in the agent card |
+| `AGENT_URL` | | `http://localhost:PORT` | Publicly reachable URL of this server — used in the agent card and resource endpoint URLs |
+| `PROVIDER_NAME` | | `AgentGate` | Your organization name shown in the agent card `provider` field |
+| `PROVIDER_URL` | | `https://agentgate.dev` | Your organization URL shown in the agent card `provider` field |
+| `PRODUCTS` | | `[{"tierId":"basic","label":"Basic","amount":"$0.10","resourceType":"api","accessDurationSeconds":3600}]` | JSON array of pricing tiers — each with `tierId`, `label`, `amount`, `resourceType`, and optional `accessDurationSeconds` |
+| `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
+| `BASE_PATH` | ✅ | — | URL path prefix for A2A endpoints (e.g. `/a2a` mounts `/a2a/access` and `/a2a/.well-known/agent.json`) |
+| `ISSUE_TOKEN_API_SECRET` | | — | If set, sent as `Authorization: Bearer <secret>` on every request to `ISSUE_TOKEN_API` |
+| `REDIS_URL` | ✅ | — | Redis connection URL — required for multi-replica deployments and the BullMQ refund cron |
+| `GAS_WALLET_PRIVATE_KEY` | | — | Private key of a wallet holding ETH on Base — enables self-contained settlement without a CDP facilitator |
+| `AGENTGATE_WALLET_PRIVATE_KEY` | | — | Private key of `AGENTGATE_WALLET_ADDRESS` — required for the refund cron to send USDC back to payers |
+| `REFUND_INTERVAL_MS` | | `60000` | How often the refund cron runs (ms) — only active when `AGENTGATE_WALLET_PRIVATE_KEY` is set |
+| `REFUND_MIN_AGE_MS` | | `300000` | Minimum age (ms) a stuck `PAID` record must reach before the refund cron picks it up |
 
 See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 
