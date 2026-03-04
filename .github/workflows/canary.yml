@@ -28,10 +28,10 @@ jobs:
         run: bun run build
 
       - name: Version canary
-        run: npx changeset version --snapshot canary
+        run: bunx @changesets/cli version --snapshot canary
 
       - name: Publish canary
-        run: npx changeset publish --tag canary --provenance
+        run: bunx @changesets/cli publish --tag canary --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
