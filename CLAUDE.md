@@ -91,3 +91,7 @@ Optional callbacks: `onPaymentReceived`, `onIssueToken` (override default JWT ge
 
 - `@security-reviewer` — Reviews payment-critical files (`challenge-engine.ts`, `verify-transfer.ts`, `storage/`, `access-token.ts`, middleware) against the repo's security invariants (state transition atomicity, double-spend prevention, on-chain verification completeness, JWT security).
 - `@test-writer` — Writes Bun tests matching project conventions (`bun:test`, `makeConfig()`/`makeEngine()` factory pattern, injectable clock, `InMemoryChallengeStore({ cleanupIntervalMs: 0 })`, concurrency assertions).
+
+## Agent Invocation Rules
+
+**Always invoke `@security-reviewer` after any edit to payment-critical files** (see agent definition for the full file list). Do not skip this even for small changes.
