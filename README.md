@@ -10,7 +10,7 @@ AgentGate lets you monetize any API: agents request access, pay via on-chain USD
 
 | | [Standalone (Docker)](#standalone-mode) | [Embedded (SDK)](#embedded-mode) |
 |---|---|---|
-| **Setup** | `docker run agentgate:latest` | `bun add @agentgate/sdk` |
+| **Setup** | `docker run riklr/agentgate:latest` | `bun add @agentgate/sdk` |
 | **Config** | Environment variables | TypeScript config |
 | **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `onIssueToken` callback |
 | **Best for** | Quick deploy, no code changes | Full control, existing app |
@@ -56,7 +56,7 @@ docker run \
   -e AGENTGATE_WALLET_ADDRESS=0xYourWallet \
   -e ISSUE_TOKEN_API=https://api.example.com/issue-token \
   -p 3000:3000 \
-  agentgate:latest
+  riklr/agentgate:latest
 ```
 
 ### With Docker Compose + Redis
@@ -69,7 +69,7 @@ docker compose -f docker/docker-compose.yml up
 
 ### Docker Image
 
-Published to Docker Hub on every release: [`agentgate`](https://hub.docker.com/r/agentgate)
+Published to Docker Hub on every release: [`riklr/agentgate`](https://hub.docker.com/r/riklr/agentgate)
 
 | Tag | When |
 |---|---|
@@ -77,7 +77,7 @@ Published to Docker Hub on every release: [`agentgate`](https://hub.docker.com/r
 | `1.2.3` / `1.2` / `1` | Specific version |
 | `canary` | Latest `main` branch build |
 
-Build from source: `docker build -t agentgate .`
+Build from source: `docker build -t riklr/agentgate .`
 
 ### Environment Variables
 
