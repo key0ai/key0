@@ -65,11 +65,15 @@ Fetches the full git history and all tags. `changeset publish` needs this to com
 **`bun run build`**
 Compiles TypeScript to `dist/` via `tsc`. The published package contains compiled JavaScript and `.d.ts` declaration files, not raw TypeScript source.
 
-**`npx changeset version --snapshot canary`**
+**`bunx @changesets/cli version --snapshot canary`**
 Bumps all package versions to a snapshot identifier (e.g. `0.1.0-canary-20240301120000`) without consuming the pending changesets. This gives every main-branch commit a unique, installable pre-release version.
 
-**`npx changeset publish --tag canary --provenance`**
+**`bunx @changesets/cli publish --tag canary --provenance`**
 Publishes to npm under the `canary` dist-tag. `--provenance` attaches a signed SLSA provenance attestation so consumers can verify the package was built from this exact commit in this repository.
+
+### Docker job (`docker`, needs: canary)
+
+Runs after the npm publish job succeeds. Builds and pushes a multi-arch Docker image (`linux/amd64`, `linux/arm64`) to DockerHub as `riklr/agentgate:canary`. Uses GitHub Actions cache (`type=gha`) for faster layer rebuilds.
 
 **`NODE_AUTH_TOKEN`**
 Set from the `NPM_TOKEN` repository secret. The `.npmrc` at the root of the repo wires this into the npm registry auth automatically.
@@ -103,6 +107,17 @@ Publishes all packages that have not yet been published at their current version
 
 **Permissions: `contents: write`, `id-token: write`**
 Same as canary — required for git tagging and OIDC provenance.
+
+### Docker job (`docker`, needs: publish)
+
+Runs after the npm publish job succeeds. Builds and pushes a multi-arch Docker image (`linux/amd64`, `linux/arm64`) to DockerHub as `riklr/agentgate` with the following tags derived from the git tag via `docker/metadata-action`:
+
+- `riklr/agentgate:<full semver>` (e.g. `1.2.3`)
+- `riklr/agentgate:<major>.<minor>` (e.g. `1.2`)
+- `riklr/agentgate:<major>` (e.g. `1`)
+- `riklr/agentgate:latest`
+
+Uses GitHub Actions cache (`type=gha`) for faster layer rebuilds.
 
 ---
 

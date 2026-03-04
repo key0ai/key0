@@ -81,11 +81,11 @@ If `onIssueToken` throws in either path, the record stays `PAID` and the refund 
 Scan for all `PAID` records older than `minAgeMs`, atomically claim each one, send USDC back to the buyer, and write the result. Designed to be called from a periodic job.
 
 ```typescript
-import { processRefunds } from 'agent-gate';
+import { processRefunds } from '@riklr/agentgate';
 
 const results = await processRefunds({
   store,
-  sellerPrivateKey: '0x...',
+  walletPrivateKey: '0x...',
   network: 'mainnet',       // 'mainnet' | 'testnet'
   minAgeMs: 5 * 60 * 1000, // 5-minute grace period (default)
 });
@@ -102,11 +102,12 @@ const results = await processRefunds({
 
 | Option             | Type                    | Default           | Description                                   |
 | ------------------ | ----------------------- | ----------------- | --------------------------------------------- |
-| `store`            | `IChallengeStore`       | required          | The same store passed to `createAgentGate`    |
-| `sellerPrivateKey` | `0x${string}`           | required          | Seller wallet used to send USDC back          |
-| `network`          | `'mainnet' | 'testnet'` | required          | Determines USDC contract and RPC endpoint     |
-| `minAgeMs`         | `number`                | `300_000` (5 min) | Grace period before a PAID record is eligible |
-| `sendUsdc`         | `function`              | on-chain sender   | Override for testing or custom routing        |
+| Option              | Type                    | Default           | Description                                   |
+| ------------------- | ----------------------- | ----------------- | --------------------------------------------- |
+| `store`             | `IChallengeStore`       | required          | The same store passed to `createAgentGate`    |
+| `walletPrivateKey`  | `0x${string}`           | required          | Seller wallet used to send USDC back          |
+| `network`           | `'mainnet' \| 'testnet'` | required         | Determines USDC contract and RPC endpoint     |
+| `minAgeMs`          | `number`                | `300_000` (5 min) | Grace period before a PAID record is eligible |
 
 
 ---
@@ -161,7 +162,7 @@ new RedisChallengeStore({
 No extra configuration needed. The store defaults to in-memory with 7-day retention.
 
 ```typescript
-import { createAgentGate, X402Adapter } from 'agent-gate';
+import { createAgentGate, X402Adapter } from '@riklr/agentgate';
 
 const { requestHandler } = createAgentGate({
   adapter: new X402Adapter({ network: 'testnet' }),
@@ -193,7 +194,7 @@ import {
   RedisChallengeStore,
   RedisSeenTxStore,
   processRefunds,
-} from 'agent-gate';
+} from '@riklr/agentgate';
 
 const redis = new Redis(process.env.REDIS_URL);
 
@@ -235,7 +236,7 @@ const refundQueue = new Queue('refunds', { connection: redis });
 new Worker('refunds', async () => {
   const results = await processRefunds({
     store,
-    sellerPrivateKey: process.env.SELLER_PRIVATE_KEY,
+    walletPrivateKey: process.env.SELLER_PRIVATE_KEY,
     network: 'mainnet',
     minAgeMs: 5 * 60 * 1000, // 5-minute grace period
   });

@@ -12,7 +12,10 @@ This document explains the Claude Code configuration applied to this repo: what 
 │   ├── security-reviewer.md    # preloads: payment-invariants
 │   └── test-writer.md          # preloads: payment-invariants, test-conventions
 ├── commands/
-│   └── check.md
+│   ├── check.md                # /check — typecheck + lint
+│   └── push.md                 # /push — review docs, update if needed, then push
+├── hooks/
+│   └── pre-push-readme.sh      # blocks push if src changed without README update
 └── skills/
     ├── payment-invariants/
     │   └── SKILL.md            # The 5 security invariants — shared knowledge
@@ -193,6 +196,22 @@ bun run typecheck && bun run lint
 **Config**: `allowed-tools: Bash` — this command only runs shell commands, nothing else.
 
 **Usage**: Just type `/check` in any Claude Code session.
+
+---
+
+### `/push`
+
+**What it does**: Reviews docs before pushing — the safe alternative to a bare `git push`.
+
+1. Diffs all pending commits against origin (code + stats).
+2. Reviews `README.md` — checks whether install commands, config options, architecture descriptions, or new endpoints need updating.
+3. Reviews `CLAUDE.md` — checks whether state machine descriptions, layer docs, config fields, entry points, or storage abstractions are still accurate.
+4. If anything changed: commits the updated docs, then pushes.
+5. If nothing needed updating: pushes directly.
+
+**Config**: `allowed-tools: Bash, Read, Edit` — needs read/write for docs and shell for git.
+
+**When to use**: Any time you'd run `git push` and want to be sure the docs stay in sync. The pre-push README hook will block you and tell you to run this if you forget.
 
 ---
 
