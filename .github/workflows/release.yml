@@ -54,7 +54,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: agentgate/sdk
+          images: agentgate
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
