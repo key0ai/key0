@@ -156,20 +156,20 @@ if (tokenMode === "remote") {
 	const localTokenIssuer = new AccessTokenIssuer(SECRET);
 	onIssueToken = async (params) => {
 
-		//TODO: Testing for refund cron
-		throw new Error("Not issuing tokens for refund cron");
+		//NOTE: Testing for refund cron
+		// throw new Error("Not issuing tokens for refund cron");
 
-		//TODO: Remove this after testing
-		// return localTokenIssuer.sign(
-		// 	{
-		// 		sub: params.requestId,
-		// 		jti: params.challengeId,
-		// 		resourceId: params.resourceId,
-		// 		tierId: params.tierId,
-		// 		txHash: params.txHash,
-		// 	},
-		// 	3600, // Default TTL, could be made configurable
-		// );
+		//NOTE: Remove this after testing refund cron
+		return localTokenIssuer.sign(
+			{
+				sub: params.requestId,
+				jti: params.challengeId,
+				resourceId: params.resourceId,
+				tierId: params.tierId,
+				txHash: params.txHash,
+			},
+			3600, // Default TTL, could be made configurable
+		);
 	};
 }
 

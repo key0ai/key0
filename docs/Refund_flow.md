@@ -6,7 +6,9 @@ This document covers the refund system built into the SDK — what it tracks, ho
 
 ## The Core Idea
 
-When a buyer pays for a resource, the SDK records the payment in a single `ChallengeRecord`. After on-chain verification succeeds, the SDK automatically issues the access token and transitions the record to `DELIVERED` in the same request
+When a buyer pays for a resource, the SDK records the payment in a single `ChallengeRecord`. Both payment paths — A2A (`requestAccess` / `submitProof`) and HTTP x402 (`requestHttpAccess` / `processHttpPayment`) — follow the same lifecycle: `PENDING → PAID → DELIVERED`.
+
+After payment is verified, the SDK automatically issues the access token and transitions the record to `DELIVERED` in the same request.
 
 If `onIssueToken` throws or the server crashes between payment verification and token issuance, the record stays `PAID`. The refund cron picks it up after a configurable grace period and sends the USDC back to the buyer's wallet.
 
@@ -42,7 +44,7 @@ Each record carries the full lifecycle. Fields are written exactly once — at t
 | `state`        | `ChallengeState` | every transition                                          |
 | `txHash`       | `0x${string}`    | `PENDING → PAID`                                          |
 | `paidAt`       | `Date`           | `PENDING → PAID`                                          |
-| `fromAddress`  | `0x${string}`    | `PENDING → PAID` (extracted from on-chain Transfer event) |
+| `fromAddress`  | `0x${string}`    | `PENDING → PAID` (A2A: from on-chain Transfer event; HTTP x402: from settlement payer) |
 | `accessGrant`  | `AccessGrant`    | `PAID → DELIVERED`                                        |
 | `deliveredAt`  | `Date`           | `PAID → DELIVERED`                                        |
 | `refundTxHash` | `0x${string}`    | `REFUND_PENDING → REFUNDED`                               |
@@ -50,7 +52,25 @@ Each record carries the full lifecycle. Fields are written exactly once — at t
 | `refundError`  | `string`         | `REFUND_PENDING → REFUND_FAILED`                          |
 
 
-`fromAddress` is the buyer's wallet address. The SDK extracts it from the `Transfer(from, to, value)` event log during on-chain verification — the seller never needs to pass it explicitly.
+`fromAddress` is the buyer's wallet address. In the A2A flow, the SDK extracts it from the `Transfer(from, to, value)` event log during on-chain verification. In the HTTP x402 flow, it comes from the `payer` field returned by the gas wallet or facilitator settlement response. In both cases, the seller never needs to pass it explicitly.
+
+---
+
+## Payment Paths
+
+Both payment paths share the same `ChallengeRecord` lifecycle. The refund cron does not distinguish between them — it queries for `PAID` records with a `fromAddress` and `amountRaw`, regardless of origin.
+
+### A2A Flow (Agent-to-Agent)
+
+1. `requestAccess()` — validates tier, verifies resource, calls `adapter.issueChallenge()`, creates `PENDING` record, returns `X402Challenge`
+2. `submitProof()` — looks up `PENDING` record, verifies on-chain via `adapter.verifyProof()`, transitions `PENDING → PAID` (with `txHash`, `paidAt`, `fromAddress` from Transfer event), calls `onIssueToken`, transitions `PAID → DELIVERED`
+
+### HTTP x402 Flow (Gas Wallet / Facilitator)
+
+1. `requestHttpAccess()` — validates tier, verifies resource, creates `PENDING` record (no adapter challenge needed — the 402 response carries x402 payment requirements instead), returns `challengeId`
+2. `processHttpPayment()` — looks up `PENDING` record (auto-creates one if step 1 was skipped), transitions `PENDING → PAID` (with `txHash`, `paidAt`, `fromAddress` from settlement payer), calls `onIssueToken`, transitions `PAID → DELIVERED`
+
+If `onIssueToken` throws in either path, the record stays `PAID` and the refund cron picks it up.
 
 ---
 
@@ -301,10 +321,16 @@ The `refundError` string is written to the record. The `RefundResult` returned b
 
 ---
 
-## Timing Diagram
+## Timing Diagrams
+
+### A2A Flow
 
 ```
-t=0:00   Buyer pays on-chain
+t=0:00   requestAccess() called
+         store: create PENDING record
+         X402Challenge returned to buyer agent
+
+t=?      Buyer pays on-chain, calls submitProof()
          SDK verifies Transfer event, extracts fromAddress
          store: PENDING → PAID  { txHash, paidAt, fromAddress }
          onIssueToken() → JWT issued
@@ -312,7 +338,31 @@ t=0:00   Buyer pays on-chain
          Redis TTL reset from 7 days → 12 hours
          AccessGrant returned to buyer
          Record deleted after 12 hours
+```
 
+### HTTP x402 Flow
+
+```
+t=0:00   Client sends AccessRequest without PAYMENT-SIGNATURE
+         requestHttpAccess() called
+         store: create PENDING record (clientAgentId = "x402-http")
+         HTTP 402 returned with payment requirements + challengeId
+
+t=?      Client sends AccessRequest with PAYMENT-SIGNATURE
+         Gas wallet / facilitator settles payment on-chain
+         processHttpPayment() called with requestId + payer
+         store: look up PENDING record via requestId
+         store: PENDING → PAID  { txHash, paidAt, fromAddress (= payer) }
+         onIssueToken() → JWT issued
+         store: PAID → DELIVERED  { accessGrant, deliveredAt }
+         Redis TTL reset from 7 days → 12 hours
+         AccessGrant returned to client
+         Record deleted after 12 hours
+```
+
+### Refund (both paths)
+
+```
          ── if onIssueToken throws or server crashes between PAID and DELIVERED ──
 
 t=5:00   Grace period expires (minAgeMs = 300_000)
