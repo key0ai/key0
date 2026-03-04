@@ -11,7 +11,6 @@ import {
 	type IChallengeStore,
 	InMemoryChallengeStore,
 	InMemorySeenTxStore,
-	type IssueTokenParams,
 	type NetworkName,
 	type ProductTier,
 	RedisChallengeStore,
@@ -21,6 +20,7 @@ import {
 } from "@agentgate/sdk";
 import { agentGateRouter } from "@agentgate/sdk/express";
 import express from "express";
+import { buildDockerTokenIssuer } from "../src/helpers/docker-token-issuer.js";
 
 // ─── Required env vars ─────────────────────────────────────────────────────
 
@@ -96,50 +96,10 @@ if (REDIS_URL) {
 
 // ─── Token issuance ────────────────────────────────────────────────────────
 
-async function onIssueToken(params: IssueTokenParams) {
-	const tier = products.find((p) => p.tierId === params.tierId);
-
-	// Merge IssueTokenParams with the matching product tier (includes custom fields)
-	const body = { ...params, ...(tier ?? {}) };
-
-	const headers: Record<string, string> = { "Content-Type": "application/json" };
-	if (ISSUE_TOKEN_API_SECRET) {
-		headers["Authorization"] = `Bearer ${ISSUE_TOKEN_API_SECRET}`;
-	}
-
-	const res = await fetch(ISSUE_TOKEN_API!, {
-		method: "POST",
-		headers,
-		body: JSON.stringify(body),
-	});
-
-	if (!res.ok) {
-		throw new Error(`ISSUE_TOKEN_API returned ${res.status}: ${await res.text()}`);
-	}
-
-	const data = (await res.json()) as Record<string, unknown>;
-
-	// Passthrough: if response has a `token` string field, use it directly
-	if (typeof data["token"] === "string") {
-		const expiresAt =
-			typeof data["expiresAt"] === "string"
-				? new Date(data["expiresAt"])
-				: new Date(Date.now() + (tier?.accessDurationSeconds ?? 3600) * 1000);
-		return {
-			token: data["token"],
-			expiresAt,
-			...(typeof data["tokenType"] === "string" ? { tokenType: data["tokenType"] } : {}),
-		};
-	}
-
-	// No `token` field (e.g. { apiKey, apiSecret }) — JSON-serialize the full response
-	const accessDurationSeconds = tier?.accessDurationSeconds ?? 3600;
-	return {
-		token: JSON.stringify(data),
-		expiresAt: new Date(Date.now() + accessDurationSeconds * 1000),
-		tokenType: "custom",
-	};
-}
+const onIssueToken = buildDockerTokenIssuer(ISSUE_TOKEN_API, {
+	apiSecret: ISSUE_TOKEN_API_SECRET,
+	products,
+});
 
 // ─── App ───────────────────────────────────────────────────────────────────
 
@@ -183,7 +143,9 @@ app.listen(PORT, () => {
 	console.log(`  Token API:  ${ISSUE_TOKEN_API}`);
 	console.log(`  Storage:    ${REDIS_URL ? "Redis" : "in-memory"}`);
 	console.log(`  Agent Card: ${AGENT_URL}/.well-known/agent.json`);
-	console.log(`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`);
+	console.log(
+		`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`,
+	);
 });
 
 // ─── Refund cron ───────────────────────────────────────────────────────────
