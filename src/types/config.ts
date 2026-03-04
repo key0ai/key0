@@ -23,6 +23,11 @@ export type NetworkConfig = {
 	readonly usdcAddress: `0x${string}`;
 	readonly facilitatorUrl: string;
 	readonly explorerBaseUrl: string;
+	/** EIP-712 domain parameters for USDC contract */
+	readonly usdcDomain: {
+		readonly name: string;
+		readonly version: string;
+	};
 };
 
 export type ProductTier = {
@@ -72,4 +77,8 @@ export type SellerConfig = {
 	// Customization
 	readonly basePath?: string; // defaults to "/a2a"
 	readonly resourceEndpointTemplate?: string; // e.g. "https://api.example.com/photos/{resourceId}"
+
+	// Settlement strategy (optional — defaults to facilitatorUrl mode)
+	readonly gasWalletPrivateKey?: `0x${string}`; // enables gas wallet mode (self-contained settlement)
+	readonly facilitatorUrl?: string; // override default facilitatorUrl from CHAIN_CONFIGS
 };

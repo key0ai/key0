@@ -1,4 +1,4 @@
-import { AccessTokenIssuer, X402Adapter } from "@agentgate/sdk";
+import { X402Adapter, AccessTokenIssuer, RedisSeenTxStore } from "@agentgate/sdk";
 import type { NetworkName } from "@agentgate/sdk";
 import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
 import express from "express";
@@ -52,7 +52,12 @@ app.use(
 				},
 			],
 			onVerifyResource: async (resourceId: string, _tierId: string) => {
-				// In a real app, check your database here
+				// Accept "default" for general API access (tier-scoped)
+				if (resourceId === "default") {
+					return true;
+				}
+
+				// In a real app, check your database for specific resources
 				const validResources = ["photo-1", "photo-2", "photo-3", "album-1"];
 				return validResources.includes(resourceId);
 			},
@@ -86,6 +91,8 @@ app.use("/api", validateAccessToken({ secret: SECRET }));
 // Sample protected endpoint
 app.get("/api/photos/:id", (req, res) => {
 	const photoId = req.params["id"];
+	// Token validation already happened via validateAccessToken middleware
+	// Token with resourceId="default" grants tier-based access to all photos
 	res.json({
 		id: photoId,
 		url: `https://cdn.example.com/photos/${photoId}.jpg`,

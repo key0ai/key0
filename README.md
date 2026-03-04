@@ -206,7 +206,13 @@ AGENTGATE_WALLET_ADDRESS=0xYourWalletAddress        # Receive-only wallet (no pr
 AGENTGATE_ACCESS_TOKEN_SECRET=your-secret-min-32ch  # JWT signing secret
 AGENTGATE_RPC_URL=https://sepolia.base.org          # Optional: custom RPC URL
 PORT=3000                                           # Server port
+
+# Required for x402 HTTP flow with CDP facilitator
+CDP_API_KEY_ID=your-cdp-api-key-id                  # Get from Coinbase Developer Platform
+CDP_API_KEY_SECRET=your-cdp-api-key-secret          # Get from Coinbase Developer Platform
 ```
+
+**Note:** The CDP API credentials are required when using the Coinbase CDP facilitator for x402 HTTP payments. You can obtain these from the [Coinbase Developer Platform](https://portal.cdp.coinbase.com/). The facilitator handles EIP-3009 payment settlements and supports both EOA and smart contract wallets (ERC-6492).
 
 ## How It Works
 

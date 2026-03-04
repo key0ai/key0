@@ -29,10 +29,12 @@ import {
 	createRemoteTokenIssuer,
 	sharedSecretAuth,
 	signedJwtAuth,
+	processRefunds
 } from "@agentgate/sdk";
 import { agentGateRouter } from "@agentgate/sdk/express";
 import express from "express";
 import Redis from "ioredis";
+import { Queue, Worker } from "bullmq";
 
 const PORT = Number(process.env.AGENTGATE_PORT ?? 3001);
 const NETWORK = (process.env.AGENTGATE_NETWORK ?? "testnet") as NetworkName;
@@ -40,6 +42,24 @@ const SECRET = process.env.AGENTGATE_ACCESS_TOKEN_SECRET!;
 const BACKEND_API_URL = process.env.BACKEND_API_URL!;
 const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 const AUTH_STRATEGY = process.env.AUTH_STRATEGY || "shared-secret"; // "shared-secret" | "jwt"
+
+// Gas wallet configuration for facilitation
+const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY || "0x2bdea68d1f3bd741841034eea1c46c5ef7937eedb0418056f7d2c57002656c15";
+const USE_GAS_WALLET = process.env.USE_GAS_WALLET === "true";
+
+const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
+
+// Refund cron configuration
+const REFUND_INTERVAL_MS = Number(process.env["REFUND_INTERVAL_MS"] ?? 15_000);
+const REFUND_MIN_AGE_MS = Number(process.env["REFUND_MIN_AGE_MS"] ?? 30_000);
+const SELLER_PRIVATE_KEY = process.env["AGENTGATE_SELLER_PRIVATE_KEY"] as
+	| `0x${string}`
+	| undefined;
+
+if (USE_GAS_WALLET) {
+	console.log("🔐 Gas Wallet Mode: ENABLED");
+	console.log(`   Gas wallet will handle payment settlement directly`);
+}
 
 // Validate required environment variables
 if (!SECRET || SECRET.length < 32) {
@@ -72,6 +92,16 @@ if (process.env.REDIS_URL) {
 } else {
 	console.log("Using in-memory storage (set REDIS_URL for production)");
 }
+
+// BullMQ bundles its own ioredis, so pass plain options to avoid type conflicts
+const makeBullConnection = () => {
+	const parsed = new URL(REDIS_URL);
+	return {
+		host: parsed.hostname,
+		port: Number(parsed.port) || 6379,
+		maxRetriesPerRequest: null,
+	};
+};
 
 // Create the x402 payment adapter
 const adapter = new X402Adapter({
@@ -125,16 +155,21 @@ if (tokenMode === "remote") {
 	console.log("Using Native token issuance mode (local JWT)");
 	const localTokenIssuer = new AccessTokenIssuer(SECRET);
 	onIssueToken = async (params) => {
-		return localTokenIssuer.sign(
-			{
-				sub: params.requestId,
-				jti: params.challengeId,
-				resourceId: params.resourceId,
-				tierId: params.tierId,
-				txHash: params.txHash,
-			},
-			3600, // Default TTL, could be made configurable
-		);
+
+		//TODO: Testing for refund cron
+		throw new Error("Not issuing tokens for refund cron");
+
+		//TODO: Remove this after testing
+		// return localTokenIssuer.sign(
+		// 	{
+		// 		sub: params.requestId,
+		// 		jti: params.challengeId,
+		// 		resourceId: params.resourceId,
+		// 		tierId: params.tierId,
+		// 		txHash: params.txHash,
+		// 	},
+		// 	3600, // Default TTL, could be made configurable
+		// );
 	};
 }
 
@@ -190,6 +225,8 @@ app.use(
 				}
 			},
 			resourceEndpointTemplate: `${BACKEND_API_URL}/api/{resourceId}`,
+			// Gas wallet mode: provide private key to enable self-contained settlement
+			...(USE_GAS_WALLET ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY as `0x${string}` } : {}),
 		},
 		adapter,
 		store,
@@ -222,6 +259,7 @@ app.listen(PORT, () => {
 	console.log(`   Port: ${PORT}`);
 	console.log(`   Network: ${NETWORK}`);
 	console.log(`   Token Mode: ${tokenMode}`);
+	console.log(`   Facilitation Mode: ${USE_GAS_WALLET ? "Gas Wallet" : "Standard"}`);
 	console.log(`   Backend URL: ${BACKEND_API_URL}`);
 	console.log(
 		`   Agent Card: ${process.env.AGENTGATE_PUBLIC_URL || `http://localhost:${PORT}`}/.well-known/agent.json`,
@@ -229,4 +267,81 @@ app.listen(PORT, () => {
 	console.log(
 		`   A2A Endpoint: ${process.env.AGENTGATE_PUBLIC_URL || `http://localhost:${PORT}`}/agent\n`,
 	);
+
+	console.log(`\nRefund Cron Demo — ${process.env.AGENTGATE_PUBLIC_URL}`);
+		console.log(`  Network : ${NETWORK}`);
+		console.log(`  Wallet  : ${process.env.AGENTGATE_WALLET_ADDRESS}`);
+		console.log(`  Redis   : ${REDIS_URL}`);
+		console.log(`\nRefund cron:`);
+		console.log(`  Interval     : ${REFUND_INTERVAL_MS / 1000}s`);
+		console.log(`  Grace period : ${REFUND_MIN_AGE_MS / 1000}s`);
+		console.log(`  Status       : ${SELLER_PRIVATE_KEY ? "ACTIVE" : "DISABLED (set AGENTGATE_SELLER_PRIVATE_KEY)"}\n`);
 });
+
+
+
+// ─── Refund cron ──────────────────────────────────────────────────────────────
+
+async function runRefundCron(): Promise<void> {
+	if (!SELLER_PRIVATE_KEY) {
+		console.log("[Cron] Skipped — AGENTGATE_SELLER_PRIVATE_KEY not set.");
+		return;
+	}
+
+	const results = await processRefunds({
+		store,
+		sellerPrivateKey: SELLER_PRIVATE_KEY,
+		network: NETWORK,
+		minAgeMs: REFUND_MIN_AGE_MS,
+	});
+
+	if (results.length === 0) {
+		console.log("[Cron] No eligible records.");
+		return;
+	}
+
+	for (const result of results) {
+		if (result.success) {
+			console.log(
+				`[Cron] ✓ REFUNDED  ${result.amount} → ${result.toAddress}  tx=${result.refundTxHash}`,
+			);
+		} else {
+			console.error(
+				`[Cron] ✗ REFUND_FAILED  challengeId=${result.challengeId}  error=${result.error}`,
+			);
+		}
+	}
+	console.log("--------------------------------");
+}
+
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+
+async function start() {
+	// Register repeatable job, then close the queue — the Worker drives scheduling from Redis
+	const refundQueue = new Queue("refund-cron", { connection: makeBullConnection() });
+	const repeatables = await refundQueue.getRepeatableJobs();
+	for (const job of repeatables) {
+		await refundQueue.removeRepeatableByKey(job.key);
+	}
+	await refundQueue.add("process-refunds", {}, { repeat: { every: REFUND_INTERVAL_MS } });
+	await refundQueue.close();
+
+	const cronWorker = new Worker("refund-cron", () => runRefundCron(), { connection: makeBullConnection() });
+	cronWorker.on("error", (err) => console.error("[Cron] Worker error:", err));
+
+	// Graceful shutdown
+	const shutdown = async () => {
+		await cronWorker.close();
+		process.exit(0);
+	};
+	process.on("SIGTERM", shutdown);
+	process.on("SIGINT", shutdown);
+
+}
+
+start().catch((err) => {
+	console.error("Failed to start:", err);
+	process.exit(1);
+});
+

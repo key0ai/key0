@@ -27,6 +27,8 @@ This example demonstrates how to deploy AgentGate as a **separate service** that
    - `AGENTGATE_WALLET_ADDRESS`: Your wallet to receive USDC payments
    - `BACKEND_API_URL`: URL of your backend service
    - `INTERNAL_AUTH_SECRET`: Shared secret for service-to-service auth
+   - `USE_GAS_WALLET`: Set to `true` to enable gas wallet facilitation mode
+   - `GAS_WALLET_PRIVATE_KEY`: Private key for gas wallet (required if USE_GAS_WALLET=true)
    - `PRODUCTS`: JSON array of product tiers
 
 3. **Install dependencies:**
@@ -38,6 +40,33 @@ This example demonstrates how to deploy AgentGate as a **separate service** that
    ```bash
    bun run start
    ```
+
+## Facilitation Modes
+
+### Standard Mode (Default)
+
+Uses the Coinbase CDP facilitator for payment settlement. The facilitator handles the on-chain transaction execution.
+
+**Configuration:**
+```bash
+USE_GAS_WALLET=false  # or omit this variable
+```
+
+### Gas Wallet Mode
+
+Uses your own gas wallet to handle payment settlement directly. This mode is self-contained and doesn't require an external facilitator.
+
+**Configuration:**
+```bash
+USE_GAS_WALLET=true
+GAS_WALLET_PRIVATE_KEY=0x2bdea68d1f3bd741841034eea1c46c5ef7937eedb0418056f7d2c57002656c15
+```
+
+**Important:**
+- The gas wallet must have sufficient ETH for gas fees on the target network
+- This mode uses `@x402/evm/exact/facilitator` with `ExactEvmScheme` for settlement
+- Supports ERC-6492 signatures for smart wallet deployment
+- Monitor your gas wallet balance regularly
 
 ## Token Modes
 

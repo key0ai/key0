@@ -9,7 +9,8 @@
 	"dependencies": {
 		"@agentgate/sdk": "file:../..",
 		"express": "^4.21.0",
-		"ioredis": "^5.0.0"
+		"ioredis": "^5.0.0",
+		"bullmq": "^5.0.0"
 	},
 	"devDependencies": {
 		"@types/express": "^5.0.0",

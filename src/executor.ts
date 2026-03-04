@@ -1,8 +1,9 @@
-import type { Message, Task } from "@a2a-js/sdk";
+import type { Message, Task, Artifact } from "@a2a-js/sdk";
 import type { AgentExecutor, ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
 import { v4 as uuidv4 } from "uuid";
 import type { ChallengeEngine } from "./core/index.js";
-import type { AccessRequest, PaymentProof } from "./types/index.js";
+import type { AccessRequest, PaymentProof, X402PaymentPayload } from "./types/index.js";
+import { AgentGateError, X402_METADATA_KEYS, NETWORK_TO_CHAIN_ID } from "./types/index.js";
 
 export class AgentGateExecutor implements AgentExecutor {
 	constructor(private engine: ChallengeEngine) {}
@@ -11,40 +12,64 @@ export class AgentGateExecutor implements AgentExecutor {
 		const { taskId, contextId, userMessage } = context;
 
 		try {
-			// Parse message payload
+			// ----- Check for x402 payment submission via metadata -----
+			const paymentPayload = this.extractX402PaymentPayload(userMessage);
+			if (paymentPayload) {
+				await this.handleX402PaymentSubmission(paymentPayload, taskId, contextId, eventBus);
+				return;
+			}
+
+			// ----- Parse message payload from parts (data or text) -----
 			const payload = this.parseMessage(userMessage);
 			if (!payload) {
-				const partsInfo =
-					userMessage.parts?.map((p: { kind?: string }) => p.kind).join(", ") || "none";
-				this.sendErrorResponse(eventBus, contextId, taskId, userMessage, {
-					error: "Invalid message format",
-					message: `No data part found in message. Available parts: [${partsInfo}]. Expected a part with kind="data" or a text part containing valid JSON.`,
-				});
+				const partsInfo = userMessage.parts?.map((p: any) => p.kind).join(", ") || "none";
+				this.sendErrorTask(
+					eventBus,
+					taskId,
+					contextId,
+					"failed",
+					"Invalid message format",
+					`No data part found in message. Available parts: [${partsInfo}]. Expected a part with kind="data" or a text part containing valid JSON, or x402 payment metadata.`,
+				);
 				return;
 			}
 
-			// Route by type or shape
-			let resultData: unknown;
+			// ----- Route by type or shape -----
 			if (payload["type"] === "AccessRequest" || this.isAccessRequest(payload)) {
-				resultData = await this.engine.requestAccess(payload as unknown as AccessRequest);
+				await this.handleAccessRequest(payload as unknown as AccessRequest, taskId, contextId, eventBus);
 			} else if (payload["type"] === "PaymentProof" || this.isPaymentProof(payload)) {
-				resultData = await this.engine.submitProof(payload as unknown as PaymentProof);
+				await this.handlePaymentProof(payload as unknown as PaymentProof, taskId, contextId, eventBus);
 			} else {
-				this.sendErrorResponse(eventBus, contextId, taskId, userMessage, {
-					error: "Unknown message type",
-					message: `Unsupported message type: ${payload["type"]}`,
-				});
-				return;
+				this.sendErrorTask(
+					eventBus,
+					taskId,
+					contextId,
+					"failed",
+					"Unknown message type",
+					`Unsupported message type: ${payload["type"]}`,
+				);
 			}
-
-			// Success - publish task completion and result message
-			this.publishTaskUpdate(eventBus, taskId, contextId, userMessage, "completed");
-			this.sendSuccessResponse(eventBus, contextId, resultData);
 		} catch (err: unknown) {
-			this.sendErrorResponse(eventBus, contextId, taskId, userMessage, {
-				error: "Execution error",
-				message: err instanceof Error ? err.message : String(err),
-			});
+			if (err instanceof AgentGateError) {
+				this.sendErrorTask(
+					eventBus,
+					taskId,
+					contextId,
+					"failed",
+					err.code,
+					err.message,
+					err.toJSON(),
+				);
+			} else {
+				this.sendErrorTask(
+					eventBus,
+					taskId,
+					contextId,
+					"failed",
+					"Execution error",
+					err instanceof Error ? err.message : String(err),
+				);
+			}
 		} finally {
 			eventBus.finished();
 		}
@@ -54,8 +79,197 @@ export class AgentGateExecutor implements AgentExecutor {
 		// No-op for now as tasks are synchronous
 	}
 
+	// ===================================================================
+	// Handler: AccessRequest → Task with input-required + x402 metadata
+	// ===================================================================
+
+	private async handleAccessRequest(
+		req: AccessRequest,
+		taskId: string,
+		contextId: string,
+		eventBus: ExecutionEventBus,
+	): Promise<void> {
+		const challenge = await this.engine.requestAccess(req);
+
+		// Get the full challenge record to build x402 metadata
+		const record = await this.engine.getChallengeRecord(challenge.challengeId);
+		if (!record) {
+			throw new AgentGateError("INTERNAL_ERROR", "Challenge record not found after creation", 500);
+		}
+
+		const x402PaymentRequired = this.engine.buildX402PaymentRequired(record);
+
+		// Build Task with input-required state and x402 metadata
+		const task: Task = {
+			kind: "task",
+			id: taskId,
+			contextId,
+			status: {
+				state: "input-required",
+				timestamp: new Date().toISOString(),
+				message: {
+					kind: "message",
+					messageId: uuidv4(),
+					role: "agent",
+					parts: [
+						{
+							kind: "text",
+							text: challenge.description,
+						},
+						{
+							kind: "data",
+							data: challenge as any,
+						},
+					],
+					metadata: {
+						[X402_METADATA_KEYS.STATUS]: "payment-required",
+						[X402_METADATA_KEYS.REQUIRED]: x402PaymentRequired,
+					},
+				},
+			},
+		};
+
+		eventBus.publish(task);
+	}
+
+	// ===================================================================
+	// Handler: PaymentProof (via data part) → Task with completed + receipt
+	// ===================================================================
+
+	private async handlePaymentProof(
+		proof: PaymentProof,
+		taskId: string,
+		contextId: string,
+		eventBus: ExecutionEventBus,
+	): Promise<void> {
+		const grant = await this.engine.submitProof(proof);
+
+		// Get the challenge record for the receipt
+		const record = await this.engine.getChallengeRecord(proof.challengeId);
+		const receipt = record
+			? this.engine.buildX402Receipt(record, grant)
+			: { success: true, transaction: grant.txHash, network: "unknown" };
+
+		const task: Task = {
+			kind: "task",
+			id: taskId,
+			contextId,
+			status: {
+				state: "completed",
+				timestamp: new Date().toISOString(),
+				message: {
+					kind: "message",
+					messageId: uuidv4(),
+					role: "agent",
+					parts: [
+						{
+							kind: "text",
+							text: "Payment successful. Access token issued.",
+						},
+						{
+							kind: "data",
+							data: grant as any,
+						},
+					],
+					metadata: {
+						[X402_METADATA_KEYS.STATUS]: "payment-completed",
+						[X402_METADATA_KEYS.RECEIPTS]: [receipt],
+					},
+				},
+			},
+			artifacts: [
+				{
+					artifactId: uuidv4(),
+					name: "access-grant",
+					parts: [{ kind: "data", data: grant as any }],
+				},
+			],
+		};
+
+		eventBus.publish(task);
+	}
+
+	// ===================================================================
+	// Handler: x402 Payment Payload (via message.metadata)
+	// ===================================================================
+
+	private async handleX402PaymentSubmission(
+		payload: X402PaymentPayload,
+		taskId: string,
+		contextId: string,
+		eventBus: ExecutionEventBus,
+	): Promise<void> {
+		// Convert x402 payload to internal PaymentProof format
+		const extra = this.findChallengeInfoFromPayload(payload);
+		if (!extra["challengeId"]) {
+			throw new AgentGateError(
+				"INVALID_REQUEST",
+				"x402 payment payload must include challengeId in the payment requirements extra data, or as a top-level field. Please resubmit with the challengeId from the payment-required response.",
+				400,
+			);
+		}
+
+		const chainId = NETWORK_TO_CHAIN_ID[payload.network] ?? extra["chainId"];
+		if (!chainId) {
+			throw new AgentGateError(
+				"INVALID_REQUEST",
+				`Unknown network "${payload.network}". Expected "base-sepolia" or "base".`,
+				400,
+			);
+		}
+
+		const proof: PaymentProof = {
+			type: "PaymentProof",
+			challengeId: extra["challengeId"] as string,
+			requestId: (extra["requestId"] as string) ?? "",
+			chainId: chainId as number,
+			txHash: payload.payload.txHash as `0x${string}`,
+			amount: (extra["amount"] as string) ?? "",
+			asset: ((payload.payload.asset ?? extra["asset"] ?? "USDC") as "USDC"),
+			fromAgentId: payload.payload.from ?? "anonymous",
+		};
+
+		await this.handlePaymentProof(proof, taskId, contextId, eventBus);
+	}
+
+	// ===================================================================
+	// Helpers
+	// ===================================================================
+
 	/**
-	 * Parse message payload from either data part or text part (JSON string)
+	 * Extract x402 payment payload from message metadata (Standalone Flow).
+	 */
+	private extractX402PaymentPayload(userMessage: Message): X402PaymentPayload | null {
+		const metadata = userMessage.metadata;
+		if (!metadata) return null;
+
+		const status = metadata[X402_METADATA_KEYS.STATUS];
+		if (status !== "payment-submitted") return null;
+
+		const payload = metadata[X402_METADATA_KEYS.PAYLOAD] as X402PaymentPayload | undefined;
+		if (!payload?.payload?.txHash) return null;
+
+		return payload;
+	}
+
+	/**
+	 * Extract challengeId and other info from the x402 payment payload.
+	 * The challengeId may be in payload.payload.challengeId or in the original
+	 * payment requirements extra data.
+	 */
+	private findChallengeInfoFromPayload(payload: X402PaymentPayload): Record<string, unknown> {
+		const inner = payload.payload as Record<string, unknown>;
+		return {
+			challengeId: inner["challengeId"] ?? inner["challenge_id"],
+			requestId: inner["requestId"] ?? inner["request_id"] ?? "",
+			amount: inner["amount"],
+			asset: inner["asset"],
+			chainId: inner["chainId"] ?? inner["chain_id"],
+		};
+	}
+
+	/**
+	 * Parse message payload from either data part or text part (JSON string).
 	 */
 	private parseMessage(userMessage: Message): Record<string, unknown> | null {
 		// biome-ignore lint/suspicious/noExplicitAny: library type issue
@@ -69,10 +283,8 @@ export class AgentGateExecutor implements AgentExecutor {
 				try {
 					// biome-ignore lint/suspicious/noExplicitAny: library type issue
 					const parsed = JSON.parse((textPart as any).text);
-					// Create a synthetic data part
 					dataPart = { kind: "data", data: parsed };
 				} catch {
-					// If parsing fails, return null
 					return null;
 				}
 			}
@@ -82,92 +294,63 @@ export class AgentGateExecutor implements AgentExecutor {
 			return null;
 		}
 
-		// The data field in A2A SDK is typed as unknown or similar, cast it
 		// biome-ignore lint/suspicious/noExplicitAny: library type issue
 		return (dataPart as any).data as Record<string, unknown>;
 	}
 
 	/**
-	 * Publish task status update
+	 * Send an error as a Task with a failed/rejected state.
 	 */
-	private publishTaskUpdate(
+	private sendErrorTask(
 		eventBus: ExecutionEventBus,
 		taskId: string,
 		contextId: string,
-		userMessage: Message,
-		state: "completed" | "failed",
+		state: "failed" | "rejected",
+		errorCode: string,
+		errorMessage: string,
+		errorData?: Record<string, unknown>,
 	): void {
-		const taskUpdate: Task = {
+		const isPaymentError = errorCode.startsWith("PAYMENT_") || errorCode === "TX_ALREADY_REDEEMED" || errorCode === "TX_UNCONFIRMED" || errorCode === "INVALID_PROOF";
+
+		const parts: Array<{ kind: "text"; text: string } | { kind: "data"; data: Record<string, unknown> }> = [
+			{ kind: "text", text: errorMessage },
+		];
+		if (errorData) {
+			parts.push({ kind: "data", data: errorData });
+		}
+
+		const statusMessage: Record<string, unknown> = {
+			kind: "message",
+			messageId: uuidv4(),
+			role: "agent",
+			parts,
+		};
+
+		if (isPaymentError) {
+			statusMessage["metadata"] = {
+				[X402_METADATA_KEYS.STATUS]: "payment-failed",
+				[X402_METADATA_KEYS.ERROR]: errorCode,
+			};
+		}
+
+		const task: Task = {
 			kind: "task",
 			id: taskId,
 			contextId,
 			status: {
 				state,
 				timestamp: new Date().toISOString(),
+				message: statusMessage as any,
 			},
-			history: [userMessage],
 		};
-		eventBus.publish(taskUpdate);
-	}
 
-	/**
-	 * Send success response with data part
-	 */
-	private sendSuccessResponse(
-		eventBus: ExecutionEventBus,
-		contextId: string,
-		resultData: unknown,
-	): void {
-		const responseMessage: Message = {
-			kind: "message",
-			messageId: uuidv4(),
-			role: "agent",
-			contextId,
-			parts: [
-				{
-					kind: "data",
-					data: resultData as Record<string, unknown>,
-				},
-			],
-		};
-		eventBus.publish(responseMessage);
-	}
-
-	/**
-	 * Send error response with structured error object (JSON string in text part)
-	 */
-	private sendErrorResponse(
-		eventBus: ExecutionEventBus,
-		contextId: string,
-		taskId: string,
-		userMessage: Message,
-		error: { error: string; message?: string },
-	): void {
-		// Publish failed task
-		this.publishTaskUpdate(eventBus, taskId, contextId, userMessage, "failed");
-
-		// Send structured error message as JSON string (matching reference pattern)
-		const errorMessage: Message = {
-			kind: "message",
-			messageId: uuidv4(),
-			role: "agent",
-			contextId,
-			parts: [
-				{
-					kind: "text",
-					text: JSON.stringify(error),
-				},
-			],
-		};
-		eventBus.publish(errorMessage);
+		eventBus.publish(task);
 	}
 
 	private isAccessRequest(data: Record<string, unknown>): boolean {
 		return (
 			typeof data["requestId"] === "string" &&
-			typeof data["resourceId"] === "string" &&
-			typeof data["tierId"] === "string" &&
-			typeof data["clientAgentId"] === "string"
+			typeof data["tierId"] === "string"
 		);
 	}
 
