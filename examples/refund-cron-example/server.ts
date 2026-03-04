@@ -75,16 +75,10 @@ app.use(
 				return ["item-1", "item-2", "item-3"].includes(resourceId);
 			},
 			onIssueToken: async (params) => {
-				return tokenIssuer.sign(
-					{
-						sub: params.requestId,
-						jti: params.challengeId,
-						resourceId: params.resourceId,
-						tierId: params.tierId,
-						txHash: params.txHash,
-					},
-					3600,
-				);
+				console.log("New token issued", params);
+				// Intentionally throw to simulate token issuance failure,
+				// so the refund cron has undelivered payments to process.
+				throw new Error("No Token Issued");
 			},
 			onPaymentReceived: async (grant) => {
 				console.log(`[Payment] Received payment for ${grant.resourceId}`);
