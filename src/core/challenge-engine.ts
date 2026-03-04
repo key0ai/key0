@@ -150,6 +150,7 @@ export class ChallengeEngine {
 		const clientAgentId = req.clientAgentId || "anonymous";
 
 		// 2. Validate tier
+		//TODO This should be validated by onVerifyResource hook no need here
 		const tier = this.findTier(req.tierId);
 		if (!tier) {
 			throw new AgentGateError(

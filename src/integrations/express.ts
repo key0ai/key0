@@ -13,13 +13,12 @@ import { AgentGateError, CHAIN_CONFIGS } from "../types/index.js";
 import type {
 	AccessRequest,
 	X402PaymentRequiredResponse,
-	X402SettleResponse,
 } from "../types/index.js";
 import {
 	buildHttpPaymentRequirements,
 	createX402HttpMiddleware,
-	settleViaFacilitator,
-	settleViaGasWallet,
+	decodePaymentSignature,
+	settlePayment,
 } from "./x402-http-middleware.js";
 
 /**
@@ -117,34 +116,14 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 					error: "PAYMENT-SIGNATURE header is required",
 				});
 			}
-			// ===== STEP 2: Has PAYMENT-SIGNATURE -> settle and return access grant =====
-			console.log("[x402-access] → STEP 2: Processing payment");
+		// ===== STEP 2: Has PAYMENT-SIGNATURE -> settle and return access grant =====
+		console.log("[x402-access] → STEP 2: Processing payment");
 
-			// Settle payment
-			let txHash: `0x${string}`;
-			let settleResponse: X402SettleResponse;
-			let payer: string | undefined;
+		// Decode header then settle via shared settlement layer
+		const paymentPayload = decodePaymentSignature(paymentSignature);
+		const { txHash, settleResponse, payer } = await settlePayment(paymentPayload, opts.config, networkConfig);
 
-			if (opts.config.gasWalletPrivateKey) {
-				console.log("[x402-access] Using gas wallet settlement");
-				const result = await settleViaGasWallet(
-					paymentSignature,
-					opts.config.gasWalletPrivateKey,
-					networkConfig,
-				);
-				txHash = result.txHash;
-				settleResponse = result.settleResponse;
-				payer = result.payer;
-			} else {
-				const facilitatorUrl = opts.config.facilitatorUrl ?? networkConfig.facilitatorUrl;
-				console.log(`[x402-access] Using facilitator: ${facilitatorUrl}`);
-				const result = await settleViaFacilitator(paymentSignature, facilitatorUrl);
-				txHash = result.txHash;
-				settleResponse = result.settleResponse;
-				payer = result.payer;
-			}
-
-			console.log(`[x402-access] ✓ Payment settled: ${txHash}`);
+		console.log(`[x402-access] ✓ Payment settled: ${txHash}`);
 
 			// Process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
 			const grant = await engine.processHttpPayment(

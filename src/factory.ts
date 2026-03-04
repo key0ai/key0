@@ -39,7 +39,7 @@ export function createAgentGate(opts: AgentGateConfig): AgentGateInstance {
 		adapter: opts.adapter,
 	});
 
-	const executor = new AgentGateExecutor(engine);
+	const executor = new AgentGateExecutor(engine, opts.config);
 	const agentCard = buildAgentCard(opts.config);
 
 	const requestHandler = new DefaultRequestHandler(

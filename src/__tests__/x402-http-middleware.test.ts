@@ -5,6 +5,7 @@ import { InMemoryChallengeStore, InMemorySeenTxStore } from "../core/index.js";
 import {
 	buildHttpPaymentRequirements,
 	createX402HttpMiddleware,
+	decodePaymentSignature,
 	settleViaFacilitator,
 } from "../integrations/x402-http-middleware.js";
 import { MockPaymentAdapter } from "../test-utils/index.js";
@@ -370,6 +371,8 @@ describe("x402-http-middleware", () => {
 	describe("settleViaFacilitator", () => {
 		const mockPaymentPayload = {
 			x402Version: 2,
+			network: "eip155:84532",
+			scheme: "exact",
 			resource: {
 				url: "https://agent.example.com/a2a/jsonrpc",
 				method: "POST",
@@ -403,9 +406,6 @@ describe("x402-http-middleware", () => {
 		};
 
 		test("should verify and settle payment successfully", async () => {
-			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString(
-				"base64url",
-			);
 			const mockTxHash = `0x${"ab".repeat(32)}` as `0x${string}`;
 
 			// Mock fetch for verify and settle
@@ -445,7 +445,7 @@ describe("x402-http-middleware", () => {
 
 			try {
 				const result = await settleViaFacilitator(
-					paymentSignature,
+					mockPaymentPayload,
 					"https://facilitator.example.com",
 				);
 
@@ -469,10 +469,6 @@ describe("x402-http-middleware", () => {
 		});
 
 		test("should throw error if verification fails", async () => {
-			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString(
-				"base64url",
-			);
-
 			const originalFetch = globalThis.fetch;
 			(globalThis as any).fetch = async (url: string | URL | Request) => {
 				const urlString =
@@ -494,7 +490,7 @@ describe("x402-http-middleware", () => {
 
 			try {
 				await expect(
-					settleViaFacilitator(paymentSignature, "https://facilitator.example.com"),
+					settleViaFacilitator(mockPaymentPayload, "https://facilitator.example.com"),
 				).rejects.toThrow("insufficient_funds");
 			} finally {
 				globalThis.fetch = originalFetch;
@@ -502,10 +498,6 @@ describe("x402-http-middleware", () => {
 		});
 
 		test("should throw error if verify endpoint returns non-2xx", async () => {
-			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString(
-				"base64url",
-			);
-
 			const originalFetch = globalThis.fetch;
 			(globalThis as any).fetch = async (url: string | URL | Request) => {
 				const urlString =
@@ -523,7 +515,7 @@ describe("x402-http-middleware", () => {
 
 			try {
 				await expect(
-					settleViaFacilitator(paymentSignature, "https://facilitator.example.com"),
+					settleViaFacilitator(mockPaymentPayload, "https://facilitator.example.com"),
 				).rejects.toThrow("Invalid request");
 			} finally {
 				globalThis.fetch = originalFetch;
@@ -531,10 +523,6 @@ describe("x402-http-middleware", () => {
 		});
 
 		test("should throw error if settle endpoint fails", async () => {
-			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString(
-				"base64url",
-			);
-
 			const originalFetch = globalThis.fetch;
 			(globalThis as any).fetch = async (url: string | URL | Request) => {
 				const urlString =
@@ -567,7 +555,7 @@ describe("x402-http-middleware", () => {
 
 			try {
 				await expect(
-					settleViaFacilitator(paymentSignature, "https://facilitator.example.com"),
+					settleViaFacilitator(mockPaymentPayload, "https://facilitator.example.com"),
 				).rejects.toThrow("transaction_failed");
 			} finally {
 				globalThis.fetch = originalFetch;
@@ -578,7 +566,7 @@ describe("x402-http-middleware", () => {
 			const invalidSignature = "not-valid-base64";
 
 			await expect(
-				settleViaFacilitator(invalidSignature, "https://facilitator.example.com"),
+				Promise.resolve().then(() => decodePaymentSignature(invalidSignature)),
 			).rejects.toThrow("Invalid PAYMENT-SIGNATURE header");
 		});
 	});
