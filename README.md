@@ -488,6 +488,29 @@ Client                                Seller Server
 
 If `onIssueToken` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
 
+## Clients
+
+Any agent that can hold a wallet and sign an on-chain USDC transfer can pay AgentGate-protected APIs autonomously — no human in the loop.
+
+### Coding Agents (e.g. Claude Code)
+
+Coding agents like [Claude Code](https://claude.ai/code) can discover an AgentGate endpoint, pay for access, and receive API keys or tokens entirely on their own using an MCP wallet tool. The [Coinbase payments MCP](https://github.com/coinbase/payments-mcp) gives Claude a client-side wallet it can use to sign and broadcast USDC transfers directly:
+
+```
+1. Agent reads /.well-known/agent.json → discovers pricing and wallet address
+2. Agent calls payments-mcp to send USDC to the seller wallet on Base
+3. Agent submits the txHash → receives token/API key in the AccessGrant
+4. Agent uses the token to call the protected resource
+```
+
+No configuration or human approval required — the agent handles the full payment flow end-to-end.
+
+### Autonomous Agents (e.g. OpenClaw)
+
+Headless autonomous agents can do the same. Any agent runtime that supports wallet signing (via an embedded wallet, a KMS-backed key, or an MCP-compatible tool) can interact with AgentGate without modification — the protocol is standard HTTP + on-chain USDC.
+
+The seller never needs to pre-register clients, issue API keys manually, or manage billing. Payment is the credential.
+
 ## Storage
 
 By default, AgentGate uses in-memory storage (suitable for development and single-process deployments). For production with multiple processes, use Redis:
