@@ -7,7 +7,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@agentgate/sdk": "file:../..",
+		"@riklr/agentgate": "file:../..",
 		"viem": "^2.21.0"
 	}
 }

@@ -10,7 +10,7 @@ AgentGate lets you monetize any API: agents request access, pay via on-chain USD
 
 | | [Standalone (Docker)](#standalone-mode) | [Embedded (SDK)](#embedded-mode) |
 |---|---|---|
-| **Setup** | `docker run riklr/agentgate:latest` | `bun add @agentgate/sdk` |
+| **Setup** | `docker run riklr/agentgate:latest` | `bun add @riklr/agentgate` |
 | **Config** | Environment variables | TypeScript config |
 | **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `onIssueToken` callback |
 | **Best for** | Quick deploy, no code changes | Full control, existing app |
@@ -205,7 +205,7 @@ Install the SDK and add AgentGate as middleware inside your existing application
 ### Install
 
 ```bash
-bun add @agentgate/sdk
+bun add @riklr/agentgate
 ```
 
 Optional peer dependencies:
@@ -217,8 +217,8 @@ bun add ioredis   # Redis-backed storage for multi-process deployments
 
 ```typescript
 import express from "express";
-import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
-import { X402Adapter, AccessTokenIssuer } from "@agentgate/sdk";
+import { agentGateRouter, validateAccessToken } from "@riklr/agentgate/express";
+import { X402Adapter, AccessTokenIssuer } from "@riklr/agentgate";
 
 const app = express();
 app.use(express.json());
@@ -270,8 +270,8 @@ app.listen(3000);
 
 ```typescript
 import { Hono } from "hono";
-import { agentGateApp, honoValidateAccessToken } from "@agentgate/sdk/hono";
-import { X402Adapter } from "@agentgate/sdk";
+import { agentGateApp, honoValidateAccessToken } from "@riklr/agentgate/hono";
+import { X402Adapter } from "@riklr/agentgate";
 
 const adapter = new X402Adapter({ network: "testnet" });
 const gate = agentGateApp({ config: { /* same config */ }, adapter });
@@ -291,8 +291,8 @@ export default { port: 3000, fetch: app.fetch };
 
 ```typescript
 import Fastify from "fastify";
-import { agentGatePlugin, fastifyValidateAccessToken } from "@agentgate/sdk/fastify";
-import { X402Adapter } from "@agentgate/sdk";
+import { agentGatePlugin, fastifyValidateAccessToken } from "@riklr/agentgate/fastify";
+import { X402Adapter } from "@riklr/agentgate";
 
 const fastify = Fastify();
 const adapter = new X402Adapter({ network: "testnet" });
@@ -374,7 +374,7 @@ When `onIssueToken` throws or the server crashes after payment but before delive
 
 ```typescript
 import { Queue, Worker } from "bullmq";
-import { processRefunds } from "@agentgate/sdk";
+import { processRefunds } from "@riklr/agentgate";
 
 // Uses the same `store` passed to agentGateRouter
 const worker = new Worker("refund-cron", async () => {
@@ -516,7 +516,7 @@ The seller never needs to pre-register clients, issue API keys manually, or mana
 By default, AgentGate uses in-memory storage (suitable for development and single-process deployments). For production with multiple processes, use Redis:
 
 ```typescript
-import { RedisChallengeStore, RedisSeenTxStore } from "@agentgate/sdk";
+import { RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
 import Redis from "ioredis";
 
 const redis = new Redis(process.env.REDIS_URL);
@@ -550,7 +550,7 @@ Redis storage provides:
 The `onIssueToken` callback gives you full control over what token is issued after a verified payment. Use the built-in `AccessTokenIssuer` for JWT issuance, or return any string (API key, opaque token, etc.):
 
 ```typescript
-import { AccessTokenIssuer } from "@agentgate/sdk";
+import { AccessTokenIssuer } from "@riklr/agentgate";
 
 const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
 

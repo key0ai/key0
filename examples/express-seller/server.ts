@@ -1,6 +1,6 @@
-import { AccessTokenIssuer, RedisSeenTxStore, X402Adapter } from "@agentgate/sdk";
-import type { NetworkName } from "@agentgate/sdk";
-import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
+import { AccessTokenIssuer, RedisSeenTxStore, X402Adapter } from "@riklr/agentgate";
+import type { NetworkName } from "@riklr/agentgate";
+import { agentGateRouter, validateAccessToken } from "@riklr/agentgate/express";
 import express from "express";
 
 const PORT = Number(process.env["PORT"] ?? 3000);

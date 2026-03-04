@@ -17,8 +17,8 @@ import {
 	RedisSeenTxStore,
 	X402Adapter,
 	processRefunds,
-} from "@agentgate/sdk";
-import { agentGateRouter } from "@agentgate/sdk/express";
+} from "@riklr/agentgate";
+import { agentGateRouter } from "@riklr/agentgate/express";
 import express from "express";
 import { buildDockerTokenIssuer } from "../src/helpers/docker-token-issuer.js";
 

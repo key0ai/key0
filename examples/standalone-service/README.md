@@ -81,7 +81,7 @@ TOKEN_MODE=native
 
 **Backend Integration:**
 ```typescript
-import { validateAgentGateToken } from "@agentgate/sdk";
+import { validateAgentGateToken } from "@riklr/agentgate";
 
 app.use("/api", async (req, res, next) => {
   try {

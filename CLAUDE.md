@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Payment-gated A2A (Agent-to-Agent) endpoints using the x402 protocol with USDC on Base. Lets sellers monetize any API: agents request access, pay via on-chain USDC, receive a signed JWT.
 
-Package name: `@agentgate/sdk` (single package, not a monorepo despite README references to packages).
+Package name: `@riklr/agentgate` (single package, not a monorepo despite README references to packages).
 
 ## Commands
 

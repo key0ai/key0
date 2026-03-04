@@ -10,8 +10,8 @@
  *   bun run start
  */
 
-import { validateAgentGateToken } from "@agentgate/sdk";
-import type { AccessTokenPayload } from "@agentgate/sdk";
+import { validateAgentGateToken } from "@riklr/agentgate";
+import type { AccessTokenPayload } from "@riklr/agentgate";
 import express from "express";
 
 const PORT = Number(process.env.PORT ?? 3000);

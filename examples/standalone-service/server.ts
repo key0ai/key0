@@ -32,8 +32,8 @@ import {
 	processRefunds,
 	sharedSecretAuth,
 	signedJwtAuth,
-} from "@agentgate/sdk";
-import { agentGateRouter } from "@agentgate/sdk/express";
+} from "@riklr/agentgate";
+import { agentGateRouter } from "@riklr/agentgate/express";
 import { Queue, Worker } from "bullmq";
 import express from "express";
 import Redis from "ioredis";

@@ -16,8 +16,8 @@
  *   WALLET_PRIVATE_KEY=0x... bun run examples/simple-x402-client.ts
  */
 
-import type { AccessGrant, AgentCard } from "@agentgate/sdk";
-import { CHAIN_CONFIGS, USDC_ABI, parseDollarToUsdcMicro } from "@agentgate/sdk";
+import type { AccessGrant, AgentCard } from "@riklr/agentgate";
+import { CHAIN_CONFIGS, USDC_ABI, parseDollarToUsdcMicro } from "@riklr/agentgate";
 import { http, createPublicClient, createWalletClient, formatUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";

@@ -1,6 +1,6 @@
-import { AccessTokenIssuer, X402Adapter } from "@agentgate/sdk";
-import type { NetworkName } from "@agentgate/sdk";
-import { agentGateApp, honoValidateAccessToken } from "@agentgate/sdk/hono";
+import { AccessTokenIssuer, X402Adapter } from "@riklr/agentgate";
+import type { NetworkName } from "@riklr/agentgate";
+import { agentGateApp, honoValidateAccessToken } from "@riklr/agentgate/hono";
 import { Hono } from "hono";
 
 const PORT = Number(process.env["PORT"] ?? 3001);

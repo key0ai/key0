@@ -3,9 +3,9 @@ import {
 	RedisChallengeStore,
 	X402Adapter,
 	processRefunds,
-} from "@agentgate/sdk";
-import type { NetworkName } from "@agentgate/sdk";
-import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
+} from "@riklr/agentgate";
+import type { NetworkName } from "@riklr/agentgate";
+import { agentGateRouter, validateAccessToken } from "@riklr/agentgate/express";
 import { Queue, Worker } from "bullmq";
 import express from "express";
 import { Redis } from "ioredis";

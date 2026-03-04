@@ -16,8 +16,8 @@
  *   bun run start
  */
 
-import type { AccessGrant, AgentCard, NetworkName, X402Challenge } from "@agentgate/sdk";
-import { CHAIN_CONFIGS, USDC_ABI, parseDollarToUsdcMicro } from "@agentgate/sdk";
+import type { AccessGrant, AgentCard, NetworkName, X402Challenge } from "@riklr/agentgate";
+import { CHAIN_CONFIGS, USDC_ABI, parseDollarToUsdcMicro } from "@riklr/agentgate";
 import { http, createPublicClient, createWalletClient, formatUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";

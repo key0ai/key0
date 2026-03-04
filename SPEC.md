@@ -404,11 +404,11 @@ AgentGate provides middleware for protecting seller API routes:
 
 ```typescript
 // Express
-import { validateAccessToken } from "@agentgate/sdk/express";
+import { validateAccessToken } from "@riklr/agentgate/express";
 app.use("/api/photos", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET }));
 
 // Standalone (no framework dependency)
-import { validateAgentGateToken } from "@agentgate/sdk";
+import { validateAgentGateToken } from "@riklr/agentgate";
 const payload = await validateAgentGateToken(authHeader, { secret });
 ```
 
@@ -515,7 +515,7 @@ Before issuing a challenge, `onVerifyResource` confirms the resource exists and 
 
 ```
 Step 1: Install SDK
-  bun add @agentgate/sdk
+  bun add @riklr/agentgate
 
 Step 2: Configure
   - Set walletAddress (public, goes in agent card)
@@ -573,7 +573,7 @@ AgentGate is a **self-hosted open-source SDK**. There is no central registry or 
 | Token standard | USDC ERC-20 | Stable, widely held |
 | Access tokens | `jose` (JWT, HS256/RS256) | Standards-compliant, supports both symmetric and asymmetric keys |
 | Challenge store | In-memory (default) or Redis via ioredis | Simple to start, swap for production |
-| Package | Single package `@agentgate/sdk` with framework subpath exports | Simple install, tree-shakeable |
+| Package | Single package `@riklr/agentgate` with framework subpath exports | Simple install, tree-shakeable |
 
 ---
 
