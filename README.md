@@ -411,7 +411,7 @@ CDP_API_KEY_ID=your-cdp-api-key-id
 CDP_API_KEY_SECRET=your-cdp-api-key-secret
 
 # Optional: self-contained settlement without a facilitator
-AGENTGATE_GAS_WALLET_KEY=0xYourPrivateKey
+GAS_WALLET_PRIVATE_KEY=0xYourPrivateKey
 ```
 
 ## How It Works
