@@ -419,10 +419,10 @@ Client Agent                          AgentGate
 
 ## Networks
 
-| Network | Chain | Chain ID | USDC Contract |
-|---|---|---|---|
-| `testnet` | Base Sepolia | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| `mainnet` | Base | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Network | Chain | Chain ID | USDC Contract | EIP-712 Domain Name |
+|---|---|---|---|---|
+| `testnet` | Base Sepolia | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `USD Coin` |
+| `mainnet` | Base | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | `USD Coin` |
 
 ---
 
