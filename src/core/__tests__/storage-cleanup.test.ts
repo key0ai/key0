@@ -249,9 +249,7 @@ describe("InMemoryChallengeStore — cleanup", () => {
 			}),
 		);
 		// Recent DELIVERED (deliveredAt just now) — should be kept
-		await store.create(
-			makeChallengeRecord({ state: "DELIVERED", deliveredAt: new Date() }),
-		);
+		await store.create(makeChallengeRecord({ state: "DELIVERED", deliveredAt: new Date() }));
 
 		expect(store.size).toBe(5);
 		const removed = store.cleanup();

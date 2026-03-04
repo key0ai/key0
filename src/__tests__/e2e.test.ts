@@ -119,7 +119,11 @@ function extractChallengeData(events: any[]): any {
 		// Fall back to text parts
 		const textPart = task.status?.message?.parts?.find((p: any) => p.kind === "text");
 		if (textPart) {
-			try { return JSON.parse(textPart.text); } catch { /* ignore */ }
+			try {
+				return JSON.parse(textPart.text);
+			} catch {
+				/* ignore */
+			}
 		}
 	}
 	// Fall back to old message format
@@ -343,7 +347,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 		expect(extractTaskState(events)).toBe("failed");
 		const task = events.find((e: any) => e.kind === "task");
 		expect(task).toBeDefined();
-		const textPart = task.status.message.parts.find((p: any) => p.kind === "text");
+		const textPart = (task as any).status.message.parts.find((p: any) => p.kind === "text");
 		expect(textPart.text).toContain("not found");
 	});
 
@@ -398,7 +402,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 
 		expect(extractTaskState(doubleSpendEvents)).toBe("failed");
 		const task = doubleSpendEvents.find((e: any) => e.kind === "task");
-		const textPart = task.status.message.parts.find((p: any) => p.kind === "text");
+		const textPart = (task as any).status.message.parts.find((p: any) => p.kind === "text");
 		expect(textPart.text).toContain("already been redeemed");
 	});
 

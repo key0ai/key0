@@ -77,7 +77,7 @@ export type EIP3009Authorization = {
  * Supports both:
  * 1. EIP-3009 signature flow (scheme: "exact")
  * 2. On-chain transaction proof flow (txHash provided)
- * 
+ *
  * Placed in message.metadata["x402.payment.payload"] (Standalone Flow)
  * or in PAYMENT-SIGNATURE HTTP header (HTTP Flow).
  */
@@ -130,7 +130,7 @@ export type FacilitatorVerifyResponse = {
 	readonly isValid: boolean;
 	readonly payer?: string;
 	readonly invalidReason?: string;
-    readonly invalidMessage?: string;
+	readonly invalidMessage?: string;
 };
 
 // ---------------------------------------------------------------------------

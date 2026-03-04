@@ -125,9 +125,7 @@ export class InMemoryChallengeStore implements IChallengeStore {
 				removed++;
 			} else if (record.state === "DELIVERED") {
 				// Measure from deliveredAt so the 12-hour window starts when delivery was confirmed
-				const deliveredAge = record.deliveredAt
-					? now - record.deliveredAt.getTime()
-					: age;
+				const deliveredAge = record.deliveredAt ? now - record.deliveredAt.getTime() : age;
 				if (deliveredAge > this.deliveredRetentionMs) {
 					this.challenges.delete(id);
 					this.requestIndex.delete(record.requestId);

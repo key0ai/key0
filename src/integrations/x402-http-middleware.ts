@@ -1,5 +1,11 @@
+import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
 import type { NextFunction, Request, Response } from "express";
+import { createWalletClient, publicActions, http as viemHttp } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { base, baseSepolia } from "viem/chains";
+import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import type { ChallengeEngine } from "../core/index.js";
+import { CHAIN_CONFIGS } from "../types/config-shared.js";
 import type {
 	AccessGrant,
 	AccessRequest,
@@ -11,12 +17,6 @@ import type {
 	X402SettleResponse,
 } from "../types/index.js";
 import { AgentGateError, CHAIN_ID_TO_NETWORK } from "../types/index.js";
-import { parseDollarToUsdcMicro } from "../adapter/index.js";
-import { CHAIN_CONFIGS } from "../types/config-shared.js";
-import { createWalletClient, http as viemHttp, publicActions } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { base, baseSepolia } from "viem/chains";
-import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
 
 // x402 v2 headers
 const PAYMENT_SIGNATURE_HEADER = "payment-signature";
@@ -84,21 +84,27 @@ export async function settleViaFacilitator(
 ): Promise<{ txHash: `0x${string}`; settleResponse: X402SettleResponse; payer?: string }> {
 	console.log("[settleViaFacilitator] Starting settlement...");
 	console.log(`[settleViaFacilitator] Facilitator URL: ${facilitatorUrl}`);
-	
+
 	// Decode the PAYMENT-SIGNATURE header (base64url)
 	let paymentPayload: any;
 	try {
 		console.log("[settleViaFacilitator] Decoding PAYMENT-SIGNATURE header (base64url)...");
 		const decoded = Buffer.from(paymentSignature, "base64url").toString("utf-8");
 		paymentPayload = JSON.parse(decoded);
-		console.log("[settleViaFacilitator] ✓ Decoded payload:", JSON.stringify(paymentPayload, null, 2));
+		console.log(
+			"[settleViaFacilitator] ✓ Decoded payload:",
+			JSON.stringify(paymentPayload, null, 2),
+		);
 	} catch (err) {
 		// Try regular base64 as fallback
 		console.log("[settleViaFacilitator] base64url decode failed, trying regular base64...");
 		try {
 			const decoded = Buffer.from(paymentSignature, "base64").toString("utf-8");
 			paymentPayload = JSON.parse(decoded);
-			console.log("[settleViaFacilitator] ✓ Decoded payload (base64):", JSON.stringify(paymentPayload, null, 2));
+			console.log(
+				"[settleViaFacilitator] ✓ Decoded payload (base64):",
+				JSON.stringify(paymentPayload, null, 2),
+			);
 		} catch {
 			console.error("[settleViaFacilitator] ✗ Failed to decode PAYMENT-SIGNATURE header");
 			throw new AgentGateError(
@@ -122,7 +128,7 @@ export async function settleViaFacilitator(
 
 	// Extract payment requirements from the payload
 	const paymentRequirements = paymentPayload.accepted;
-	
+
 	// Build the facilitator request body according to API spec
 	const facilitatorRequestBody = {
 		paymentPayload: paymentPayload,
@@ -131,14 +137,19 @@ export async function settleViaFacilitator(
 
 	// STEP 1: Verify the payment
 	console.log("[settleViaFacilitator] STEP 1: Verifying payment...");
-	console.log("[settleViaFacilitator] Verify request body:", JSON.stringify(facilitatorRequestBody, null, 2));
-	
+	console.log(
+		"[settleViaFacilitator] Verify request body:",
+		JSON.stringify(facilitatorRequestBody, null, 2),
+	);
+
 	const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(facilitatorRequestBody),
 	});
-	console.log(`[settleViaFacilitator] Verify response status: ${verifyRes.status} ${verifyRes.statusText}`);
+	console.log(
+		`[settleViaFacilitator] Verify response status: ${verifyRes.status} ${verifyRes.statusText}`,
+	);
 
 	if (!verifyRes.ok) {
 		const errorText = await verifyRes.text().catch(() => "");
@@ -154,11 +165,16 @@ export async function settleViaFacilitator(
 	}
 
 	const verifyResult = (await verifyRes.json()) as FacilitatorVerifyResponse;
-	console.log("[settleViaFacilitator] Verify response body:", JSON.stringify(verifyResult, null, 2));
+	console.log(
+		"[settleViaFacilitator] Verify response body:",
+		JSON.stringify(verifyResult, null, 2),
+	);
 
 	// Check if payment is valid
 	if (!verifyResult.isValid) {
-		console.error(`[settleViaFacilitator] ✗ Payment verification failed: ${verifyResult.invalidReason}`);
+		console.error(
+			`[settleViaFacilitator] ✗ Payment verification failed: ${verifyResult.invalidReason}`,
+		);
 		throw new AgentGateError(
 			"PAYMENT_FAILED",
 			`Payment verification failed: ${verifyResult.invalidReason || "unknown reason"}. ${verifyResult.invalidMessage || "unknown reason"}`,
@@ -167,7 +183,7 @@ export async function settleViaFacilitator(
 	}
 
 	console.log("[settleViaFacilitator] ✓ Payment verified successfully");
-	
+
 	// Update payer if we got it from verify response
 	if (verifyResult.payer && !payer) {
 		payer = verifyResult.payer;
@@ -176,14 +192,19 @@ export async function settleViaFacilitator(
 
 	// STEP 2: Settle the payment
 	console.log("[settleViaFacilitator] STEP 2: Settling payment...");
-	console.log("[settleViaFacilitator] Settle request body:", JSON.stringify(facilitatorRequestBody, null, 2));
-	
+	console.log(
+		"[settleViaFacilitator] Settle request body:",
+		JSON.stringify(facilitatorRequestBody, null, 2),
+	);
+
 	const settleRes = await fetch(`${facilitatorUrl}/settle`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(facilitatorRequestBody),
 	});
-	console.log(`[settleViaFacilitator] Settle response status: ${settleRes.status} ${settleRes.statusText}`);
+	console.log(
+		`[settleViaFacilitator] Settle response status: ${settleRes.status} ${settleRes.statusText}`,
+	);
 
 	if (!settleRes.ok) {
 		const errorText = await settleRes.text().catch(() => "");
@@ -235,7 +256,9 @@ export async function settleViaGasWallet(
 	networkConfig: NetworkConfig,
 ): Promise<{ txHash: `0x${string}`; settleResponse: X402SettleResponse; payer?: string }> {
 	console.log("[settleViaGasWallet] Starting settlement...");
-	console.log(`[settleViaGasWallet] Network: ${networkConfig.name} (chainId: ${networkConfig.chainId})`);
+	console.log(
+		`[settleViaGasWallet] Network: ${networkConfig.name} (chainId: ${networkConfig.chainId})`,
+	);
 
 	// Decode the PAYMENT-SIGNATURE header (base64url)
 	let paymentPayload: any;
@@ -250,7 +273,10 @@ export async function settleViaGasWallet(
 		try {
 			const decoded = Buffer.from(paymentSignature, "base64").toString("utf-8");
 			paymentPayload = JSON.parse(decoded);
-			console.log("[settleViaGasWallet] ✓ Decoded payload (base64):", JSON.stringify(paymentPayload, null, 2));
+			console.log(
+				"[settleViaGasWallet] ✓ Decoded payload (base64):",
+				JSON.stringify(paymentPayload, null, 2),
+			);
 		} catch {
 			console.error("[settleViaGasWallet] ✗ Failed to decode PAYMENT-SIGNATURE header");
 			throw new AgentGateError(
@@ -316,7 +342,9 @@ export async function settleViaGasWallet(
 	}
 
 	if (!verifyResult.isValid) {
-		console.error(`[settleViaGasWallet] ✗ Payment verification failed: ${verifyResult.invalidReason}`);
+		console.error(
+			`[settleViaGasWallet] ✗ Payment verification failed: ${verifyResult.invalidReason}`,
+		);
 		throw new AgentGateError(
 			"PAYMENT_FAILED",
 			`Payment verification failed: ${verifyResult.invalidReason || "unknown reason"}`,
@@ -352,7 +380,9 @@ export async function settleViaGasWallet(
 		}
 		if (settlement.transaction) {
 			console.error(`[settleViaGasWallet] Failed tx: ${settlement.transaction}`);
-			console.error(`[settleViaGasWallet] Explorer: ${networkConfig.explorerBaseUrl}/tx/${settlement.transaction}`);
+			console.error(
+				`[settleViaGasWallet] Explorer: ${networkConfig.explorerBaseUrl}/tx/${settlement.transaction}`,
+			);
 		}
 		throw new AgentGateError(
 			"PAYMENT_FAILED",
@@ -367,7 +397,9 @@ export async function settleViaGasWallet(
 	}
 
 	console.log(`[settleViaGasWallet] ✓ Settlement successful, txHash: ${settlement.transaction}`);
-	console.log(`[settleViaGasWallet] Explorer: ${networkConfig.explorerBaseUrl}/tx/${settlement.transaction}`);
+	console.log(
+		`[settleViaGasWallet] Explorer: ${networkConfig.explorerBaseUrl}/tx/${settlement.transaction}`,
+	);
 
 	// Build response matching facilitator format
 	const settleResponse: X402SettleResponse = {
@@ -386,7 +418,7 @@ export async function settleViaGasWallet(
 
 /**
  * Express middleware that intercepts AccessRequest calls and implements the x402 HTTP flow.
- * 
+ *
  * If the client sends X-A2A-Extensions header -> pass through (A2A flow)
  * If the client sends AccessRequest without X-Payment -> return HTTP 402 with PaymentRequirements
  * If the client sends AccessRequest with X-Payment -> settle via facilitator, return HTTP 200 with AccessGrant
@@ -403,16 +435,19 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 		// Intercept response to log the body
 		const originalJson = res.json.bind(res);
 		const originalSend = res.send.bind(res);
-		
-		res.json = function(body: any) {
+
+		res.json = (body: any) => {
 			console.log("[x402-http-middleware] Response Status:", res.statusCode);
 			console.log("[x402-http-middleware] Response Body:", JSON.stringify(body, null, 2));
 			return originalJson(body);
 		};
-		
-		res.send = function(body: any) {
+
+		res.send = (body: any) => {
 			console.log("[x402-http-middleware] Response Status:", res.statusCode);
-			console.log("[x402-http-middleware] Response Body:", typeof body === 'string' ? body : JSON.stringify(body, null, 2));
+			console.log(
+				"[x402-http-middleware] Response Body:",
+				typeof body === "string" ? body : JSON.stringify(body, null, 2),
+			);
 			return originalSend(body);
 		};
 
@@ -484,7 +519,9 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 			const resourceId = accessRequest.resourceId || "default";
 			const tierId = accessRequest.tierId;
 			const requestId = accessRequest.requestId || `http-${crypto.randomUUID()}`;
-			console.log(`[x402-http-middleware] AccessRequest: tierId=${tierId}, resourceId=${resourceId}, requestId=${requestId}`);
+			console.log(
+				`[x402-http-middleware] AccessRequest: tierId=${tierId}, resourceId=${resourceId}, requestId=${requestId}`,
+			);
 
 			// 6. Check for PAYMENT-SIGNATURE header (v2)
 			const paymentSignature = req.headers[PAYMENT_SIGNATURE_HEADER] as string | undefined;
@@ -492,7 +529,9 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 
 			if (!paymentSignature) {
 				// ===== STEP 1: No payment yet -> create PENDING record and return HTTP 402 =====
-				console.log("[x402-http-middleware] → STEP 1: No PAYMENT-SIGNATURE header, issuing 402 challenge");
+				console.log(
+					"[x402-http-middleware] → STEP 1: No PAYMENT-SIGNATURE header, issuing 402 challenge",
+				);
 
 				// Create PENDING record via engine (handles tier/resource validation and idempotency)
 				const { challengeId } = await engine.requestHttpAccess(requestId, tierId, resourceId);
@@ -506,11 +545,14 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 					config,
 					networkConfig,
 				);
-				console.log("[x402-http-middleware] Payment requirements:", JSON.stringify(requirements, null, 2));
+				console.log(
+					"[x402-http-middleware] Payment requirements:",
+					JSON.stringify(requirements, null, 2),
+				);
 
 				// x402 v2: Set PAYMENT-REQUIRED header with base64-encoded requirements
-				const base64Requirements = Buffer.from(JSON.stringify(requirements)).toString('base64');
-				res.setHeader('PAYMENT-REQUIRED', base64Requirements);
+				const base64Requirements = Buffer.from(JSON.stringify(requirements)).toString("base64");
+				res.setHeader(PAYMENT_REQUIRED_HEADER, base64Requirements);
 				console.log("[x402-http-middleware] Set PAYMENT-REQUIRED header");
 
 				// Return HTTP 402 with payment requirements + challengeId
@@ -520,68 +562,70 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 					challengeId,
 					error: "PAYMENT-SIGNATURE header is required",
 				});
-			} else {
-				// ===== STEP 2: Has PAYMENT-SIGNATURE -> settle and return access grant =====
-				console.log("[x402-http-middleware] → STEP 2: PAYMENT-SIGNATURE header present, processing payment");
-				console.log(`[x402-http-middleware] PAYMENT-SIGNATURE value (first 50 chars): ${paymentSignature.substring(0, 50)}...`);
-
-				// Route to appropriate settlement strategy
-				let txHash: `0x${string}`;
-				let settleResponse: X402SettleResponse;
-				let payer: string | undefined;
-
-				if (config.gasWalletPrivateKey) {
-					// Gas wallet mode: self-contained settlement via ExactEvmScheme
-					console.log("[x402-http-middleware] Using gas wallet settlement mode");
-					const result = await settleViaGasWallet(
-						paymentSignature,
-						config.gasWalletPrivateKey,
-						networkConfig,
-					);
-					txHash = result.txHash;
-					settleResponse = result.settleResponse;
-					payer = result.payer;
-				} else {
-					// Facilitator mode: HTTP-based settlement via Coinbase CDP
-					const resolvedFacilitatorUrl = config.facilitatorUrl ?? networkConfig.facilitatorUrl;
-					console.log(`[x402-http-middleware] Using facilitator settlement mode: ${resolvedFacilitatorUrl}`);
-					const result = await settleViaFacilitator(
-						paymentSignature,
-						resolvedFacilitatorUrl,
-					);
-					txHash = result.txHash;
-					settleResponse = result.settleResponse;
-					payer = result.payer;
-				}
-
-				console.log(`[x402-http-middleware] ✓ Payment settled, txHash: ${txHash}`);
-
-				// Process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
-				console.log("[x402-http-middleware] Processing HTTP payment and issuing token...");
-				const grant: AccessGrant = await engine.processHttpPayment(
-					requestId,
-					tierId,
-					resourceId,
-					txHash,
-					payer as `0x${string}` | undefined,
-				);
-				console.log("[x402-http-middleware] ✓ Access grant issued:", JSON.stringify(grant, null, 2));
-
-				// x402 v2: Build settlement response for PAYMENT-RESPONSE header
-				const settlementResponse: X402SettleResponse = {
-					success: true,
-					transaction: txHash,
-					network: `eip155:${networkConfig.chainId}`,
-					...(payer && { payer }),
-				};
-				const base64Settlement = Buffer.from(JSON.stringify(settlementResponse)).toString('base64');
-				res.setHeader('PAYMENT-RESPONSE', base64Settlement);
-				console.log("[x402-http-middleware] Set PAYMENT-RESPONSE header");
-
-				// Return HTTP 200 with AccessGrant
-				console.log("[x402-http-middleware] → Returning HTTP 200 with AccessGrant");
-				return res.status(200).json(grant);
 			}
+			// ===== STEP 2: Has PAYMENT-SIGNATURE -> settle and return access grant =====
+			console.log(
+				"[x402-http-middleware] → STEP 2: PAYMENT-SIGNATURE header present, processing payment",
+			);
+			console.log(
+				`[x402-http-middleware] PAYMENT-SIGNATURE value (first 50 chars): ${paymentSignature.substring(0, 50)}...`,
+			);
+
+			// Route to appropriate settlement strategy
+			let txHash: `0x${string}`;
+			let settleResponse: X402SettleResponse;
+			let payer: string | undefined;
+
+			if (config.gasWalletPrivateKey) {
+				// Gas wallet mode: self-contained settlement via ExactEvmScheme
+				console.log("[x402-http-middleware] Using gas wallet settlement mode");
+				const result = await settleViaGasWallet(
+					paymentSignature,
+					config.gasWalletPrivateKey,
+					networkConfig,
+				);
+				txHash = result.txHash;
+				settleResponse = result.settleResponse;
+				payer = result.payer;
+			} else {
+				// Facilitator mode: HTTP-based settlement via Coinbase CDP
+				const resolvedFacilitatorUrl = config.facilitatorUrl ?? networkConfig.facilitatorUrl;
+				console.log(
+					`[x402-http-middleware] Using facilitator settlement mode: ${resolvedFacilitatorUrl}`,
+				);
+				const result = await settleViaFacilitator(paymentSignature, resolvedFacilitatorUrl);
+				txHash = result.txHash;
+				settleResponse = result.settleResponse;
+				payer = result.payer;
+			}
+
+			console.log(`[x402-http-middleware] ✓ Payment settled, txHash: ${txHash}`);
+
+			// Process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
+			console.log("[x402-http-middleware] Processing HTTP payment and issuing token...");
+			const grant: AccessGrant = await engine.processHttpPayment(
+				requestId,
+				tierId,
+				resourceId,
+				txHash,
+				payer as `0x${string}` | undefined,
+			);
+			console.log("[x402-http-middleware] ✓ Access grant issued:", JSON.stringify(grant, null, 2));
+
+			// x402 v2: Build settlement response for PAYMENT-RESPONSE header
+			const settlementResponse: X402SettleResponse = {
+				success: true,
+				transaction: txHash,
+				network: `eip155:${networkConfig.chainId}`,
+				...(payer && { payer }),
+			};
+			const base64Settlement = Buffer.from(JSON.stringify(settlementResponse)).toString("base64");
+			res.setHeader(PAYMENT_RESPONSE_HEADER, base64Settlement);
+			console.log("[x402-http-middleware] Set PAYMENT-RESPONSE header");
+
+			// Return HTTP 200 with AccessGrant
+			console.log("[x402-http-middleware] → Returning HTTP 200 with AccessGrant");
+			return res.status(200).json(grant);
 		} catch (err: unknown) {
 			console.error("[x402-http-middleware] ✗ ERROR caught in middleware:", err);
 			if (err instanceof AgentGateError) {

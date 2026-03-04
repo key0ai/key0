@@ -1,4 +1,4 @@
-import { X402Adapter, AccessTokenIssuer, RedisSeenTxStore } from "@agentgate/sdk";
+import { AccessTokenIssuer, RedisSeenTxStore, X402Adapter } from "@agentgate/sdk";
 import type { NetworkName } from "@agentgate/sdk";
 import { agentGateRouter, validateAccessToken } from "@agentgate/sdk/express";
 import express from "express";
@@ -82,7 +82,7 @@ app.use(
 			resourceEndpointTemplate: `${PUBLIC_URL}/api/photos/{resourceId}`,
 		},
 		adapter,
-		mcp: true
+		mcp: true,
 	}),
 );
 
@@ -103,5 +103,9 @@ app.get("/api/photos/:id", (req, res) => {
 });
 
 app.listen(PORT, () => {
-	console.log(`Listening on ${PUBLIC_URL}`);
+	console.log(`\nPhoto Gallery Agent running on ${PUBLIC_URL}`);
+	console.log(`  Agent card: ${PUBLIC_URL}/.well-known/agent.json`);
+	console.log(`  A2A endpoint: ${PUBLIC_URL}/agent`);
+	console.log(`  Network: ${NETWORK}`);
+	console.log(`  Wallet: ${WALLET}\n`);
 });

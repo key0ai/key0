@@ -19,6 +19,8 @@
 import {
 	AccessTokenIssuer,
 	type AuthHeaderProvider,
+	type IChallengeStore,
+	type ISeenTxStore,
 	type IssueTokenParams,
 	type NetworkName,
 	RedisChallengeStore,
@@ -27,14 +29,14 @@ import {
 	X402Adapter,
 	createRemoteResourceVerifier,
 	createRemoteTokenIssuer,
+	processRefunds,
 	sharedSecretAuth,
 	signedJwtAuth,
-	processRefunds
 } from "@agentgate/sdk";
 import { agentGateRouter } from "@agentgate/sdk/express";
+import { Queue, Worker } from "bullmq";
 import express from "express";
 import Redis from "ioredis";
-import { Queue, Worker } from "bullmq";
 
 const PORT = Number(process.env.AGENTGATE_PORT ?? 3001);
 const NETWORK = (process.env.AGENTGATE_NETWORK ?? "testnet") as NetworkName;
@@ -44,7 +46,9 @@ const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 const AUTH_STRATEGY = process.env.AUTH_STRATEGY || "shared-secret"; // "shared-secret" | "jwt"
 
 // Gas wallet configuration for facilitation
-const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY || "0x2bdea68d1f3bd741841034eea1c46c5ef7937eedb0418056f7d2c57002656c15";
+const GAS_WALLET_PRIVATE_KEY =
+	process.env.GAS_WALLET_PRIVATE_KEY ||
+	"0x2bdea68d1f3bd741841034eea1c46c5ef7937eedb0418056f7d2c57002656c15";
 const USE_GAS_WALLET = process.env.USE_GAS_WALLET === "true";
 
 const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
@@ -52,13 +56,11 @@ const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
 // Refund cron configuration
 const REFUND_INTERVAL_MS = Number(process.env["REFUND_INTERVAL_MS"] ?? 15_000);
 const REFUND_MIN_AGE_MS = Number(process.env["REFUND_MIN_AGE_MS"] ?? 30_000);
-const SELLER_PRIVATE_KEY = process.env["AGENTGATE_SELLER_PRIVATE_KEY"] as
-	| `0x${string}`
-	| undefined;
+const WALLET_PRIVATE_KEY = process.env["AGENTGATE_WALLET_PRIVATE_KEY"] as `0x${string}` | undefined;
 
 if (USE_GAS_WALLET) {
 	console.log("🔐 Gas Wallet Mode: ENABLED");
-	console.log(`   Gas wallet will handle payment settlement directly`);
+	console.log("   Gas wallet will handle payment settlement directly");
 }
 
 // Validate required environment variables
@@ -72,6 +74,11 @@ if (!BACKEND_API_URL) {
 	process.exit(1);
 }
 
+if (!process.env.REDIS_URL) {
+	console.error("ERROR: REDIS_URL is required for standalone service");
+	process.exit(1);
+}
+
 if (AUTH_STRATEGY === "shared-secret" && !INTERNAL_AUTH_SECRET) {
 	console.error("ERROR: INTERNAL_AUTH_SECRET is required for shared-secret auth");
 	process.exit(1);
@@ -80,18 +87,9 @@ if (AUTH_STRATEGY === "shared-secret" && !INTERNAL_AUTH_SECRET) {
 const app = express();
 app.use(express.json());
 
-// Redis for multi-instance support (optional, falls back to in-memory if not provided)
-let store: RedisChallengeStore | undefined;
-let seenTxStore: RedisSeenTxStore | undefined;
-
-if (process.env.REDIS_URL) {
-	const redis = new Redis(process.env.REDIS_URL);
-	store = new RedisChallengeStore({ redis, challengeTTLSeconds: 900 });
-	seenTxStore = new RedisSeenTxStore({ redis });
-	console.log("Using Redis storage");
-} else {
-	console.log("Using in-memory storage (set REDIS_URL for production)");
-}
+const redis = new Redis(process.env.REDIS_URL);
+const store: IChallengeStore = new RedisChallengeStore({ redis, challengeTTLSeconds: 900 });
+const seenTxStore: ISeenTxStore = new RedisSeenTxStore({ redis });
 
 // BullMQ bundles its own ioredis, so pass plain options to avoid type conflicts
 const makeBullConnection = () => {
@@ -155,7 +153,6 @@ if (tokenMode === "remote") {
 	console.log("Using Native token issuance mode (local JWT)");
 	const localTokenIssuer = new AccessTokenIssuer(SECRET);
 	onIssueToken = async (params) => {
-
 		//NOTE: Testing for refund cron
 		// throw new Error("Not issuing tokens for refund cron");
 
@@ -231,6 +228,7 @@ app.use(
 		adapter,
 		store,
 		seenTxStore,
+		mcp: true,
 	}),
 );
 
@@ -268,29 +266,25 @@ app.listen(PORT, () => {
 		`   A2A Endpoint: ${process.env.AGENTGATE_PUBLIC_URL || `http://localhost:${PORT}`}/agent\n`,
 	);
 
-	console.log(`\nRefund Cron Demo — ${process.env.AGENTGATE_PUBLIC_URL}`);
-		console.log(`  Network : ${NETWORK}`);
-		console.log(`  Wallet  : ${process.env.AGENTGATE_WALLET_ADDRESS}`);
-		console.log(`  Redis   : ${REDIS_URL}`);
-		console.log(`\nRefund cron:`);
-		console.log(`  Interval     : ${REFUND_INTERVAL_MS / 1000}s`);
-		console.log(`  Grace period : ${REFUND_MIN_AGE_MS / 1000}s`);
-		console.log(`  Status       : ${SELLER_PRIVATE_KEY ? "ACTIVE" : "DISABLED (set AGENTGATE_SELLER_PRIVATE_KEY)"}\n`);
+	console.log("\nRefund cron:");
+	console.log(`  Interval     : ${REFUND_INTERVAL_MS / 1000}s`);
+	console.log(`  Grace period : ${REFUND_MIN_AGE_MS / 1000}s`);
+	console.log(
+		`  Status       : ${WALLET_PRIVATE_KEY ? "ACTIVE" : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`,
+	);
 });
-
-
 
 // ─── Refund cron ──────────────────────────────────────────────────────────────
 
 async function runRefundCron(): Promise<void> {
-	if (!SELLER_PRIVATE_KEY) {
-		console.log("[Cron] Skipped — AGENTGATE_SELLER_PRIVATE_KEY not set.");
+	if (!WALLET_PRIVATE_KEY) {
+		console.log("[Cron] Skipped — AGENTGATE_WALLET_PRIVATE_KEY not set.");
 		return;
 	}
 
 	const results = await processRefunds({
 		store,
-		sellerPrivateKey: SELLER_PRIVATE_KEY,
+		walletPrivateKey: WALLET_PRIVATE_KEY,
 		network: NETWORK,
 		minAgeMs: REFUND_MIN_AGE_MS,
 	});
@@ -314,11 +308,9 @@ async function runRefundCron(): Promise<void> {
 	console.log("--------------------------------");
 }
 
-
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 async function start() {
-	// Register repeatable job, then close the queue — the Worker drives scheduling from Redis
 	const refundQueue = new Queue("refund-cron", { connection: makeBullConnection() });
 	const repeatables = await refundQueue.getRepeatableJobs();
 	for (const job of repeatables) {
@@ -327,21 +319,20 @@ async function start() {
 	await refundQueue.add("process-refunds", {}, { repeat: { every: REFUND_INTERVAL_MS } });
 	await refundQueue.close();
 
-	const cronWorker = new Worker("refund-cron", () => runRefundCron(), { connection: makeBullConnection() });
+	const cronWorker = new Worker("refund-cron", () => runRefundCron(), {
+		connection: makeBullConnection(),
+	});
 	cronWorker.on("error", (err) => console.error("[Cron] Worker error:", err));
 
-	// Graceful shutdown
 	const shutdown = async () => {
 		await cronWorker.close();
 		process.exit(0);
 	};
 	process.on("SIGTERM", shutdown);
 	process.on("SIGINT", shutdown);
-
 }
 
 start().catch((err) => {
-	console.error("Failed to start:", err);
+	console.error("Failed to start cron:", err);
 	process.exit(1);
 });
-

@@ -17,7 +17,8 @@
 				"useLiteralKeys": "off"
 			},
 			"suspicious": {
-				"noImplicitAnyLet": "warn"
+				"noImplicitAnyLet": "warn",
+				"noExplicitAny": "off"
 			},
 			"correctness": {
 				"noUnnecessaryContinue": "off"
@@ -34,5 +35,6 @@
 			"quoteStyle": "double",
 			"semicolons": "always"
 		}
-	}
+	},
+	"overrides": []
 }

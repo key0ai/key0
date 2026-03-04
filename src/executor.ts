@@ -1,9 +1,9 @@
-import type { Message, Task, Artifact } from "@a2a-js/sdk";
+import type { Artifact, Message, Task } from "@a2a-js/sdk";
 import type { AgentExecutor, ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
 import { v4 as uuidv4 } from "uuid";
 import type { ChallengeEngine } from "./core/index.js";
 import type { AccessRequest, PaymentProof, X402PaymentPayload } from "./types/index.js";
-import { AgentGateError, X402_METADATA_KEYS, NETWORK_TO_CHAIN_ID } from "./types/index.js";
+import { AgentGateError, NETWORK_TO_CHAIN_ID, X402_METADATA_KEYS } from "./types/index.js";
 
 export class AgentGateExecutor implements AgentExecutor {
 	constructor(private engine: ChallengeEngine) {}
@@ -36,9 +36,19 @@ export class AgentGateExecutor implements AgentExecutor {
 
 			// ----- Route by type or shape -----
 			if (payload["type"] === "AccessRequest" || this.isAccessRequest(payload)) {
-				await this.handleAccessRequest(payload as unknown as AccessRequest, taskId, contextId, eventBus);
+				await this.handleAccessRequest(
+					payload as unknown as AccessRequest,
+					taskId,
+					contextId,
+					eventBus,
+				);
 			} else if (payload["type"] === "PaymentProof" || this.isPaymentProof(payload)) {
-				await this.handlePaymentProof(payload as unknown as PaymentProof, taskId, contextId, eventBus);
+				await this.handlePaymentProof(
+					payload as unknown as PaymentProof,
+					taskId,
+					contextId,
+					eventBus,
+				);
 			} else {
 				this.sendErrorTask(
 					eventBus,
@@ -225,7 +235,7 @@ export class AgentGateExecutor implements AgentExecutor {
 			chainId: chainId as number,
 			txHash: payload.payload.txHash as `0x${string}`,
 			amount: (extra["amount"] as string) ?? "",
-			asset: ((payload.payload.asset ?? extra["asset"] ?? "USDC") as "USDC"),
+			asset: (payload.payload.asset ?? extra["asset"] ?? "USDC") as "USDC",
 			fromAgentId: payload.payload.from ?? "anonymous",
 		};
 
@@ -272,16 +282,13 @@ export class AgentGateExecutor implements AgentExecutor {
 	 * Parse message payload from either data part or text part (JSON string).
 	 */
 	private parseMessage(userMessage: Message): Record<string, unknown> | null {
-		// biome-ignore lint/suspicious/noExplicitAny: library type issue
 		let dataPart = userMessage.parts?.find((p: any) => p.kind === "data");
 
 		// If no data part, try to parse from text parts
 		if (!dataPart && userMessage.parts) {
-			// biome-ignore lint/suspicious/noExplicitAny: library type issue
 			const textPart = userMessage.parts.find((p: any) => p.kind === "text");
 			if (textPart) {
 				try {
-					// biome-ignore lint/suspicious/noExplicitAny: library type issue
 					const parsed = JSON.parse((textPart as any).text);
 					dataPart = { kind: "data", data: parsed };
 				} catch {
@@ -294,7 +301,6 @@ export class AgentGateExecutor implements AgentExecutor {
 			return null;
 		}
 
-		// biome-ignore lint/suspicious/noExplicitAny: library type issue
 		return (dataPart as any).data as Record<string, unknown>;
 	}
 
@@ -310,11 +316,15 @@ export class AgentGateExecutor implements AgentExecutor {
 		errorMessage: string,
 		errorData?: Record<string, unknown>,
 	): void {
-		const isPaymentError = errorCode.startsWith("PAYMENT_") || errorCode === "TX_ALREADY_REDEEMED" || errorCode === "TX_UNCONFIRMED" || errorCode === "INVALID_PROOF";
+		const isPaymentError =
+			errorCode.startsWith("PAYMENT_") ||
+			errorCode === "TX_ALREADY_REDEEMED" ||
+			errorCode === "TX_UNCONFIRMED" ||
+			errorCode === "INVALID_PROOF";
 
-		const parts: Array<{ kind: "text"; text: string } | { kind: "data"; data: Record<string, unknown> }> = [
-			{ kind: "text", text: errorMessage },
-		];
+		const parts: Array<
+			{ kind: "text"; text: string } | { kind: "data"; data: Record<string, unknown> }
+		> = [{ kind: "text", text: errorMessage }];
 		if (errorData) {
 			parts.push({ kind: "data", data: errorData });
 		}
@@ -348,10 +358,7 @@ export class AgentGateExecutor implements AgentExecutor {
 	}
 
 	private isAccessRequest(data: Record<string, unknown>): boolean {
-		return (
-			typeof data["requestId"] === "string" &&
-			typeof data["tierId"] === "string"
-		);
+		return typeof data["requestId"] === "string" && typeof data["tierId"] === "string";
 	}
 
 	private isPaymentProof(data: Record<string, unknown>): boolean {

@@ -1,24 +1,24 @@
 /**
  * Simple x402 Client Example
- * 
+ *
  * Demonstrates the streamlined x402 HTTP payment flow:
  * 1. Discover agent card
  * 2. POST AccessRequest to /access endpoint → receive 402 with PAYMENT-REQUIRED header
  * 3. Pay USDC on-chain
  * 4. Retry same request with PAYMENT-SIGNATURE header → receive AccessGrant
  * 5. Use access token to call protected API
- * 
+ *
  * Prerequisites:
  *   - Seller running on localhost:3000
  *   - Wallet with testnet USDC on Base Sepolia
- * 
+ *
  * Usage:
  *   WALLET_PRIVATE_KEY=0x... bun run examples/simple-x402-client.ts
  */
 
-import type { AgentCard, AccessGrant } from "@agentgate/sdk";
+import type { AccessGrant, AgentCard } from "@agentgate/sdk";
 import { CHAIN_CONFIGS, USDC_ABI, parseDollarToUsdcMicro } from "@agentgate/sdk";
-import { createWalletClient, createPublicClient, http, formatUnits } from "viem";
+import { http, createPublicClient, createWalletClient, formatUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 
@@ -61,7 +61,9 @@ async function main() {
 	console.log(`  Balance: ${formatUnits(balance, 6)} USDC\n`);
 
 	if (balance === 0n) {
-		console.error("ERROR: Your wallet has 0 USDC. Get testnet USDC from https://faucet.circle.com/");
+		console.error(
+			"ERROR: Your wallet has 0 USDC. Get testnet USDC from https://faucet.circle.com/",
+		);
 		process.exit(1);
 	}
 
@@ -99,10 +101,9 @@ async function main() {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
-			type: "AccessRequest",
+			tier: pricing.tierId,
 			requestId,
-			tierId: pricing.tierId,
-			resourceId: "photo-1",
+			resource: "photo-1",
 		}),
 	});
 
@@ -120,7 +121,9 @@ async function main() {
 		process.exit(1);
 	}
 
-	const paymentRequired = JSON.parse(Buffer.from(paymentRequiredHeader, "base64").toString("utf-8"));
+	const paymentRequired = JSON.parse(
+		Buffer.from(paymentRequiredHeader, "base64").toString("utf-8"),
+	);
 	console.log("   Payment required:");
 	console.log(`     Asset:  ${paymentRequired.accepts[0].asset}`);
 	console.log(`     Amount: ${paymentRequired.accepts[0].amount} (${pricing.amount})`);
@@ -131,7 +134,9 @@ async function main() {
 	// -----------------------------------------------------------------------
 	console.log("3. Paying USDC on-chain...");
 	const amountRaw = parseDollarToUsdcMicro(pricing.amount);
-	console.log(`   Sending ${pricing.amount} (${amountRaw} micro-units) to ${paymentRequired.accepts[0].payTo}`);
+	console.log(
+		`   Sending ${pricing.amount} (${amountRaw} micro-units) to ${paymentRequired.accepts[0].payTo}`,
+	);
 
 	const txHash = await walletClient.writeContract({
 		address: chainConfig.usdcAddress,
@@ -174,10 +179,9 @@ async function main() {
 			"PAYMENT-SIGNATURE": paymentSignatureHeader,
 		},
 		body: JSON.stringify({
-			type: "AccessRequest",
+			tier: pricing.tierId,
 			requestId,
-			tierId: pricing.tierId,
-			resourceId: "photo-1",
+			resource: "photo-1",
 		}),
 	});
 

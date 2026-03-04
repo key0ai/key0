@@ -2,6 +2,7 @@ import {
 	type AccessGrant,
 	type AccessRequest,
 	AgentGateError,
+	CHAIN_ID_TO_NETWORK,
 	type ChallengeRecord,
 	type IChallengeStore,
 	type IPaymentAdapter,
@@ -14,7 +15,6 @@ import {
 	type X402Challenge,
 	type X402PaymentRequiredResponse,
 	type X402SettleResponse,
-	CHAIN_ID_TO_NETWORK,
 } from "../types/index.js";
 
 import { parseDollarToUsdcMicro } from "../adapter/index.js";
@@ -83,7 +83,7 @@ export class ChallengeEngine {
 		// x402 v2: Use CAIP-2 format for network
 		const network = `eip155:${record.chainId}`;
 		const resourceUrl = this.buildResourceEndpoint(record.resourceId);
-		
+
 		return {
 			x402Version: 2,
 			resource: {
@@ -144,7 +144,7 @@ export class ChallengeEngine {
 	async requestAccess(req: AccessRequest): Promise<X402Challenge> {
 		// 1. Validate input - only requestId and tierId are mandatory
 		validateUUID(req.requestId, "requestId");
-		
+
 		// Provide defaults for optional fields
 		const resourceId = req.resourceId || "default";
 		const clientAgentId = req.clientAgentId || "anonymous";

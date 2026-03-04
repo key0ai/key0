@@ -1,11 +1,15 @@
-import { describe, expect, test, beforeEach } from "bun:test";
-import type { Request, Response, NextFunction } from "express";
-import { createX402HttpMiddleware, buildHttpPaymentRequirements, settleViaFacilitator } from "../integrations/x402-http-middleware.js";
+import { beforeEach, describe, expect, test } from "bun:test";
+import type { NextFunction, Request, Response } from "express";
 import { ChallengeEngine } from "../core/challenge-engine.js";
 import { InMemoryChallengeStore, InMemorySeenTxStore } from "../core/index.js";
+import {
+	buildHttpPaymentRequirements,
+	createX402HttpMiddleware,
+	settleViaFacilitator,
+} from "../integrations/x402-http-middleware.js";
 import { MockPaymentAdapter } from "../test-utils/index.js";
-import type { SellerConfig } from "../types/index.js";
 import { CHAIN_CONFIGS } from "../types/config-shared.js";
+import type { SellerConfig } from "../types/index.js";
 
 const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
@@ -56,10 +60,11 @@ function createMockResponse(): {
 	statusCode: number;
 	jsonData: any;
 	nextCalled: boolean;
+	headers: Record<string, string>;
 } {
 	let statusCode = 200;
 	let jsonData: any = null;
-	let nextCalled = false;
+	const nextCalled = false;
 	const headers: Record<string, string> = {};
 
 	const res = {
@@ -105,26 +110,26 @@ describe("x402-http-middleware", () => {
 
 			const requirements = buildHttpPaymentRequirements("basic", "default", config, networkConfig);
 
-		// v2 response structure
-		expect(requirements.x402Version).toBe(2);
-		expect(requirements.resource).toBeDefined();
-		expect(requirements.resource.url).toBe("https://agent.example.com/a2a/jsonrpc");
-		expect(requirements.resource.method).toBe("POST");
-		
-		// Payment requirements
-		expect(requirements.accepts).toHaveLength(1);
-		expect(requirements.accepts[0]?.scheme).toBe("exact");
-		expect(requirements.accepts[0]?.network).toBe("eip155:84532"); // CAIP-2 format
-		expect(requirements.accepts[0]?.asset).toBe(networkConfig.usdcAddress);
-		expect(requirements.accepts[0]?.amount).toBe("990000"); // $0.99 USDC
-		expect(requirements.accepts[0]?.payTo).toBe(WALLET);
-		expect(requirements.accepts[0]?.maxTimeoutSeconds).toBe(300); // 5 minutes
-		
-		// EIP-712 domain parameters in extra field
-		expect(requirements.accepts[0]?.extra).toBeDefined();
-		expect(requirements.accepts[0]?.extra?.name).toBe("USDC");
-		expect(requirements.accepts[0]?.extra?.version).toBe("2");
-		expect(requirements.accepts[0]?.extra?.description).toBe("Basic Access — $0.99 USDC");
+			// v2 response structure
+			expect(requirements.x402Version).toBe(2);
+			expect(requirements.resource).toBeDefined();
+			expect(requirements.resource.url).toBe("https://agent.example.com/a2a/jsonrpc");
+			expect(requirements.resource.method).toBe("POST");
+
+			// Payment requirements
+			expect(requirements.accepts).toHaveLength(1);
+			expect(requirements.accepts[0]?.scheme).toBe("exact");
+			expect(requirements.accepts[0]?.network).toBe("eip155:84532"); // CAIP-2 format
+			expect(requirements.accepts[0]?.asset).toBe(networkConfig.usdcAddress);
+			expect(requirements.accepts[0]?.amount).toBe("990000"); // $0.99 USDC
+			expect(requirements.accepts[0]?.payTo).toBe(WALLET);
+			expect(requirements.accepts[0]?.maxTimeoutSeconds).toBe(300); // 5 minutes
+
+			// EIP-712 domain parameters in extra field
+			expect(requirements.accepts[0]?.extra).toBeDefined();
+			expect(requirements.accepts[0]?.extra?.["name"]).toBe("USD Coin");
+			expect(requirements.accepts[0]?.extra?.["version"]).toBe("2");
+			expect(requirements.accepts[0]?.extra?.["description"]).toBe("Basic Access — $0.99 USDC");
 		});
 
 		test("should throw for invalid tier", () => {
@@ -133,7 +138,7 @@ describe("x402-http-middleware", () => {
 
 			expect(() =>
 				buildHttpPaymentRequirements("invalid-tier", "default", config, networkConfig),
-			).toThrow("Tier \"invalid-tier\" not found");
+			).toThrow('Tier "invalid-tier" not found');
 		});
 	});
 
@@ -164,15 +169,25 @@ describe("x402-http-middleware", () => {
 					method: "message/send",
 					params: {
 						message: {
-							parts: [{ kind: "data", data: { type: "AccessRequest", requestId: "test", tierId: "basic" } }],
+							parts: [
+								{
+									kind: "data",
+									data: { type: "AccessRequest", requestId: "test", tierId: "basic" },
+								},
+							],
 						},
 					},
 				},
-				{ "x-a2a-extensions": "https://github.com/google-agentic-commerce/a2a-x402/blob/main/spec/v0.2" },
+				{
+					"x-a2a-extensions":
+						"https://github.com/google-agentic-commerce/a2a-x402/blob/main/spec/v0.2",
+				},
 			);
 
 			let nextCalled = false;
-			const next = (() => { nextCalled = true; }) as NextFunction;
+			const next = (() => {
+				nextCalled = true;
+			}) as NextFunction;
 			const mockRes = createMockResponse();
 
 			await middleware(req as Request, mockRes.res as Response, next);
@@ -187,7 +202,9 @@ describe("x402-http-middleware", () => {
 			});
 
 			let nextCalled = false;
-			const next = (() => { nextCalled = true; }) as NextFunction;
+			const next = (() => {
+				nextCalled = true;
+			}) as NextFunction;
 			const mockRes = createMockResponse();
 
 			await middleware(req as Request, mockRes.res as Response, next);
@@ -206,7 +223,9 @@ describe("x402-http-middleware", () => {
 			});
 
 			let nextCalled = false;
-			const next = (() => { nextCalled = true; }) as NextFunction;
+			const next = (() => {
+				nextCalled = true;
+			}) as NextFunction;
 			const mockRes = createMockResponse();
 
 			await middleware(req as Request, mockRes.res as Response, next);
@@ -239,21 +258,23 @@ describe("x402-http-middleware", () => {
 
 			await middleware(req as Request, mockRes.res as Response, next);
 
-		expect(mockRes.statusCode).toBe(402);
-		expect(mockRes.jsonData.x402Version).toBe(2);
-		expect(mockRes.jsonData.resource).toBeDefined();
-		expect(mockRes.jsonData.accepts).toHaveLength(1);
-		expect(mockRes.jsonData.accepts[0].amount).toBe("990000");
+			expect(mockRes.statusCode).toBe(402);
+			expect(mockRes.jsonData.x402Version).toBe(2);
+			expect(mockRes.jsonData.resource).toBeDefined();
+			expect(mockRes.jsonData.accepts).toHaveLength(1);
+			expect(mockRes.jsonData.accepts[0].amount).toBe("990000");
 
-		// challengeId from PENDING record should be in the response
-		expect(mockRes.jsonData.challengeId).toBeDefined();
-		expect(mockRes.jsonData.challengeId).toMatch(/^http-/);
-		
-		// Check PAYMENT-REQUIRED header is set
-		expect(mockRes.headers['PAYMENT-REQUIRED']).toBeDefined();
-		const decodedHeader = JSON.parse(Buffer.from(mockRes.headers['PAYMENT-REQUIRED'], 'base64').toString());
-		expect(decodedHeader.x402Version).toBe(2);
-	});
+			// challengeId from PENDING record should be in the response
+			expect(mockRes.jsonData.challengeId).toBeDefined();
+			expect(mockRes.jsonData.challengeId).toMatch(/^http-/);
+
+			// Check PAYMENT-REQUIRED header is set
+			expect(mockRes.headers["payment-required"]).toBeDefined();
+			const decodedHeader = JSON.parse(
+				Buffer.from(mockRes.headers["payment-required"]!, "base64").toString(),
+			);
+			expect(decodedHeader.x402Version).toBe(2);
+		});
 
 		test("should return 404 for nonexistent resource", async () => {
 			const req = createMockRequest({
@@ -338,12 +359,12 @@ describe("x402-http-middleware", () => {
 
 			await middleware(req as Request, mockRes.res as Response, next);
 
-		expect(mockRes.statusCode).toBe(402);
-		expect(mockRes.jsonData.x402Version).toBe(2);
-		
-		// Check PAYMENT-REQUIRED header is set
-		expect(mockRes.headers['PAYMENT-REQUIRED']).toBeDefined();
-	});
+			expect(mockRes.statusCode).toBe(402);
+			expect(mockRes.jsonData.x402Version).toBe(2);
+
+			// Check PAYMENT-REQUIRED header is set
+			expect(mockRes.headers["payment-required"]).toBeDefined();
+		});
 	});
 
 	describe("settleViaFacilitator", () => {
@@ -382,15 +403,18 @@ describe("x402-http-middleware", () => {
 		};
 
 		test("should verify and settle payment successfully", async () => {
-			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
-			const mockTxHash = `0x${"ab".repeat(32)}`;
+			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString(
+				"base64url",
+			);
+			const mockTxHash = `0x${"ab".repeat(32)}` as `0x${string}`;
 
 			// Mock fetch for verify and settle
 			const originalFetch = globalThis.fetch;
 			const fetchCalls: Array<{ url: string; body: any }> = [];
 
-			globalThis.fetch = async (url: string | URL | Request, options?: any) => {
-				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+			(globalThis as any).fetch = async (url: string | URL | Request, options?: any) => {
+				const urlString =
+					typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 				const body = options?.body ? JSON.parse(options.body) : null;
 				fetchCalls.push({ url: urlString, body });
 
@@ -420,9 +444,12 @@ describe("x402-http-middleware", () => {
 			};
 
 			try {
-				const result = await settleViaFacilitator(paymentSignature, "https://facilitator.example.com");
+				const result = await settleViaFacilitator(
+					paymentSignature,
+					"https://facilitator.example.com",
+				);
 
-				expect(result.txHash).toBe(mockTxHash);
+				expect(result.txHash).toBe(mockTxHash as `0x${string}`);
 				expect(result.payer).toBe("0x50c773eAC96Fb0A64D437228156b2DA2f5e9e602");
 				expect(result.settleResponse.success).toBe(true);
 
@@ -442,11 +469,14 @@ describe("x402-http-middleware", () => {
 		});
 
 		test("should throw error if verification fails", async () => {
-			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
+			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString(
+				"base64url",
+			);
 
 			const originalFetch = globalThis.fetch;
-			globalThis.fetch = async (url: string | URL | Request) => {
-				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+			(globalThis as any).fetch = async (url: string | URL | Request) => {
+				const urlString =
+					typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 
 				if (urlString.endsWith("/verify")) {
 					return new Response(
@@ -472,17 +502,20 @@ describe("x402-http-middleware", () => {
 		});
 
 		test("should throw error if verify endpoint returns non-2xx", async () => {
-			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
+			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString(
+				"base64url",
+			);
 
 			const originalFetch = globalThis.fetch;
-			globalThis.fetch = async (url: string | URL | Request) => {
-				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+			(globalThis as any).fetch = async (url: string | URL | Request) => {
+				const urlString =
+					typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 
 				if (urlString.endsWith("/verify")) {
-					return new Response(
-						JSON.stringify({ error: "Invalid request" }),
-						{ status: 400, headers: { "Content-Type": "application/json" } },
-					);
+					return new Response(JSON.stringify({ error: "Invalid request" }), {
+						status: 400,
+						headers: { "Content-Type": "application/json" },
+					});
 				}
 
 				return new Response("Not found", { status: 404 });
@@ -498,11 +531,14 @@ describe("x402-http-middleware", () => {
 		});
 
 		test("should throw error if settle endpoint fails", async () => {
-			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
+			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString(
+				"base64url",
+			);
 
 			const originalFetch = globalThis.fetch;
-			globalThis.fetch = async (url: string | URL | Request) => {
-				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+			(globalThis as any).fetch = async (url: string | URL | Request) => {
+				const urlString =
+					typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 
 				if (urlString.endsWith("/verify")) {
 					return new Response(
@@ -586,15 +622,15 @@ describe("x402-http-middleware", () => {
 		});
 
 		test("should reject invalid tier", async () => {
-			await expect(
-				engine.requestHttpAccess("req-1", "invalid-tier", "default"),
-			).rejects.toThrow("Tier \"invalid-tier\" not found");
+			await expect(engine.requestHttpAccess("req-1", "invalid-tier", "default")).rejects.toThrow(
+				'Tier "invalid-tier" not found',
+			);
 		});
 
 		test("should reject nonexistent resource", async () => {
-			await expect(
-				engine.requestHttpAccess("req-1", "basic", "nonexistent"),
-			).rejects.toThrow("Resource \"nonexistent\" not found");
+			await expect(engine.requestHttpAccess("req-1", "basic", "nonexistent")).rejects.toThrow(
+				'Resource "nonexistent" not found',
+			);
 		});
 	});
 
@@ -705,7 +741,7 @@ describe("x402-http-middleware", () => {
 
 			await expect(
 				engine.processHttpPayment("req-1", "invalid-tier", "default", txHash),
-			).rejects.toThrow("Tier \"invalid-tier\" not found");
+			).rejects.toThrow('Tier "invalid-tier" not found');
 		});
 
 		test("should reject nonexistent resource", async () => {
@@ -713,7 +749,7 @@ describe("x402-http-middleware", () => {
 
 			await expect(
 				engine.processHttpPayment("req-1", "basic", "nonexistent", txHash),
-			).rejects.toThrow("Resource \"nonexistent\" not found");
+			).rejects.toThrow('Resource "nonexistent" not found');
 		});
 
 		test("should reject double-spend (same txHash twice)", async () => {
@@ -721,9 +757,9 @@ describe("x402-http-middleware", () => {
 
 			await engine.processHttpPayment("req-1", "basic", "default", txHash);
 
-			await expect(
-				engine.processHttpPayment("req-2", "basic", "default", txHash),
-			).rejects.toThrow("txHash has already been redeemed");
+			await expect(engine.processHttpPayment("req-2", "basic", "default", txHash)).rejects.toThrow(
+				"txHash has already been redeemed",
+			);
 		});
 
 		test("should mark txHash in seenTxStore", async () => {

@@ -6,6 +6,52 @@ import { CHAIN_CONFIGS } from "../types/config-shared.js";
 import { AgentGateError } from "../types/errors.js";
 import type { SellerConfig } from "../types/index.js";
 
+export type McpServerCard = {
+	version: string;
+	serverInfo: { name: string; title: string; version: string };
+	description: string;
+	transport: { type: string; endpoint: string };
+	capabilities: { tools: Record<string, never> };
+	tools: ReadonlyArray<{ name: string; description: string }>;
+};
+
+/**
+ * Build a `.well-known/mcp.json` server card (SEP-1649) from a SellerConfig.
+ * The `mcpEndpoint` should be the absolute or relative URL of the `/mcp` route.
+ */
+export function buildMcpServerCard(config: SellerConfig, mcpEndpoint = "/mcp"): McpServerCard {
+	return {
+		version: "1.0",
+		serverInfo: {
+			name: config.agentName,
+			title: config.agentName,
+			version: config.version ?? "1.0.0",
+		},
+		description: config.agentDescription ?? `MCP payment tools for ${config.agentName}`,
+		transport: {
+			type: "streamable-http",
+			endpoint: mcpEndpoint,
+		},
+		capabilities: { tools: {} },
+		tools: [
+			{
+				name: "get_pricing",
+				description: `Get available product tiers and pricing for ${config.agentName}`,
+			},
+			{
+				name: "request_access",
+				description:
+					"Request access to a resource — returns a payment challenge with USDC amount, destination wallet, and chain ID",
+			},
+			{
+				name: "submit_proof",
+				description:
+					"Submit an on-chain USDC payment proof (tx hash) and receive a JWT access token",
+			},
+		],
+	};
+}
+
 /**
  * Build an MCP server with 3 tools from an existing ChallengeEngine + SellerConfig.
  *

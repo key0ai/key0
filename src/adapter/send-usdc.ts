@@ -1,4 +1,4 @@
-import { http, createWalletClient, createPublicClient } from "viem";
+import { http, createPublicClient, createWalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
 import type { NetworkConfig } from "../types/index.js";

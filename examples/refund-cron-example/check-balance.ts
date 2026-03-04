@@ -1,5 +1,5 @@
-import { createPublicClient, http, formatUnits } from "viem";
-import { baseSepolia, base } from "viem/chains";
+import { http, createPublicClient, formatUnits } from "viem";
+import { base, baseSepolia } from "viem/chains";
 
 const NETWORK = process.env["AGENTGATE_NETWORK"] ?? "testnet";
 const WALLET = (process.env["AGENTGATE_WALLET_ADDRESS"] ?? "") as `0x${string}`;

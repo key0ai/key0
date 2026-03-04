@@ -8,12 +8,16 @@
  */
 
 import {
+	type IChallengeStore,
+	InMemoryChallengeStore,
+	InMemorySeenTxStore,
 	type IssueTokenParams,
 	type NetworkName,
 	type ProductTier,
 	RedisChallengeStore,
 	RedisSeenTxStore,
 	X402Adapter,
+	processRefunds,
 } from "@agentgate/sdk";
 import { agentGateRouter } from "@agentgate/sdk/express";
 import express from "express";
@@ -47,6 +51,9 @@ const CHALLENGE_TTL_SECONDS = Number(process.env.CHALLENGE_TTL_SECONDS ?? 900);
 const ISSUE_TOKEN_API_SECRET = process.env.ISSUE_TOKEN_API_SECRET;
 const REDIS_URL = process.env.REDIS_URL;
 const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
+const WALLET_PRIVATE_KEY = process.env.AGENTGATE_WALLET_PRIVATE_KEY as `0x${string}` | undefined;
+const REFUND_INTERVAL_MS = Number(process.env.REFUND_INTERVAL_MS ?? 60_000);
+const REFUND_MIN_AGE_MS = Number(process.env.REFUND_MIN_AGE_MS ?? 300_000);
 
 // ─── Products ──────────────────────────────────────────────────────────────
 
@@ -72,8 +79,8 @@ try {
 
 // ─── Storage ───────────────────────────────────────────────────────────────
 
-let store: RedisChallengeStore | undefined;
-let seenTxStore: RedisSeenTxStore | undefined;
+let store: IChallengeStore;
+let seenTxStore: RedisSeenTxStore | InMemorySeenTxStore;
 
 if (REDIS_URL) {
 	const Redis = (await import("ioredis")).default;
@@ -82,6 +89,8 @@ if (REDIS_URL) {
 	seenTxStore = new RedisSeenTxStore({ redis });
 	console.log("[agentgate] Using Redis storage:", REDIS_URL);
 } else {
+	store = new InMemoryChallengeStore();
+	seenTxStore = new InMemorySeenTxStore();
 	console.log("[agentgate] Using in-memory storage (set REDIS_URL for production)");
 }
 
@@ -173,5 +182,72 @@ app.listen(PORT, () => {
 	console.log(`  Wallet:     ${WALLET_ADDRESS}`);
 	console.log(`  Token API:  ${ISSUE_TOKEN_API}`);
 	console.log(`  Storage:    ${REDIS_URL ? "Redis" : "in-memory"}`);
-	console.log(`  Agent Card: ${AGENT_URL}/.well-known/agent.json\n`);
+	console.log(`  Agent Card: ${AGENT_URL}/.well-known/agent.json`);
+	console.log(`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`);
 });
+
+// ─── Refund cron ───────────────────────────────────────────────────────────
+
+async function runRefundCron(): Promise<void> {
+	if (!WALLET_PRIVATE_KEY) return;
+
+	const results = await processRefunds({
+		store,
+		walletPrivateKey: WALLET_PRIVATE_KEY,
+		network: NETWORK,
+		minAgeMs: REFUND_MIN_AGE_MS,
+	});
+
+	for (const result of results) {
+		if (result.success) {
+			console.log(`[refund] ✓ ${result.amount} → ${result.toAddress}  tx=${result.refundTxHash}`);
+		} else {
+			console.error(`[refund] ✗ challengeId=${result.challengeId}  error=${result.error}`);
+		}
+	}
+}
+
+// ─── Start ─────────────────────────────────────────────────────────────────
+
+if (REDIS_URL) {
+	// BullMQ: only one worker processes the cron across replicas
+	const { Queue, Worker } = await import("bullmq");
+	const parsed = new URL(REDIS_URL);
+	const bullConnection = {
+		host: parsed.hostname,
+		port: Number(parsed.port) || 6379,
+		maxRetriesPerRequest: null,
+	};
+
+	const refundQueue = new Queue("refund-cron", { connection: bullConnection });
+	const repeatables = await refundQueue.getRepeatableJobs();
+	for (const job of repeatables) {
+		await refundQueue.removeRepeatableByKey(job.key);
+	}
+	await refundQueue.add("process-refunds", {}, { repeat: { every: REFUND_INTERVAL_MS } });
+	await refundQueue.close();
+
+	const cronWorker = new Worker("refund-cron", () => runRefundCron(), {
+		connection: bullConnection,
+	});
+	cronWorker.on("error", (err) => console.error("[refund] Worker error:", err));
+
+	const shutdown = async () => {
+		await cronWorker.close();
+		process.exit(0);
+	};
+	process.on("SIGTERM", shutdown);
+	process.on("SIGINT", shutdown);
+} else {
+	// No Redis: single instance, plain setInterval
+	const cronTimer = setInterval(() => {
+		runRefundCron().catch((err) => console.error("[refund] Unexpected error:", err));
+	}, REFUND_INTERVAL_MS);
+
+	const shutdown = () => {
+		clearInterval(cronTimer);
+		process.exit(0);
+	};
+	process.on("SIGTERM", shutdown);
+	process.on("SIGINT", shutdown);
+}

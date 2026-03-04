@@ -11,3 +11,4 @@ bun.lock
 # Claude Code — personal/local files (team config in .claude/ is tracked)
 .claude/settings.local.json
 CLAUDE.local.md
+package-lock.json

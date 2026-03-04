@@ -36,11 +36,9 @@ describe("buildAgentCard", () => {
 		expect(card.description).toContain("A test agent");
 	});
 
-	test("description includes x402 payment protocol explanation", () => {
+	test("description includes agent description", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.description).toContain("x402 payment protocol");
-		expect(card.description).toContain("USDC");
-		expect(card.description).toContain("HTTP 402");
+		expect(card.description).toContain("A test agent");
 	});
 
 	test("returns card with correct url and version", () => {
@@ -79,10 +77,10 @@ describe("buildAgentCard", () => {
 		expect(card.skills[0]!.name).toBe("Single Photo");
 	});
 
-	test("skill description mentions x402 and PAYMENT-REQUIRED", () => {
+	test("skill description mentions x402 payment and 402 challenge", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.skills[0]!.description).toContain("x402 payment protocol");
-		expect(card.skills[0]!.description).toContain("PAYMENT-REQUIRED");
+		expect(card.skills[0]!.description).toContain("x402 payment");
+		expect(card.skills[0]!.description).toContain("402 payment challenge");
 	});
 
 	test("skill has pricing from its product tier", () => {

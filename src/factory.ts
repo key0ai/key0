@@ -68,6 +68,7 @@ export function createAgentGate(opts: AgentGateConfig): AgentGateInstance {
 		console.log(`  A2A:         ${basePath}/jsonrpc`);
 		if (mcpServer) {
 			console.log(`  MCP:         /mcp  (tools: get_pricing, request_access, submit_proof)`);
+			console.log(`  MCP Card:    /.well-known/mcp.json`);
 		}
 		console.log(`  Network:     ${opts.config.network}`);
 		console.log(`  Wallet:      ${opts.config.walletAddress}\n`);

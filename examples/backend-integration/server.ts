@@ -51,12 +51,12 @@ function verifyInternalAuth(
 // Verify resource exists
 app.post("/internal/verify-resource", verifyInternalAuth, (req, res) => {
 	const { resourceId, tierId } = req.body;
-	
+
 	// Accept "default" for any tier (general API access)
 	if (resourceId === "default") {
 		return res.json({ valid: true });
 	}
-	
+
 	// Validate specific resources
 	const resource = resources.get(resourceId);
 	const valid = resource !== undefined && resource.tierId === tierId;
