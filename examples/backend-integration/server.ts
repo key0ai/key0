@@ -64,7 +64,7 @@ app.post("/internal/verify-resource", verifyInternalAuth, (req, res) => {
 });
 
 // Issue token (only used if AgentGate tokenMode="remote")
-app.post("/internal/issue-token", verifyInternalAuth, (req, res) => {
+app.post("/internal/issue-token", (req, res) => {
 	const { requestId, resourceId, tierId, txHash } = req.body;
 
 	// Generate a custom API key (in production, use your actual key generation)
@@ -75,7 +75,7 @@ app.post("/internal/issue-token", verifyInternalAuth, (req, res) => {
 	apiKeys.set(apiKey, { expiresAt, resourceId, tierId });
 
 	console.log(`[Backend] Issued API key for resource ${resourceId}, tier ${tierId}`);
-
+	
 	res.json({
 		token: apiKey,
 		expiresAt: expiresAt.toISOString(),
