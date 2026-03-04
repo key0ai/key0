@@ -1,5 +1,5 @@
 name: "\U0001F41B Bug Report"
-description: Report a bug or regression in the Key2A SDK
+description: Report a bug or regression in the AgentGate SDK
 title: "bug: "
 labels: ["bug", "needs triage"]
 type: Bug
@@ -10,9 +10,9 @@ body:
         Thanks for taking the time to report a bug! Please fill out this form as completely as possible.
 
         Before submitting:
-        - **Search [existing issues](https://github.com/Riklr/key2a/issues)** to avoid duplicates. If one exists, upvote it instead.
+        - **Search [existing issues](https://github.com/Riklr/api-agentic-commerce/issues)** to avoid duplicates. If one exists, upvote it instead.
         - Bugs without a minimal reproduction will be closed. Always test on **testnet (Base Sepolia)** first.
-        - For questions and general help, use [GitHub Discussions](https://github.com/Riklr/key2a/discussions) or Discord.
+        - For questions and general help, use [GitHub Discussions](https://github.com/Riklr/api-agentic-commerce/discussions) or Discord.
 
   - type: checkboxes
     id: preflight
@@ -21,9 +21,9 @@ body:
       options:
         - label: I searched existing issues and this is not a duplicate.
           required: true
-        - label: I have read the [Contributing Guidelines](https://github.com/Riklr/key2a/blob/master/CONTRIBUTING.md).
+        - label: I have read the [Contributing Guidelines](https://github.com/Riklr/api-agentic-commerce/blob/master/CONTRIBUTING.md).
           required: true
-        - label: I agree to the [Code of Conduct](https://github.com/Riklr/key2a/blob/master/CODE_OF_CONDUCT.md).
+        - label: I agree to the [Code of Conduct](https://github.com/Riklr/api-agentic-commerce/blob/master/CODE_OF_CONDUCT.md).
           required: true
         - label: I tested on **testnet (Base Sepolia)** before reporting.
           required: true
@@ -46,7 +46,7 @@ body:
       description: |
         Link to a **public** GitHub repository or a minimal code snippet that reproduces the issue.
         Issues without a reproduction are very likely to be closed.
-      placeholder: "https://github.com/your-user/key2a-repro"
+      placeholder: "https://github.com/your-user/api-agentic-commerce-repro"
     validations:
       required: true
 
@@ -72,11 +72,11 @@ body:
         # Run and paste output:
         # bun --version
         # node --version
-        # cat package.json | grep -E '"@agentgate|key2a|viem|bun"'
+        # cat package.json | grep -E '"@agentgate|api-agentic-commerce|viem|bun"'
 
         Bun version:
         Node version:
-        Key2A version:
+        AgentGate version:
         viem version:
         OS:
     validations:
@@ -86,7 +86,7 @@ body:
     id: framework
     attributes:
       label: Framework
-      description: Which framework are you using Key2A with?
+      description: Which framework are you using AgentGate with?
       options:
         - Express
         - Hono
@@ -123,7 +123,7 @@ body:
   - type: textarea
     id: config
     attributes:
-      label: Key2A configuration (sanitized)
+      label: AgentGate configuration (sanitized)
       description: Paste your `AgentGate` / `createAgentGate` config. Remove any private keys, secrets, or wallet addresses.
       render: typescript
       placeholder: |
