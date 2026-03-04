@@ -97,9 +97,9 @@ Build from source: `docker build -t riklr/agentgate .`
 | `PROVIDER_URL` | | `https://agentgate.dev` | Provider URL |
 | `PRODUCTS` | | `[{"tierId":"basic","label":"Basic","amount":"$0.10","resourceType":"api","accessDurationSeconds":3600}]` | JSON array of product tiers |
 | `CHALLENGE_TTL_SECONDS` | | `900` | Challenge expiry in seconds |
-| `BASE_PATH` | | `/a2a` | A2A endpoint mount path |
+| `BASE_PATH` | ✅ | — | A2A endpoint mount path (e.g. `/a2a`) |
 | `ISSUE_TOKEN_API_SECRET` | | — | Adds `Authorization: Bearer` to token API requests |
-| `REDIS_URL` | | — | Redis URL (required for multi-instance) |
+| `REDIS_URL` | ✅ | — | Redis URL for persistent storage |
 | `GAS_WALLET_PRIVATE_KEY` | | — | Private key for self-contained settlement |
 | `AGENTGATE_WALLET_PRIVATE_KEY` | | — | Private key of `AGENTGATE_WALLET_ADDRESS` — enables automatic refunds |
 | `REFUND_INTERVAL_MS` | | `60000` | How often the refund cron scans for eligible records |
