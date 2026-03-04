@@ -10,7 +10,8 @@ This document explains every automated workflow and background service in this r
 |---|---|---|
 | `ci.yml` | Push / PR to `main` | Gate — must pass before anything merges or publishes |
 | `canary.yml` | After CI passes on `main` | Publish a pre-release to npm for early testing |
-| `release.yml` | Push of a `v*` tag | Publish the stable release to npm |
+| `release.yml` | Push of a `v*` tag | Publish the stable release to npm + Docker |
+| `changeset-check.yml` | PR to `main` | Remind contributors to include a changeset file |
 | `codeql.yml` | Push / PR to `main` + weekly | Static security analysis |
 | `pr-title.yml` | PR opened / edited | Enforce conventional commit format on PR titles |
 | `stale.yml` | Daily schedule | Auto-close inactive issues and PRs |
@@ -118,6 +119,16 @@ Runs after the npm publish job succeeds. Builds and pushes a multi-arch Docker i
 - `riklr/agentgate:latest`
 
 Uses GitHub Actions cache (`type=gha`) for faster layer rebuilds.
+
+---
+
+## `changeset-check.yml` — Changeset Reminder
+
+**Triggers:** every pull request targeting `main`.
+
+Comments on a PR if no changeset file (`.changeset/*.md`) was included. This is a reminder only — it does not block the merge, version the package, or publish anything. Releases remain fully manual.
+
+See `.changeset/README.md` for the full release workflow.
 
 ---
 
