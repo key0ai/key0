@@ -510,7 +510,7 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 
 				// x402 v2: Set PAYMENT-REQUIRED header with base64-encoded requirements
 				const base64Requirements = Buffer.from(JSON.stringify(requirements)).toString('base64');
-				res.setHeader('PAYMENT-REQUIRED', base64Requirements);
+				res.setHeader(PAYMENT_REQUIRED_HEADER, base64Requirements);
 				console.log("[x402-http-middleware] Set PAYMENT-REQUIRED header");
 
 				// Return HTTP 402 with payment requirements + challengeId
@@ -575,7 +575,7 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 					...(payer && { payer }),
 				};
 				const base64Settlement = Buffer.from(JSON.stringify(settlementResponse)).toString('base64');
-				res.setHeader('PAYMENT-RESPONSE', base64Settlement);
+				res.setHeader(PAYMENT_RESPONSE_HEADER, base64Settlement);
 				console.log("[x402-http-middleware] Set PAYMENT-RESPONSE header");
 
 				// Return HTTP 200 with AccessGrant
