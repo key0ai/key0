@@ -17,6 +17,8 @@ All challenge state changes MUST use `IChallengeStore.transition(id, fromState, 
 
 **The rule**: `transition()` only writes if the current state matches `fromState`. If another caller already changed the state, this call returns `false` and must abort.
 
+The full happy-path state machine is: `PENDING → PAID → DELIVERED`. DELIVERED is the terminal success state — it is set after `onIssueToken` succeeds and the `accessGrant` is stored on the record. EXPIRED and CANCELLED are terminal failure states. All transitions go through `transition()`.
+
 Forbidden patterns:
 - Calling `store.set()`, `store.update()`, or direct Map/Redis writes to change `state`
 - Reading state and writing it back without going through `transition()`
@@ -30,9 +32,9 @@ Forbidden patterns:
 **Why**: Without this, the same on-chain transaction can be submitted as proof for two different challenges. One real payment → two different resources unlocked.
 
 Three things must all be present:
-1. `markUsed()` is called before issuing the token
-2. A `false` return value aborts the flow (double-spend attempt)
-3. **Rollback guard**: if `markUsed()` succeeds but the subsequent `transition()` to PAID fails, `unmarkUsed()` (or equivalent) must restore the txHash — otherwise the honest client can never retry with the same tx
+1. `transition(PENDING → PAID)` succeeds before `markUsed()` is called
+2. `markUsed()` is called before issuing the token; a `false` return aborts the flow
+3. **Rollback guard**: if `markUsed()` returns `false`, the state MUST be rolled back via `transition(PAID → PENDING)` — otherwise the challenge is stuck in PAID with no token issued and the honest client can never retry with the same tx
 
 ---
 
@@ -76,7 +78,7 @@ Forbidden:
 - Called with `.catch(noop)` and not awaited in the main flow
 - If awaited and the webhook is slow/down: client times out, retries, risks double-processing
 
-**`onIssueToken`** — MUST have errors caught:
+**`onIssueToken`** — errors leave the challenge stuck in PAID:
 - Its return value (the token) is required, so it is awaited — this is correct
-- But if it throws uncaught: payment is captured (challenge = PAID), no token issued, client paid for nothing
-- Errors must be caught and surfaced as a recoverable failure, not a crash
+- If it throws, the challenge stays in PAID (never reaches DELIVERED), no token is issued, client paid for nothing
+- This is a known recoverable failure state — a refund/recovery cron can detect PAID records with no `accessGrant` and act on them
