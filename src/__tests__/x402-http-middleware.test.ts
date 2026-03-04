@@ -128,7 +128,7 @@ describe("x402-http-middleware", () => {
 
 			// EIP-712 domain parameters in extra field
 			expect(requirements.accepts[0]?.extra).toBeDefined();
-			expect(requirements.accepts[0]?.extra?.["name"]).toBe("USD Coin");
+			expect(requirements.accepts[0]?.extra?.["name"]).toBe("USDC");
 			expect(requirements.accepts[0]?.extra?.["version"]).toBe("2");
 			expect(requirements.accepts[0]?.extra?.["description"]).toBe("Basic Access — $0.99 USDC");
 		});
