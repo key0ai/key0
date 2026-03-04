@@ -17,7 +17,7 @@ const WALLET = (process.env["AGENTGATE_WALLET_ADDRESS"] ??
 	"0x0000000000000000000000000000000000000000") as `0x${string}`;
 const SECRET =
 	process.env["AGENTGATE_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
-const SELLER_PRIVATE_KEY = process.env["AGENTGATE_SELLER_PRIVATE_KEY"] as `0x${string}` | undefined;
+const WALLET_PRIVATE_KEY = process.env["AGENTGATE_WALLET_PRIVATE_KEY"] as `0x${string}` | undefined;
 const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
 
 const REFUND_INTERVAL_MS = Number(process.env["REFUND_INTERVAL_MS"] ?? 15_000);
@@ -113,14 +113,14 @@ app.get("/api/items/:id", (req, res) => {
 // ─── Refund cron ──────────────────────────────────────────────────────────────
 
 async function runRefundCron(): Promise<void> {
-	if (!SELLER_PRIVATE_KEY) {
-		console.log("[Cron] Skipped — AGENTGATE_SELLER_PRIVATE_KEY not set.");
+	if (!WALLET_PRIVATE_KEY) {
+		console.log("[Cron] Skipped — AGENTGATE_WALLET_PRIVATE_KEY not set.");
 		return;
 	}
 
 	const results = await processRefunds({
 		store,
-		sellerPrivateKey: SELLER_PRIVATE_KEY,
+		walletPrivateKey: WALLET_PRIVATE_KEY,
 		network: NETWORK,
 		minAgeMs: REFUND_MIN_AGE_MS,
 	});
@@ -178,7 +178,7 @@ async function start() {
 		console.log(`  Interval     : ${REFUND_INTERVAL_MS / 1000}s`);
 		console.log(`  Grace period : ${REFUND_MIN_AGE_MS / 1000}s`);
 		console.log(
-			`  Status       : ${SELLER_PRIVATE_KEY ? "ACTIVE" : "DISABLED (set AGENTGATE_SELLER_PRIVATE_KEY)"}\n`,
+			`  Status       : ${WALLET_PRIVATE_KEY ? "ACTIVE" : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`,
 		);
 	});
 }

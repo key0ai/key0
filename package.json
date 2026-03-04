@@ -20,6 +20,7 @@
 	},
 	"dependencies": {
 		"@a2a-js/sdk": "^0.3.0",
+		"bullmq": "^5.0.0",
 		"@coinbase/cdp-sdk": "^1.44.1",
 		"@x402/evm": "^2.5.0",
 		"axios": "^1.13.6",

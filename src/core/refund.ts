@@ -4,8 +4,8 @@ import type { IChallengeStore, NetworkName } from "../types/index.js";
 
 export type RefundConfig = {
 	readonly store: IChallengeStore;
-	/** Seller's wallet private key — used to send USDC back to payers. */
-	readonly sellerPrivateKey: `0x${string}`;
+	/** Wallet private key — used to send USDC back to payers. */
+	readonly walletPrivateKey: `0x${string}`;
 	readonly network: NetworkName;
 	/** Grace period before a PAID record is eligible for refund. Default: 300_000 (5 mins). */
 	readonly minAgeMs?: number;
@@ -30,7 +30,7 @@ export type RefundResult = {
  * broadcasting — concurrent cron runs will not double-refund.
  */
 export async function processRefunds(config: RefundConfig): Promise<RefundResult[]> {
-	const { store, sellerPrivateKey, network, minAgeMs = 300_000 } = config;
+	const { store, walletPrivateKey, network, minAgeMs = 300_000 } = config;
 	const networkConfig = CHAIN_CONFIGS[network];
 	const results: RefundResult[] = [];
 
@@ -56,7 +56,7 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 			const refundTxHash = await sendUsdc({
 				to: fromAddress,
 				amountRaw: record.amountRaw,
-				privateKey: sellerPrivateKey,
+				privateKey: walletPrivateKey,
 				networkConfig,
 			});
 

@@ -86,7 +86,6 @@ Optional callbacks: `onPaymentReceived`, `onIssueToken` (override default JWT ge
 ## Related Documentation
 
 - `SPEC.md` — Requirements and security invariants
-- `TECH.md` — Storage layer design, Redis Lua scripts, on-chain verification sequence
 
 ## Available Agents
 

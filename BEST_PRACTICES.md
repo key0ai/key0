@@ -32,7 +32,7 @@ CLAUDE.md                       # Project context loaded into every Claude sessi
 - All common commands (`bun test`, `bun run typecheck`, etc.)
 - Code style rules (Biome: tabs, 100-char lines, double quotes)
 - Key design invariants (e.g. always use `transition()` for state changes)
-- Pointers to related docs (`SPEC.md`, `TECH.md`)
+- Pointers to related docs (`SPEC.md`)
 - Discovery section listing available agents
 
 **Rule of thumb**: Keep it under ~150 lines. It's a briefing, not a manual.

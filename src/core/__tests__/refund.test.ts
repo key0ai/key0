@@ -25,7 +25,7 @@ beforeEach(() => {
 
 const TX_HASH = `0x${"ab".repeat(32)}` as `0x${string}`;
 const PAYER = `0x${"11".repeat(20)}` as `0x${string}`;
-const SELLER_KEY = `0x${"ff".repeat(32)}` as `0x${string}`;
+const WALLET_KEY = `0x${"ff".repeat(32)}` as `0x${string}`;
 const DESTINATION = `0x${"22".repeat(20)}` as `0x${string}`;
 
 /** Returns a ChallengeRecord in PAID state that is old enough to be eligible for refund. */
@@ -60,7 +60,7 @@ describe("processRefunds", () => {
 
 		const results = await processRefunds({
 			store,
-			sellerPrivateKey: SELLER_KEY,
+			walletPrivateKey: WALLET_KEY,
 			network: "testnet",
 		});
 
@@ -75,7 +75,7 @@ describe("processRefunds", () => {
 
 		const results = await processRefunds({
 			store,
-			sellerPrivateKey: SELLER_KEY,
+			walletPrivateKey: WALLET_KEY,
 			network: "testnet",
 			minAgeMs: 300_000,
 		});
@@ -92,7 +92,7 @@ describe("processRefunds", () => {
 
 		const results = await processRefunds({
 			store,
-			sellerPrivateKey: SELLER_KEY,
+			walletPrivateKey: WALLET_KEY,
 			network: "testnet",
 		});
 
@@ -112,7 +112,7 @@ describe("processRefunds", () => {
 
 		await processRefunds({
 			store,
-			sellerPrivateKey: SELLER_KEY,
+			walletPrivateKey: WALLET_KEY,
 			network: "testnet",
 		});
 
@@ -133,7 +133,7 @@ describe("processRefunds", () => {
 
 		const results = await processRefunds({
 			store,
-			sellerPrivateKey: SELLER_KEY,
+			walletPrivateKey: WALLET_KEY,
 			network: "testnet",
 		});
 
@@ -154,7 +154,7 @@ describe("processRefunds", () => {
 
 		const results = await processRefunds({
 			store,
-			sellerPrivateKey: SELLER_KEY,
+			walletPrivateKey: WALLET_KEY,
 			network: "testnet",
 		});
 
@@ -172,7 +172,7 @@ describe("processRefunds", () => {
 
 		const results = await processRefunds({
 			store,
-			sellerPrivateKey: SELLER_KEY,
+			walletPrivateKey: WALLET_KEY,
 			network: "testnet",
 		});
 
@@ -201,7 +201,7 @@ describe("processRefunds", () => {
 
 		const results = await processRefunds({
 			store,
-			sellerPrivateKey: SELLER_KEY,
+			walletPrivateKey: WALLET_KEY,
 			network: "testnet",
 		});
 
@@ -229,7 +229,7 @@ describe("processRefunds", () => {
 
 		const results = await processRefunds({
 			store,
-			sellerPrivateKey: SELLER_KEY,
+			walletPrivateKey: WALLET_KEY,
 			network: "testnet",
 		});
 
@@ -247,7 +247,7 @@ describe("processRefunds", () => {
 
 		const results = await processRefunds({
 			store,
-			sellerPrivateKey: SELLER_KEY,
+			walletPrivateKey: WALLET_KEY,
 			network: "testnet",
 			minAgeMs: 5 * 60 * 1000, // 5-min grace period
 		});

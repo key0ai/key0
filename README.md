@@ -29,14 +29,17 @@ Run AgentGate as a pre-built Docker container. No code required — configure en
 │              │◀───────│  agent card + pricing      │        │                  │
 │              │        │                           │        │                  │
 │  request     │───────▶│  /a2a/access              │        │                  │
+│              │        │  [store: PENDING]         │        │                  │
 │              │◀───────│  402 + payment terms       │        │                  │
 │              │        │                           │        │                  │
 │  [pays USDC on Base]  │                           │        │                  │
 │              │        │                           │        │                  │
 │  retry +sig  │───────▶│  settle on-chain          │        │                  │
 │              │        │  verify payment           │        │                  │
+│              │        │  [PENDING → PAID]         │        │                  │
 │              │        │  POST /issue-token ───────│───────▶│  issue-token     │
 │              │        │                    ◀──────│────────│  {token, ...}    │
+│              │        │  [PAID → DELIVERED]       │        │                  │
 │              │◀───────│  AccessGrant              │        │                  │
 │              │        │  (token passed through)   │        │                  │
 └──────────────┘        └───────────────────────────┘        └──────────────────┘
@@ -83,21 +86,24 @@ Build from source: `docker build -t riklr/agentgate .`
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `AGENTGATE_WALLET_ADDRESS` | ✅ | — | USDC-receiving wallet |
-| `ISSUE_TOKEN_API` | ✅ | — | URL to POST to after payment |
-| `AGENTGATE_NETWORK` | | `testnet` | `mainnet` or `testnet` |
-| `PORT` | | `3000` | HTTP listen port |
-| `AGENT_NAME` | | `AgentGate Server` | Display name in agent card |
-| `AGENT_DESCRIPTION` | | `Payment-gated A2A endpoint` | Agent card description |
-| `AGENT_URL` | | `http://localhost:PORT` | Public URL of this server |
-| `PROVIDER_NAME` | | `AgentGate` | Provider display name |
-| `PROVIDER_URL` | | `https://agentgate.dev` | Provider URL |
-| `PRODUCTS` | | `[{"tierId":"basic","label":"Basic","amount":"$0.10","resourceType":"api","accessDurationSeconds":3600}]` | JSON array of product tiers |
-| `CHALLENGE_TTL_SECONDS` | | `900` | Challenge expiry in seconds |
-| `BASE_PATH` | | `/a2a` | A2A endpoint mount path |
-| `ISSUE_TOKEN_API_SECRET` | | — | Adds `Authorization: Bearer` to token API requests |
-| `REDIS_URL` | | — | Redis URL (required for multi-instance) |
-| `GAS_WALLET_PRIVATE_KEY` | | — | Private key for self-contained settlement |
+| `AGENTGATE_WALLET_ADDRESS` | ✅ | — | Your wallet address (`0x…`) that receives USDC payments from agents |
+| `ISSUE_TOKEN_API` | ✅ | — | Your endpoint that AgentGate POSTs to after payment is verified to issue access tokens |
+| `AGENTGATE_NETWORK` | | `testnet` | Blockchain network — `mainnet` for Base, `testnet` for Base Sepolia |
+| `PORT` | | `3000` | Port the HTTP server listens on |
+| `AGENT_NAME` | | `AgentGate Server` | Name of your agent as shown in `/.well-known/agent.json` |
+| `AGENT_DESCRIPTION` | | `Payment-gated A2A endpoint` | Short description of your agent shown in the agent card |
+| `AGENT_URL` | | `http://localhost:PORT` | Publicly reachable URL of this server — used in the agent card and resource endpoint URLs |
+| `PROVIDER_NAME` | | `AgentGate` | Your organization name shown in the agent card `provider` field |
+| `PROVIDER_URL` | | `https://agentgate.dev` | Your organization URL shown in the agent card `provider` field |
+| `PRODUCTS` | | `[{"tierId":"basic","label":"Basic","amount":"$0.10","resourceType":"api","accessDurationSeconds":3600}]` | JSON array of pricing tiers — each with `tierId`, `label`, `amount`, `resourceType`, and optional `accessDurationSeconds` |
+| `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
+| `BASE_PATH` | ✅ | — | URL path prefix for A2A endpoints (e.g. `/a2a` mounts `/a2a/access` and `/a2a/.well-known/agent.json`) |
+| `ISSUE_TOKEN_API_SECRET` | | — | If set, sent as `Authorization: Bearer <secret>` on every request to `ISSUE_TOKEN_API` |
+| `REDIS_URL` | ✅ | — | Redis connection URL — required for multi-replica deployments and the BullMQ refund cron |
+| `GAS_WALLET_PRIVATE_KEY` | | — | Private key of a wallet holding ETH on Base — enables self-contained settlement without a CDP facilitator |
+| `AGENTGATE_WALLET_PRIVATE_KEY` | | — | Private key of `AGENTGATE_WALLET_ADDRESS` — required for the refund cron to send USDC back to payers |
+| `REFUND_INTERVAL_MS` | | `60000` | How often the refund cron runs (ms) — only active when `AGENTGATE_WALLET_PRIVATE_KEY` is set |
+| `REFUND_MIN_AGE_MS` | | `300000` | Minimum age (ms) a stuck `PAID` record must reach before the refund cron picks it up |
 
 See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 
@@ -133,6 +139,40 @@ Your endpoint can return any credential shape — the response is passed through
 
 If the response has a `token` string field it is used directly. Otherwise the full response body is JSON-serialized into `token` with `tokenType: "custom"`, so the client can parse it.
 
+### Automatic Refunds (Standalone)
+
+When `AGENTGATE_WALLET_PRIVATE_KEY` is set, the Docker server runs a BullMQ refund cron automatically — no extra setup needed. It scans for `PAID` challenges that were never delivered (e.g. because `ISSUE_TOKEN_API` returned an error) and sends USDC back to the payer.
+
+```
+┌──────────────┐   ┌───────────────────────────┐   ┌──────────────────┐
+│ Client Agent │   │    AgentGate (Docker)     │   │   Blockchain     │
+│              │   │                           │   │                  │
+│  pays USDC   │──▶│  verify on-chain          │──▶│                  │
+│              │   │  PENDING ──────────────▶ PAID │◀─ Transfer event │
+│              │   │                           │   │                  │
+│              │   │  POST ISSUE_TOKEN_API ────│──▶│  500 / timeout   │
+│              │◀──│  (token issuance fails)   │   │                  │
+│              │   │  record stays PAID        │   │                  │
+│              │   │                           │   │                  │
+│              │   │  ┌─ BullMQ cron (Redis) ─┐│   │                  │
+│              │   │  │ every REFUND_INTERVAL  ││   │                  │
+│              │   │  │ findPendingForRefund() ││   │                  │
+│              │   │  │ PAID → REFUND_PENDING  ││   │                  │
+│              │   │  │ sendUsdc() ────────────┼┼──▶│  USDC transfer   │
+│  [refunded]  │   │  │ REFUND_PENDING→REFUNDED││◀──│  txHash          │
+│              │   │  └───────────────────────┘│   │                  │
+└──────────────┘   └───────────────────────────┘   └──────────────────┘
+```
+
+```bash
+# docker/.env — add to enable refunds
+AGENTGATE_WALLET_PRIVATE_KEY=0xYourWalletPrivateKeyHere
+REFUND_INTERVAL_MS=60000   # scan every 60s
+REFUND_MIN_AGE_MS=300000   # refund after 5-min grace period
+```
+
+> Redis is required for refund cron when running multiple replicas — BullMQ ensures only one worker broadcasts each refund transaction.
+
 ---
 
 ## Embedded Mode
@@ -146,10 +186,14 @@ Install the SDK and add AgentGate as middleware inside your existing application
 │  discover    │───────▶│  │           AgentGate Middleware              │  │
 │              │◀───────│  │  /.well-known/agent.json  (auto-generated)  │  │
 │              │        │  │  /a2a/access  (x402 payment + settlement)   │  │
-│  request     │───────▶│  │                                             │  │
-│              │◀───────│  │  onVerifyResource()  ──▶  your DB/logic     │  │
-│  [pays USDC on Base]  │  │  onIssueToken()      ──▶  your JWT/key gen  │  │
-│  retry +sig  │───────▶│  │                                             │  │
+│  request     │───────▶│  │  onVerifyResource()  ──▶  your DB/logic     │  │
+│              │        │  │  [store: PENDING]                          │  │
+│              │◀───────│  │  402 + payment terms                        │  │
+│  [pays USDC on Base]  │  │                                             │  │
+│  retry +sig  │───────▶│  │  settle on-chain                           │  │
+│              │        │  │  [PENDING → PAID]                          │  │
+│              │        │  │  onIssueToken()      ──▶  your JWT/key gen  │  │
+│              │        │  │  [PAID → DELIVERED]                        │  │
 │              │◀───────│  │  AccessGrant (JWT or custom credential)     │  │
 │              │        │  └────────────────────────────────────────────┘  │
 │  /api/res    │───────▶│                                                   │
@@ -304,6 +348,56 @@ fastify.listen({ port: 3000 });
 | `tierId` | `string` | Purchased tier |
 | `txHash` | `0x${string}` | On-chain transaction hash |
 
+### Refund Cron (Embedded)
+
+When `onIssueToken` throws or the server crashes after payment but before delivery, the `ChallengeRecord` stays in `PAID` state. Wire up `processRefunds` on a schedule to detect these and send USDC back to the payer.
+
+```
+┌──────────────┐   ┌──────────────────────────────────────────────────┐   ┌──────────┐
+│ Client Agent │   │                 Your Application                  │   │Blockchain│
+│              │   │  ┌────────────────────────────────────────────┐  │   │          │
+│  pays USDC   │──▶│  │  AgentGate Middleware                       │  │──▶│          │
+│              │   │  │  verify on-chain                            │  │◀──│          │
+│              │   │  │  PENDING ──────────────────────────▶ PAID   │  │   │          │
+│              │   │  │  onIssueToken() throws                      │  │   │          │
+│              │◀──│  │  record stays PAID                          │  │   │          │
+│              │   │  └────────────────────────────────────────────┘  │   │          │
+│              │   │                                                   │   │          │
+│              │   │  ┌─ Your refund cron (BullMQ / setInterval) ───┐  │   │          │
+│              │   │  │ processRefunds({ store, walletPrivateKey })  │  │   │          │
+│              │   │  │ PAID → REFUND_PENDING                        │  │   │          │
+│              │   │  │ sendUsdc() ─────────────────────────────────┼──┼──▶│ USDC tx  │
+│  [refunded]  │   │  │ REFUND_PENDING → REFUNDED                   │  │◀──│ txHash   │
+│              │   │  └─────────────────────────────────────────────┘  │   │          │
+└──────────────┘   └──────────────────────────────────────────────────┘   └──────────┘
+```
+
+```typescript
+import { Queue, Worker } from "bullmq";
+import { processRefunds } from "@agentgate/sdk";
+
+// Uses the same `store` passed to agentGateRouter
+const worker = new Worker("refund-cron", async () => {
+  const results = await processRefunds({
+    store,
+    walletPrivateKey: process.env.AGENTGATE_WALLET_PRIVATE_KEY as `0x${string}`,
+    network: "testnet",
+    minAgeMs: 5 * 60 * 1000, // 5-min grace period
+  });
+
+  for (const r of results) {
+    if (r.success) console.log(`Refunded ${r.amount} → ${r.toAddress}  tx=${r.refundTxHash}`);
+    else console.error(`Refund failed ${r.challengeId}: ${r.error}`);
+  }
+}, { connection: redis });
+
+const queue = new Queue("refund-cron", { connection: redis });
+await queue.add("process", {}, { repeat: { every: 60_000 } });
+```
+
+> The `walletPrivateKey` must correspond to `walletAddress` — the wallet that received the USDC payments.
+> Without Redis, a plain `setInterval` works for single-instance deployments (the atomic `PAID → REFUND_PENDING` CAS transition prevents double-refunds even with multiple overlapping ticks).
+
 ### Environment Variables
 
 ```bash
@@ -317,7 +411,7 @@ CDP_API_KEY_ID=your-cdp-api-key-id
 CDP_API_KEY_SECRET=your-cdp-api-key-secret
 
 # Optional: self-contained settlement without a facilitator
-AGENTGATE_GAS_WALLET_KEY=0xYourPrivateKey
+GAS_WALLET_PRIVATE_KEY=0xYourPrivateKey
 ```
 
 ## How It Works
@@ -392,7 +486,7 @@ Client                                Seller Server
 2. **Payment + Settlement** — Client sends the same request with a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles the payment on-chain, then the server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`
 3. **Access** — Client uses the token as a Bearer header to access the protected resource
 
-If `onIssueToken` fails in either flow, the record stays `PAID` and the [refund cron](#refund-flow) picks it up automatically.
+If `onIssueToken` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
 
 ## Storage
 
@@ -468,82 +562,6 @@ CDP_API_KEY_SECRET=your-key-secret
 
 The gas wallet must hold ETH on Base to pay transaction fees.
 
-## Refund Flow
-
-Every payment — whether via the A2A protocol or the HTTP x402 flow — is tracked through a single `ChallengeRecord` with the following lifecycle:
-
-```
-PENDING ─── payment verified ──────────────► PAID
-PENDING ─── challenge TTL exceeded ────────► EXPIRED
-PENDING ─── seller cancels ────────────────► CANCELLED
-
-PAID ────── onIssueToken() succeeds ───────► DELIVERED       ← happy path
-PAID ────── cron picks up after grace ─────► REFUND_PENDING
-REFUND_PENDING ── refund succeeds ─────────► REFUNDED
-REFUND_PENDING ── refund fails ────────────► REFUND_FAILED   ← needs operator
-```
-
-In the happy path, `PAID` lasts milliseconds — the SDK transitions to `DELIVERED` immediately after `onIssueToken` succeeds. The refund cron is a safety net for when `onIssueToken` throws or the server crashes between payment and delivery.
-
-### How It Works
-
-1. Payment is verified (on-chain for A2A, via gas wallet/facilitator for HTTP x402)
-2. Record transitions `PENDING → PAID` with `txHash`, `paidAt`, and `fromAddress` (buyer's wallet)
-3. SDK calls `onIssueToken` to generate the access token
-4. On success: `PAID → DELIVERED` with `accessGrant` and `deliveredAt`
-5. On failure: record stays `PAID` — the refund cron finds it after the grace period
-
-The `fromAddress` is captured automatically: from the on-chain `Transfer` event in A2A, or from the settlement `payer` field in HTTP x402.
-
-### Wiring Up the Refund Cron
-
-Use `processRefunds` with a job scheduler like BullMQ to periodically scan for stuck `PAID` records and refund them:
-
-```typescript
-import { Queue, Worker } from "bullmq";
-import { processRefunds, RedisChallengeStore } from "@agentgate/sdk";
-
-const store = new RedisChallengeStore({ redis });
-
-// Worker processes refund jobs
-new Worker("refund-cron", async () => {
-  const results = await processRefunds({
-    store,
-    sellerPrivateKey: process.env.AGENTGATE_SELLER_PRIVATE_KEY as `0x${string}`,
-    network: "testnet",
-    minAgeMs: 5 * 60 * 1000, // 5-minute grace period
-  });
-
-  for (const r of results) {
-    if (r.success) {
-      console.log(`Refunded ${r.amount} to ${r.toAddress} — tx: ${r.refundTxHash}`);
-    } else {
-      console.error(`Refund failed for ${r.challengeId}: ${r.error}`);
-    }
-  }
-}, { connection: redis });
-
-// Schedule to run every 60 seconds
-const queue = new Queue("refund-cron", { connection: redis });
-await queue.add("process", {}, { repeat: { every: 60_000 } });
-```
-
-### processRefunds Config
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `store` | `IChallengeStore` | required | The same store passed to `createAgentGate` |
-| `sellerPrivateKey` | `0x${string}` | required | Seller wallet used to send USDC refunds |
-| `network` | `"mainnet" \| "testnet"` | required | Determines USDC contract and RPC endpoint |
-| `minAgeMs` | `number` | `300_000` (5 min) | Grace period before a `PAID` record is eligible for refund |
-| `sendUsdc` | `function` | built-in | Override for testing or custom routing |
-
-### Double-Refund Prevention
-
-The `PAID → REFUND_PENDING` transition is atomic in both store implementations. In Redis, a Lua script ensures only one worker can claim a record — if two cron instances fire simultaneously, only one USDC transfer is broadcast. See [Refund_flow.md](./docs/Refund_flow.md) for full details on the state machine, store TTLs, and failure handling.
-
----
-
 ## Networks
 
 | Network | Chain | Chain ID | USDC Contract | EIP-712 Domain Name |
@@ -597,30 +615,7 @@ bun test             # Run all tests
 bun run build        # Compile to ./dist
 ```
 
-### Project Structure
-
-```
-src/
-  index.ts             # Main entry point (exports everything)
-  factory.ts           # createAgentGate() — wires all layers together
-  executor.ts          # AgentGateExecutor — A2A protocol handler
-  middleware.ts        # validateToken() — framework-agnostic token validation
-  types/               # Protocol types and interfaces
-  core/                # Challenge engine, access tokens, storage, agent card
-  adapter/             # X402Adapter — on-chain USDC verification via viem
-  integrations/        # Express, Hono, Fastify adapters + x402 HTTP middleware
-  helpers/             # Auth strategies, remote verifier/issuer helpers
-  validator/           # Standalone validateAgentGateToken (no full SDK needed)
-docker/
-  server.ts            # Standalone server entry point
-  docker-compose.yml   # Compose setup with Redis
-  .env.example         # All environment variables documented
-```
-
----
-
 ## Documentation
 
-- [TECH.md](./TECH.md) — Technical architecture reference
 - [SPEC.md](./SPEC.md) — Protocol specification
 - [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling
