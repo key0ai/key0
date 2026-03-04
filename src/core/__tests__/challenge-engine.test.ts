@@ -12,7 +12,6 @@ import { InMemoryChallengeStore, InMemorySeenTxStore } from "../storage/memory.j
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
 
 function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
