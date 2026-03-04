@@ -31,7 +31,6 @@ import { InMemoryChallengeStore, InMemorySeenTxStore } from "../storage/memory.j
 Every test file exercising `ChallengeEngine` defines three helpers. Never inline config objects in individual tests.
 
 ```ts
-const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
 
 function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
@@ -115,7 +114,7 @@ now += 901_000;
 
 ## InMemoryChallengeStore Pattern
 
-Always construct with `cleanupIntervalMs: 0` and always call `store.stopCleanup()` after use:
+When creating a store **directly in a test** (not via `makeEngine`), always pass `cleanupIntervalMs: 0` and call `stopCleanup()` when done:
 
 ```ts
 const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
@@ -127,6 +126,35 @@ When reused across tests:
 ```ts
 afterEach(() => { store.stopCleanup(); });
 ```
+
+`makeEngine()` omits `cleanupIntervalMs: 0` intentionally — the default timer is `unref()`'d so it won't block process exit.
+
+### `makeChallengeRecord` — for store-level tests
+
+When testing store transitions directly (not through the engine), use this helper:
+
+```ts
+function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRecord {
+	return {
+		challengeId: crypto.randomUUID(),
+		requestId: crypto.randomUUID(),
+		clientAgentId: "agent://test",
+		resourceId: "photo-42",
+		tierId: "single",
+		amount: "$0.10",
+		amountRaw: 100000n,
+		asset: "USDC",
+		chainId: 84532,
+		destination: `0x${"ab".repeat(20)}` as `0x${string}`,
+		state: "PENDING",
+		expiresAt: new Date(Date.now() + 900_000),
+		createdAt: new Date(),
+		...overrides,
+	};
+}
+```
+
+Import `ChallengeRecord` from `../../types`.
 
 ---
 
