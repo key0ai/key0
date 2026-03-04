@@ -56,6 +56,7 @@ function createMockResponse(): {
 	statusCode: number;
 	jsonData: any;
 	nextCalled: boolean;
+	headers: Record<string, string>;
 } {
 	let statusCode = 200;
 	let jsonData: any = null;
@@ -119,9 +120,9 @@ describe("x402-http-middleware", () => {
 		
 		// EIP-712 domain parameters in extra field
 		expect(requirements.accepts[0]?.extra).toBeDefined();
-		expect(requirements.accepts[0]?.extra?.name).toBe("USD Coin");
-		expect(requirements.accepts[0]?.extra?.version).toBe("2");
-		expect(requirements.accepts[0]?.extra?.description).toBe("Basic Access — $0.99 USDC");
+		expect(requirements.accepts[0]?.extra?.["name"]).toBe("USD Coin");
+		expect(requirements.accepts[0]?.extra?.["version"]).toBe("2");
+		expect(requirements.accepts[0]?.extra?.["description"]).toBe("Basic Access — $0.99 USDC");
 		});
 
 		test("should throw for invalid tier", () => {
@@ -243,8 +244,8 @@ describe("x402-http-middleware", () => {
 		expect(mockRes.jsonData.accepts[0].amount).toBe("990000");
 		
 		// Check PAYMENT-REQUIRED header is set
-		expect(mockRes.headers['PAYMENT-REQUIRED']).toBeDefined();
-		const decodedHeader = JSON.parse(Buffer.from(mockRes.headers['PAYMENT-REQUIRED'], 'base64').toString());
+		expect(mockRes.headers["payment-required"]).toBeDefined();
+		const decodedHeader = JSON.parse(Buffer.from(mockRes.headers["payment-required"]!, "base64").toString());
 		expect(decodedHeader.x402Version).toBe(2);
 	});
 
@@ -335,7 +336,7 @@ describe("x402-http-middleware", () => {
 		expect(mockRes.jsonData.x402Version).toBe(2);
 		
 		// Check PAYMENT-REQUIRED header is set
-		expect(mockRes.headers['PAYMENT-REQUIRED']).toBeDefined();
+		expect(mockRes.headers["payment-required"]).toBeDefined();
 	});
 	});
 
@@ -376,13 +377,13 @@ describe("x402-http-middleware", () => {
 
 		test("should verify and settle payment successfully", async () => {
 			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
-			const mockTxHash = `0x${"ab".repeat(32)}`;
+			const mockTxHash = `0x${"ab".repeat(32)}` as `0x${string}`;
 
 			// Mock fetch for verify and settle
 			const originalFetch = globalThis.fetch;
 			const fetchCalls: Array<{ url: string; body: any }> = [];
 
-			globalThis.fetch = async (url: string | URL | Request, options?: any) => {
+			(globalThis as any).fetch = async (url: string | URL | Request, options?: any) => {
 				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 				const body = options?.body ? JSON.parse(options.body) : null;
 				fetchCalls.push({ url: urlString, body });
@@ -438,7 +439,7 @@ describe("x402-http-middleware", () => {
 			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
 
 			const originalFetch = globalThis.fetch;
-			globalThis.fetch = async (url: string | URL | Request) => {
+			(globalThis as any).fetch = async (url: string | URL | Request) => {
 				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 
 				if (urlString.endsWith("/verify")) {
@@ -468,7 +469,7 @@ describe("x402-http-middleware", () => {
 			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
 
 			const originalFetch = globalThis.fetch;
-			globalThis.fetch = async (url: string | URL | Request) => {
+			(globalThis as any).fetch = async (url: string | URL | Request) => {
 				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 
 				if (urlString.endsWith("/verify")) {
@@ -494,7 +495,7 @@ describe("x402-http-middleware", () => {
 			const paymentSignature = Buffer.from(JSON.stringify(mockPaymentPayload)).toString("base64url");
 
 			const originalFetch = globalThis.fetch;
-			globalThis.fetch = async (url: string | URL | Request) => {
+			(globalThis as any).fetch = async (url: string | URL | Request) => {
 				const urlString = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 
 				if (urlString.endsWith("/verify")) {
