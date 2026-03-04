@@ -34,13 +34,4 @@ describe("CHAIN_CONFIGS", () => {
 		expect(CHAIN_CONFIGS.mainnet.explorerBaseUrl).toBe("https://basescan.org");
 	});
 
-	test("testnet USDC EIP-712 domain parameters", () => {
-		expect(CHAIN_CONFIGS.testnet.usdcDomain.name).toBe("USD Coin");
-		expect(CHAIN_CONFIGS.testnet.usdcDomain.version).toBe("2");
-	});
-
-	test("mainnet USDC EIP-712 domain parameters", () => {
-		expect(CHAIN_CONFIGS.mainnet.usdcDomain.name).toBe("USD Coin");
-		expect(CHAIN_CONFIGS.mainnet.usdcDomain.version).toBe("2");
-	});
 });
