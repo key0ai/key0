@@ -51,8 +51,6 @@ const GAS_WALLET_PRIVATE_KEY =
 	"0x2bdea68d1f3bd741841034eea1c46c5ef7937eedb0418056f7d2c57002656c15";
 const USE_GAS_WALLET = process.env.USE_GAS_WALLET === "true";
 
-const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
-
 // Refund cron configuration
 const REFUND_INTERVAL_MS = Number(process.env["REFUND_INTERVAL_MS"] ?? 15_000);
 const REFUND_MIN_AGE_MS = Number(process.env["REFUND_MIN_AGE_MS"] ?? 30_000);
@@ -90,16 +88,6 @@ app.use(express.json());
 const redis = new Redis(process.env.REDIS_URL);
 const store: IChallengeStore = new RedisChallengeStore({ redis, challengeTTLSeconds: 900 });
 const seenTxStore: ISeenTxStore = new RedisSeenTxStore({ redis });
-
-// BullMQ bundles its own ioredis, so pass plain options to avoid type conflicts
-const makeBullConnection = () => {
-	const parsed = new URL(REDIS_URL);
-	return {
-		host: parsed.hostname,
-		port: Number(parsed.port) || 6379,
-		maxRetriesPerRequest: null,
-	};
-};
 
 // Create the x402 payment adapter
 const adapter = new X402Adapter({
@@ -311,7 +299,14 @@ async function runRefundCron(): Promise<void> {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 async function start() {
-	const refundQueue = new Queue("refund-cron", { connection: makeBullConnection() });
+	const parsed = new URL(process.env.REDIS_URL as string);
+	const bullConnection = {
+		host: parsed.hostname,
+		port: Number(parsed.port) || 6379,
+		maxRetriesPerRequest: null,
+	};
+
+	const refundQueue = new Queue("refund-cron", { connection: bullConnection });
 	const repeatables = await refundQueue.getRepeatableJobs();
 	for (const job of repeatables) {
 		await refundQueue.removeRepeatableByKey(job.key);
@@ -320,7 +315,7 @@ async function start() {
 	await refundQueue.close();
 
 	const cronWorker = new Worker("refund-cron", () => runRefundCron(), {
-		connection: makeBullConnection(),
+		connection: bullConnection,
 	});
 	cronWorker.on("error", (err) => console.error("[Cron] Worker error:", err));
 
