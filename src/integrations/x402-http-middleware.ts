@@ -21,7 +21,11 @@ const PAYMENT_RESPONSE_HEADER = "payment-response";
 const X_A2A_EXTENSIONS_HEADER = "x-a2a-extensions";
 
 // Re-export shared settlement utilities so callers can import from a single place
-export { buildHttpPaymentRequirements, decodePaymentSignature, settlePayment } from "./settlement.js";
+export {
+	buildHttpPaymentRequirements,
+	decodePaymentSignature,
+	settlePayment,
+} from "./settlement.js";
 export { settleViaFacilitator, settleViaGasWallet } from "./settlement.js";
 
 /**
@@ -130,7 +134,9 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 
 			// 5. Check for PAYMENT-SIGNATURE header
 			const paymentSignatureRaw = req.headers[PAYMENT_SIGNATURE_HEADER] as string | undefined;
-			console.log(`[x402-http-middleware] PAYMENT-SIGNATURE header present: ${!!paymentSignatureRaw}`);
+			console.log(
+				`[x402-http-middleware] PAYMENT-SIGNATURE header present: ${!!paymentSignatureRaw}`,
+			);
 
 			if (!paymentSignatureRaw) {
 				// ===== STEP 1: No payment → create PENDING record and return HTTP 402 =====
@@ -139,8 +145,16 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 				const { challengeId } = await engine.requestHttpAccess(requestId, tierId, resourceId);
 				console.log(`[x402-http-middleware] ✓ PENDING record created, challengeId=${challengeId}`);
 
-				const requirements = buildHttpPaymentRequirements(tierId, resourceId, config, networkConfig);
-				console.log("[x402-http-middleware] Payment requirements:", JSON.stringify(requirements, null, 2));
+				const requirements = buildHttpPaymentRequirements(
+					tierId,
+					resourceId,
+					config,
+					networkConfig,
+				);
+				console.log(
+					"[x402-http-middleware] Payment requirements:",
+					JSON.stringify(requirements, null, 2),
+				);
 
 				const base64Requirements = Buffer.from(JSON.stringify(requirements)).toString("base64");
 				res.setHeader(PAYMENT_REQUIRED_HEADER, base64Requirements);
@@ -160,7 +174,11 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 
 			// Decode the header then settle via shared settlement layer
 			const paymentPayload = decodePaymentSignature(paymentSignatureRaw);
-			const { txHash, settleResponse, payer } = await settlePayment(paymentPayload, config, networkConfig);
+			const { txHash, settleResponse, payer } = await settlePayment(
+				paymentPayload,
+				config,
+				networkConfig,
+			);
 
 			console.log(`[x402-http-middleware] ✓ Payment settled, txHash: ${txHash}`);
 

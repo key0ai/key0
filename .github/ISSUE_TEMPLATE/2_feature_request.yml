@@ -1,5 +1,5 @@
 name: "\U0001F680 Feature Request"
-description: Propose a new feature or enhancement for the Key2A SDK
+description: Propose a new feature or enhancement for the AgentGate SDK
 title: "feat: "
 labels: ["enhancement", "needs triage"]
 type: Feature
@@ -7,10 +7,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to propose an improvement to Key2A!
+        Thanks for taking the time to propose an improvement to AgentGate!
 
         Before submitting:
-        - **Search [existing issues and discussions](https://github.com/Riklr/key2a/discussions)** to avoid duplicates.
+        - **Search [existing issues and discussions](https://github.com/Riklr/agentgate/discussions)** to avoid duplicates.
         - **Small changes** (new config option, additional helper, minor API tweak): feel free to open a PR directly.
         - **Large or breaking changes** (new payment adapter, new protocol support, changes to the challenge/token flow): please open this issue or a Discussion first to align on the approach before writing code.
 
@@ -21,9 +21,9 @@ body:
       options:
         - label: I searched existing issues and discussions — this has not been proposed before.
           required: true
-        - label: I have read the [Contributing Guidelines](https://github.com/Riklr/key2a/blob/master/CONTRIBUTING.md).
+        - label: I have read the [Contributing Guidelines](https://github.com/Riklr/agentgate/blob/master/CONTRIBUTING.md).
           required: true
-        - label: I agree to the [Code of Conduct](https://github.com/Riklr/key2a/blob/master/CODE_OF_CONDUCT.md).
+        - label: I agree to the [Code of Conduct](https://github.com/Riklr/agentgate/blob/master/CODE_OF_CONDUCT.md).
           required: true
 
   - type: textarea
@@ -35,7 +35,7 @@ body:
         Focus on the **why**, not just the **what**.
       placeholder: |
         As an API provider, I want to support tiered pricing based on the requested resource path,
-        but today Key2A only supports a single flat price per endpoint. This forces me to run
+        but today AgentGate only supports a single flat price per endpoint. This forces me to run
         separate AgentGate instances for each pricing tier, which is cumbersome.
     validations:
       required: true
@@ -72,7 +72,7 @@ body:
     id: area
     attributes:
       label: Which area does this affect?
-      description: Select the part of Key2A most relevant to this feature.
+      description: Select the part of AgentGate most relevant to this feature.
       multiple: true
       options:
         - Core (challenge engine, token issuer, storage)

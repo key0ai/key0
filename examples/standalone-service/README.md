@@ -59,7 +59,7 @@ Uses your own gas wallet to handle payment settlement directly. This mode is sel
 **Configuration:**
 ```bash
 USE_GAS_WALLET=true
-GAS_WALLET_PRIVATE_KEY=0x2bdea68d1f3bd741841034eea1c46c5ef7937eedb0418056f7d2c57002656c15
+GAS_WALLET_PRIVATE_KEY=0xYourPrivateKeyHere
 ```
 
 **Important:**

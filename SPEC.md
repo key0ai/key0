@@ -3,7 +3,7 @@
 **Version**: 0.2
 **Status**: Implemented
 **Date**: 2026-03-04
-**Working Repo**: `api-agentic-commerce`
+**Working Repo**: `agentgate`
 
 ---
 

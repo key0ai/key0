@@ -641,4 +641,5 @@ bun run build        # Compile to ./dist
 ## Documentation
 
 - [SPEC.md](./SPEC.md) — Protocol specification
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines and development setup (`github.com/Riklr/agentgate`)
 - [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling

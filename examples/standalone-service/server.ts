@@ -46,9 +46,7 @@ const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 const AUTH_STRATEGY = process.env.AUTH_STRATEGY || "shared-secret"; // "shared-secret" | "jwt"
 
 // Gas wallet configuration for facilitation
-const GAS_WALLET_PRIVATE_KEY =
-	process.env.GAS_WALLET_PRIVATE_KEY ||
-	"0x2bdea68d1f3bd741841034eea1c46c5ef7937eedb0418056f7d2c57002656c15";
+const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY;
 const USE_GAS_WALLET = process.env.USE_GAS_WALLET === "true";
 
 // Refund cron configuration

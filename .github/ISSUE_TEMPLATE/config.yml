@@ -2,16 +2,12 @@ blank_issues_enabled: false
 
 contact_links:
   - name: "\U0001F4AC Ask a question or get help"
-    url: https://github.com/Riklr/key2a/discussions
+    url: https://github.com/Riklr/agentgate/discussions
     about: Use GitHub Discussions for questions, troubleshooting, and general help.
 
   - name: "\U0001F4A1 Propose an idea (Discussion)"
-    url: https://github.com/Riklr/key2a/discussions/new?category=ideas
+    url: https://github.com/Riklr/agentgate/discussions/new?category=ideas
     about: For larger feature ideas or open-ended proposals, start a discussion first.
-
-  - name: "\U0001F4AC Join the Discord community"
-    url: https://discord.gg/placeholder
-    about: Chat with the community and get real-time help on Discord.
 
   - name: "\U0001F512 Report a security vulnerability"
     url: mailto:founders@riklr.com

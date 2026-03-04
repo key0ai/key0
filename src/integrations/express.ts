@@ -10,10 +10,7 @@ import { type AgentGateConfig, createAgentGate } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import { AgentGateError, CHAIN_CONFIGS } from "../types/index.js";
-import type {
-	AccessRequest,
-	X402PaymentRequiredResponse,
-} from "../types/index.js";
+import type { AccessRequest, X402PaymentRequiredResponse } from "../types/index.js";
 import {
 	buildHttpPaymentRequirements,
 	createX402HttpMiddleware,
@@ -116,14 +113,18 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 					error: "PAYMENT-SIGNATURE header is required",
 				});
 			}
-		// ===== STEP 2: Has PAYMENT-SIGNATURE -> settle and return access grant =====
-		console.log("[x402-access] → STEP 2: Processing payment");
+			// ===== STEP 2: Has PAYMENT-SIGNATURE -> settle and return access grant =====
+			console.log("[x402-access] → STEP 2: Processing payment");
 
-		// Decode header then settle via shared settlement layer
-		const paymentPayload = decodePaymentSignature(paymentSignature);
-		const { txHash, settleResponse, payer } = await settlePayment(paymentPayload, opts.config, networkConfig);
+			// Decode header then settle via shared settlement layer
+			const paymentPayload = decodePaymentSignature(paymentSignature);
+			const { txHash, settleResponse, payer } = await settlePayment(
+				paymentPayload,
+				opts.config,
+				networkConfig,
+			);
 
-		console.log(`[x402-access] ✓ Payment settled: ${txHash}`);
+			console.log(`[x402-access] ✓ Payment settled: ${txHash}`);
 
 			// Process payment with full lifecycle tracking (PENDING → PAID → DELIVERED)
 			const grant = await engine.processHttpPayment(

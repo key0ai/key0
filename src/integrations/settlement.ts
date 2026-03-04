@@ -166,7 +166,11 @@ export async function settleViaFacilitator(
 
 	const result = (await settleRes.json()) as X402SettleResponse;
 	if (!result.success) {
-		throw new AgentGateError("PAYMENT_FAILED", result.errorReason || "Payment settlement failed", 402);
+		throw new AgentGateError(
+			"PAYMENT_FAILED",
+			result.errorReason || "Payment settlement failed",
+			402,
+		);
 	}
 	if (!result.transaction) {
 		throw new AgentGateError("PAYMENT_FAILED", "Facilitator did not return transaction hash", 500);
@@ -194,7 +198,11 @@ export async function settleViaGasWallet(
 	let payer: string | undefined = paymentPayload.payload?.authorization?.from ?? undefined;
 	const requirement = paymentPayload.accepted;
 	if (!requirement) {
-		throw new AgentGateError("INVALID_REQUEST", "Payment payload missing 'accepted' requirement", 400);
+		throw new AgentGateError(
+			"INVALID_REQUEST",
+			"Payment payload missing 'accepted' requirement",
+			400,
+		);
 	}
 
 	const gasAccount = privateKeyToAccount(privateKey);
@@ -208,7 +216,6 @@ export async function settleViaGasWallet(
 	const scheme = new ExactEvmScheme(walletClient as any, { deployERC4337WithEIP6492: true });
 
 	// STEP 1: Verify
-	// biome-ignore lint/suspicious/noExplicitAny: @x402 PaymentPayload type differs from ours
 	let verifyResult: any;
 	try {
 		verifyResult = await scheme.verify(paymentPayload as any, requirement as any);
@@ -238,14 +245,20 @@ export async function settleViaGasWallet(
 	}
 
 	if (!settlement.success) {
-		throw new AgentGateError("PAYMENT_FAILED", settlement.errorReason || "Payment settlement failed", 500);
+		throw new AgentGateError(
+			"PAYMENT_FAILED",
+			settlement.errorReason || "Payment settlement failed",
+			500,
+		);
 	}
 	if (!settlement.transaction) {
 		throw new AgentGateError("PAYMENT_FAILED", "Settlement did not return transaction hash", 500);
 	}
 
 	console.log(`[settleViaGasWallet] ✓ Settled: ${settlement.transaction}`);
-	console.log(`[settleViaGasWallet]   Explorer: ${networkConfig.explorerBaseUrl}/tx/${settlement.transaction}`);
+	console.log(
+		`[settleViaGasWallet]   Explorer: ${networkConfig.explorerBaseUrl}/tx/${settlement.transaction}`,
+	);
 
 	const settleResponse: X402SettleResponse = {
 		success: true,

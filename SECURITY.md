@@ -10,7 +10,7 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Please report vulnerabilities by emailing **security@key2a.dev**. Include as much detail as possible:
+Please report vulnerabilities by emailing **founders@riklr.com**. Include as much detail as possible:
 
 - Description of the vulnerability
 - Steps to reproduce

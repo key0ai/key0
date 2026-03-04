@@ -1,6 +1,6 @@
-# Contributing to Key2A
+# Contributing to AgentGate
 
-Thank you for your interest in contributing to Key2A! No contribution is too small — whether it's a bug report, a documentation fix, a new framework adapter, or a feature proposal, all contributions are valued.
+Thank you for your interest in contributing to AgentGate! No contribution is too small — whether it's a bug report, a documentation fix, a new framework adapter, or a feature proposal, all contributions are valued.
 
 Please take a few minutes to read this guide before opening an issue or pull request.
 
@@ -27,10 +27,9 @@ Please take a few minutes to read this guide before opening an issue or pull req
 
 **Please do not open GitHub Issues for questions or support requests.**
 
-If you have a question about how to use Key2A, join our community:
+If you have a question about how to use AgentGate, join our community:
 
-- **Discord:** [Key2A Discord](https://discord.gg/placeholder) *(link coming soon)*
-- **GitHub Discussions:** [github.com/key2a/key2a/discussions](https://github.com/Riklr/key2a/discussions)
+- **GitHub Discussions:** [github.com/Riklr/agentgate/discussions](https://github.com/Riklr/agentgate/discussions)
 
 Reserve GitHub Issues for confirmed bugs and feature proposals only. This keeps the issue tracker actionable for maintainers.
 
@@ -38,7 +37,7 @@ Reserve GitHub Issues for confirmed bugs and feature proposals only. This keeps 
 
 ## Project Overview
 
-Key2A is a TypeScript SDK for monetizing APIs through payment-gated access using the x402 HTTP payment protocol. It enables autonomous agents to discover, pay for, and access services on-chain with USDC on Base — without complex smart contract development.
+AgentGate is a TypeScript SDK for monetizing APIs through payment-gated access using the x402 HTTP payment protocol. It enables autonomous agents to discover, pay for, and access services on-chain with USDC on Base — without complex smart contract development.
 
 Key protocols: **x402** (HTTP 402 payment flow), **A2A** (Agent-to-Agent discovery), **EIP-3009** (gasless token authorization).
 
@@ -88,8 +87,8 @@ If you are unsure whether something qualifies as large, open a Discussion first 
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/Riklr/key2a.git
-cd key2a
+git clone https://github.com/Riklr/agentgate.git
+cd agentgate
 
 # 2. Install dependencies
 bun install
@@ -192,7 +191,7 @@ Keep the summary under 72 characters. Use the commit body for context when the c
 
 ## Code Style
 
-Key2A uses [Biome](https://biomejs.dev) for linting and formatting. All code must pass:
+AgentGate uses [Biome](https://biomejs.dev) for linting and formatting. All code must pass:
 
 ```bash
 bun run lint        # Check for lint errors
@@ -245,7 +244,7 @@ Do not use mainnet in tests. Mock on-chain calls wherever possible; use Base Sep
 
 > **Do not report security vulnerabilities as public GitHub Issues.**
 
-Key2A handles payment flows, private key management patterns, EIP-3009 authorization, and on-chain transaction verification. A vulnerability in any of these areas could result in loss of funds.
+AgentGate handles payment flows, private key management patterns, EIP-3009 authorization, and on-chain transaction verification. A vulnerability in any of these areas could result in loss of funds.
 
 If you discover a security vulnerability, please report it privately:
 
