@@ -7,10 +7,6 @@ export {
 	validateDollarAmount,
 } from "./validation.js";
 
-// Storage — In-Memory
-export { InMemoryChallengeStore, InMemorySeenTxStore } from "./storage/memory.js";
-export type { InMemoryStoreConfig } from "./storage/memory.js";
-
 // Storage — Redis
 export { RedisChallengeStore, RedisSeenTxStore } from "./storage/redis.js";
 export type { RedisStoreConfig } from "./storage/redis.js";

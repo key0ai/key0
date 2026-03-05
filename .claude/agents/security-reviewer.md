@@ -16,15 +16,14 @@ The 5 invariants you must check are loaded from the `payment-invariants` skill.
 
 - `src/core/challenge-engine.ts`
 - `src/adapter/verify-transfer.ts`
-- `src/core/storage/` (memory.ts, redis.ts)
+- `src/core/storage/redis.ts`
 - `src/core/access-token.ts`
 - `src/integrations/x402-http-middleware.ts`
 
 ## What NOT to Flag (Intentional Design Decisions)
 
-- **PAID→PAID self-transition**: The in-memory store explicitly allows transitioning a PAID challenge to PAID again (idempotent re-verification). This is intentional for retry safety.
+- **PAID→PAID self-transition**: The store allows transitioning a PAID challenge to PAID again (idempotent re-verification). This is intentional for retry safety.
 - **`processHttpPayment()` bypassing the challenge store**: The x402 HTTP middleware flow uses a stateless verification path — it does not create a challenge record in the store. This is by design for the simpler HTTP flow.
-- **Short-lived in-memory stores in tests**: `InMemoryChallengeStore({ cleanupIntervalMs: 0 })` with `store.stopCleanup()` is the correct test pattern — do not flag this as a memory leak.
 - **`accessTokenSecret` in config**: Secrets in `SellerConfig` are intentionally caller-provided. Flag only if the SDK itself generates or defaults to a weak secret.
 
 ## How to Review

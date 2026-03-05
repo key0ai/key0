@@ -9,8 +9,6 @@
 
 import {
 	type IChallengeStore,
-	InMemoryChallengeStore,
-	InMemorySeenTxStore,
 	type NetworkName,
 	type ProductTier,
 	RedisChallengeStore,
@@ -79,20 +77,19 @@ try {
 
 // ─── Storage ───────────────────────────────────────────────────────────────
 
-let store: IChallengeStore;
-let seenTxStore: RedisSeenTxStore | InMemorySeenTxStore;
-
-if (REDIS_URL) {
-	const Redis = (await import("ioredis")).default;
-	const redis = new Redis(REDIS_URL);
-	store = new RedisChallengeStore({ redis, challengeTTLSeconds: CHALLENGE_TTL_SECONDS });
-	seenTxStore = new RedisSeenTxStore({ redis });
-	console.log("[agentgate] Using Redis storage:", REDIS_URL);
-} else {
-	store = new InMemoryChallengeStore();
-	seenTxStore = new InMemorySeenTxStore();
-	console.log("[agentgate] Using in-memory storage (set REDIS_URL for production)");
+if (!REDIS_URL) {
+	console.error("FATAL: REDIS_URL is required (e.g. redis://localhost:6379)");
+	process.exit(1);
 }
+
+const Redis = (await import("ioredis")).default;
+const redis = new Redis(REDIS_URL);
+const store: IChallengeStore = new RedisChallengeStore({
+	redis,
+	challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
+});
+const seenTxStore = new RedisSeenTxStore({ redis });
+console.log("[agentgate] Using Redis storage:", REDIS_URL);
 
 // ─── Token issuance ────────────────────────────────────────────────────────
 
@@ -141,7 +138,7 @@ app.listen(PORT, () => {
 	console.log(`  Port:       ${PORT}`);
 	console.log(`  Wallet:     ${WALLET_ADDRESS}`);
 	console.log(`  Token API:  ${ISSUE_TOKEN_API}`);
-	console.log(`  Storage:    ${REDIS_URL ? "Redis" : "in-memory"}`);
+	console.log(`  Storage:    Redis`);
 	console.log(`  Agent Card: ${AGENT_URL}/.well-known/agent.json`);
 	console.log(
 		`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`,
@@ -171,45 +168,31 @@ async function runRefundCron(): Promise<void> {
 
 // ─── Start ─────────────────────────────────────────────────────────────────
 
-if (REDIS_URL) {
-	// BullMQ: only one worker processes the cron across replicas
-	const { Queue, Worker } = await import("bullmq");
-	const parsed = new URL(REDIS_URL);
-	const bullConnection = {
-		host: parsed.hostname,
-		port: Number(parsed.port) || 6379,
-		maxRetriesPerRequest: null,
-	};
+// BullMQ: only one worker processes the cron across replicas
+const { Queue, Worker } = await import("bullmq");
+const parsed = new URL(REDIS_URL);
+const bullConnection = {
+	host: parsed.hostname,
+	port: Number(parsed.port) || 6379,
+	maxRetriesPerRequest: null,
+};
 
-	const refundQueue = new Queue("refund-cron", { connection: bullConnection });
-	const repeatables = await refundQueue.getRepeatableJobs();
-	for (const job of repeatables) {
-		await refundQueue.removeRepeatableByKey(job.key);
-	}
-	await refundQueue.add("process-refunds", {}, { repeat: { every: REFUND_INTERVAL_MS } });
-	await refundQueue.close();
-
-	const cronWorker = new Worker("refund-cron", () => runRefundCron(), {
-		connection: bullConnection,
-	});
-	cronWorker.on("error", (err) => console.error("[refund] Worker error:", err));
-
-	const shutdown = async () => {
-		await cronWorker.close();
-		process.exit(0);
-	};
-	process.on("SIGTERM", shutdown);
-	process.on("SIGINT", shutdown);
-} else {
-	// No Redis: single instance, plain setInterval
-	const cronTimer = setInterval(() => {
-		runRefundCron().catch((err) => console.error("[refund] Unexpected error:", err));
-	}, REFUND_INTERVAL_MS);
-
-	const shutdown = () => {
-		clearInterval(cronTimer);
-		process.exit(0);
-	};
-	process.on("SIGTERM", shutdown);
-	process.on("SIGINT", shutdown);
+const refundQueue = new Queue("refund-cron", { connection: bullConnection });
+const repeatables = await refundQueue.getRepeatableJobs();
+for (const job of repeatables) {
+	await refundQueue.removeRepeatableByKey(job.key);
 }
+await refundQueue.add("process-refunds", {}, { repeat: { every: REFUND_INTERVAL_MS } });
+await refundQueue.close();
+
+const cronWorker = new Worker("refund-cron", () => runRefundCron(), {
+	connection: bullConnection,
+});
+cronWorker.on("error", (err) => console.error("[refund] Worker error:", err));
+
+const shutdown = async () => {
+	await cronWorker.close();
+	process.exit(0);
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

@@ -7,7 +7,7 @@ import {
 	type SellerConfig,
 } from "../../types";
 import { ChallengeEngine, type ChallengeEngineConfig } from "../challenge-engine.js";
-import { InMemoryChallengeStore, InMemorySeenTxStore } from "../storage/memory.js";
+import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,12 +39,12 @@ function makeEngine(opts?: {
 	config?: Partial<SellerConfig>;
 	adapter?: MockPaymentAdapter;
 	clock?: () => number;
-	store?: InMemoryChallengeStore;
-	seenTxStore?: InMemorySeenTxStore;
+	store?: TestChallengeStore;
+	seenTxStore?: TestSeenTxStore;
 }) {
 	const adapter = opts?.adapter ?? new MockPaymentAdapter();
-	const store = opts?.store ?? new InMemoryChallengeStore();
-	const seenTxStore = opts?.seenTxStore ?? new InMemorySeenTxStore();
+	const store = opts?.store ?? new TestChallengeStore();
+	const seenTxStore = opts?.seenTxStore ?? new TestSeenTxStore();
 	const config = makeConfig(opts?.config);
 
 	const engineConfig: ChallengeEngineConfig = {

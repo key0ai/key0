@@ -218,13 +218,18 @@ bun add ioredis   # Redis-backed storage for multi-process deployments
 ```typescript
 import express from "express";
 import { agentGateRouter, validateAccessToken } from "@riklr/agentgate/express";
-import { X402Adapter, AccessTokenIssuer } from "@riklr/agentgate";
+import { X402Adapter, AccessTokenIssuer, RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
+import Redis from "ioredis";
 
 const app = express();
 app.use(express.json());
 
 const adapter = new X402Adapter({ network: "testnet" });
 const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
+
+const redis = new Redis(process.env.REDIS_URL!);
+const store = new RedisChallengeStore({ redis });
+const seenTxStore = new RedisSeenTxStore({ redis });
 
 app.use(
   agentGateRouter({
@@ -256,6 +261,8 @@ app.use(
       },
     },
     adapter,
+    store,
+    seenTxStore,
   })
 );
 
@@ -271,10 +278,17 @@ app.listen(3000);
 ```typescript
 import { Hono } from "hono";
 import { agentGateApp, honoValidateAccessToken } from "@riklr/agentgate/hono";
-import { X402Adapter } from "@riklr/agentgate";
+import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
+import Redis from "ioredis";
 
 const adapter = new X402Adapter({ network: "testnet" });
-const gate = agentGateApp({ config: { /* same config */ }, adapter });
+const redis = new Redis(process.env.REDIS_URL!);
+const gate = agentGateApp({
+  config: { /* same config */ },
+  adapter,
+  store: new RedisChallengeStore({ redis }),
+  seenTxStore: new RedisSeenTxStore({ redis }),
+});
 
 const app = new Hono();
 app.route("/", gate);
@@ -292,12 +306,19 @@ export default { port: 3000, fetch: app.fetch };
 ```typescript
 import Fastify from "fastify";
 import { agentGatePlugin, fastifyValidateAccessToken } from "@riklr/agentgate/fastify";
-import { X402Adapter } from "@riklr/agentgate";
+import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
+import Redis from "ioredis";
 
 const fastify = Fastify();
 const adapter = new X402Adapter({ network: "testnet" });
+const redis = new Redis(process.env.REDIS_URL!);
 
-await fastify.register(agentGatePlugin, { config: { /* same config */ }, adapter });
+await fastify.register(agentGatePlugin, {
+  config: { /* same config */ },
+  adapter,
+  store: new RedisChallengeStore({ redis }),
+  seenTxStore: new RedisSeenTxStore({ redis }),
+});
 fastify.addHook("onRequest", fastifyValidateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }));
 
 fastify.listen({ port: 3000 });
@@ -521,7 +542,7 @@ The seller never needs to pre-register clients, issue API keys manually, or mana
 
 ## Storage
 
-By default, AgentGate uses in-memory storage (suitable for development and single-process deployments). For production with multiple processes, use Redis:
+AgentGate requires Redis for storage. `store` and `seenTxStore` are mandatory fields.
 
 ```typescript
 import { RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";

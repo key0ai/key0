@@ -524,7 +524,6 @@ Before issuing a challenge, `onVerifyResource` confirms the resource exists and 
 ### 9.7 Concurrency Safety
 
 - `IChallengeStore.transition(id, fromState, toState)` is the only path to update state. It is a compare-and-swap: if the current state doesn't match `fromState`, it returns `false` and no write occurs.
-- For in-memory storage: uses a synchronous compare-and-swap on a JS Map.
 - For Redis storage: uses a Lua script that atomically checks and sets in one round-trip.
 - `ISeenTxStore.markUsed(txHash, challengeId)` is atomic `SET NX` — only the first caller succeeds.
 
@@ -549,18 +548,23 @@ Step 4: Implement callbacks
   onIssueToken(params): Promise<TokenIssuanceResult>
   onPaymentReceived?(grant): Promise<void>   // optional
 
-Step 5: Mount the agent router
-  app.use(agentGateRouter({ config, adapter }))
+Step 5: Set up Redis storage
+  const redis = new Redis(process.env.REDIS_URL)
+  const store = new RedisChallengeStore({ redis })
+  const seenTxStore = new RedisSeenTxStore({ redis })
+
+Step 6: Mount the agent router
+  app.use(agentGateRouter({ config, adapter, store, seenTxStore }))
   // Auto-serves:
   //   GET  /.well-known/agent.json
   //   POST /a2a/jsonrpc  (A2A JSON-RPC)
   //   POST /a2a/rest     (A2A REST)
   //   POST /x402/access  (x402 HTTP)
 
-Step 6: Protect your API
+Step 7: Protect your API
   app.use("/api", validateAccessToken({ secret: ACCESS_TOKEN_SECRET }))
 
-Step 7: For production — switch to Redis storage and mainnet
+Step 8: For production — switch to mainnet
 ```
 
 ### No Platform Signup Required
@@ -591,7 +595,7 @@ AgentGate is a **self-hosted open-source SDK**. There is no central registry or 
 | Chain | Base mainnet (8453) / Base Sepolia (84532) | Low fees, USDC native, x402 facilitator support |
 | Token standard | USDC ERC-20 | Stable, widely held |
 | Access tokens | `jose` (JWT, HS256/RS256) | Standards-compliant, supports both symmetric and asymmetric keys |
-| Challenge store | In-memory (default) or Redis via ioredis | Simple to start, swap for production |
+| Challenge store | Redis via ioredis (`RedisChallengeStore`, `RedisSeenTxStore`) | Atomic Lua transitions, TTL-based cleanup, multi-process safe |
 | Package | Single package `@riklr/agentgate` with framework subpath exports | Simple install, tree-shakeable |
 
 ---
@@ -605,7 +609,7 @@ AgentGate is a **self-hosted open-source SDK**. There is no central registry or 
 | Idempotency window | Lifetime of challenge (default 15 min) |
 | Replay attack surface | Zero — txHash uniqueness enforced atomically |
 | TypeScript | Strict mode, no `any`, exported types for all public contracts |
-| Zero external state dependencies | In-memory store works out of the box |
+| Storage | Redis required — `RedisChallengeStore` + `RedisSeenTxStore` are mandatory fields |
 
 ---
 

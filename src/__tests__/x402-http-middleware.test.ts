@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { NextFunction, Request, Response } from "express";
 import { ChallengeEngine } from "../core/challenge-engine.js";
-import { InMemoryChallengeStore, InMemorySeenTxStore } from "../core/index.js";
+import { TestChallengeStore, TestSeenTxStore } from "../test-utils/stores.js";
 import {
 	buildHttpPaymentRequirements,
 	createX402HttpMiddleware,
@@ -150,8 +150,8 @@ describe("x402-http-middleware", () => {
 
 		beforeEach(() => {
 			config = makeConfig();
-			const store = new InMemoryChallengeStore();
-			const seenTxStore = new InMemorySeenTxStore();
+			const store = new TestChallengeStore();
+			const seenTxStore = new TestSeenTxStore();
 			const adapter = new MockPaymentAdapter();
 
 			engine = new ChallengeEngine({
@@ -574,12 +574,12 @@ describe("x402-http-middleware", () => {
 	describe("ChallengeEngine.requestHttpAccess", () => {
 		let engine: ChallengeEngine;
 		let config: SellerConfig;
-		let store: InMemoryChallengeStore;
+		let store: TestChallengeStore;
 
 		beforeEach(() => {
 			config = makeConfig();
-			store = new InMemoryChallengeStore();
-			const seenTxStore = new InMemorySeenTxStore();
+			store = new TestChallengeStore();
+			const seenTxStore = new TestSeenTxStore();
 			const adapter = new MockPaymentAdapter();
 
 			engine = new ChallengeEngine({
@@ -625,13 +625,13 @@ describe("x402-http-middleware", () => {
 	describe("ChallengeEngine.processHttpPayment", () => {
 		let engine: ChallengeEngine;
 		let config: SellerConfig;
-		let store: InMemoryChallengeStore;
-		let seenTxStore: InMemorySeenTxStore;
+		let store: TestChallengeStore;
+		let seenTxStore: TestSeenTxStore;
 
 		beforeEach(() => {
 			config = makeConfig();
-			store = new InMemoryChallengeStore();
-			seenTxStore = new InMemorySeenTxStore();
+			store = new TestChallengeStore();
+			seenTxStore = new TestSeenTxStore();
 			const adapter = new MockPaymentAdapter();
 
 			engine = new ChallengeEngine({
@@ -699,8 +699,8 @@ describe("x402-http-middleware", () => {
 					throw new Error("Token issuance failed");
 				},
 			};
-			const failStore = new InMemoryChallengeStore();
-			const failSeenTx = new InMemorySeenTxStore();
+			const failStore = new TestChallengeStore();
+			const failSeenTx = new TestSeenTxStore();
 			const failEngine = new ChallengeEngine({
 				config: failConfig,
 				store: failStore,

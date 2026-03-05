@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ChallengeRecord } from "../../types";
-import { InMemoryChallengeStore, InMemorySeenTxStore } from "../storage/memory.js";
+import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
 
 function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRecord {
 	return {
@@ -23,7 +23,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 
 describe("Concurrency — ChallengeStore transitions", () => {
 	test("two simultaneous transitions — only one succeeds", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const record = makeChallengeRecord({ state: "PENDING" });
 		await store.create(record);
 
@@ -42,12 +42,10 @@ describe("Concurrency — ChallengeStore transitions", () => {
 		const loaded = await store.get(record.challengeId);
 		// Should be either PAID or EXPIRED, not PENDING
 		expect(loaded!.state).not.toBe("PENDING");
-
-		store.stopCleanup();
 	});
 
 	test("three simultaneous transitions — exactly one succeeds", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const record = makeChallengeRecord({ state: "PENDING" });
 		await store.create(record);
 
@@ -58,12 +56,10 @@ describe("Concurrency — ChallengeStore transitions", () => {
 		]);
 
 		expect(results.filter(Boolean).length).toBe(1);
-
-		store.stopCleanup();
 	});
 
 	test("transition after successful transition fails", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const record = makeChallengeRecord({ state: "PENDING" });
 		await store.create(record);
 
@@ -73,8 +69,6 @@ describe("Concurrency — ChallengeStore transitions", () => {
 		// Attempting the same transition again must fail
 		const second = await store.transition(record.challengeId, "PENDING", "EXPIRED");
 		expect(second).toBe(false);
-
-		store.stopCleanup();
 	});
 });
 
@@ -82,7 +76,7 @@ describe("Concurrency — SeenTxStore double-spend guard", () => {
 	const TX_HASH = `0x${"ff".repeat(32)}` as `0x${string}`;
 
 	test("two simultaneous markUsed — only one succeeds", async () => {
-		const store = new InMemorySeenTxStore();
+		const store = new TestSeenTxStore();
 
 		const [a, b] = await Promise.all([
 			store.markUsed(TX_HASH, "challenge-1"),
@@ -103,7 +97,7 @@ describe("Concurrency — SeenTxStore double-spend guard", () => {
 	});
 
 	test("markUsed after successful markUsed always fails", async () => {
-		const store = new InMemorySeenTxStore();
+		const store = new TestSeenTxStore();
 
 		const first = await store.markUsed(TX_HASH, "challenge-1");
 		expect(first).toBe(true);
@@ -121,20 +115,16 @@ describe("Concurrency — SeenTxStore double-spend guard", () => {
 
 describe("Concurrency — idempotent create", () => {
 	test("creating same challengeId twice rejects second", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const record = makeChallengeRecord();
 
 		await store.create(record);
 		await expect(store.create(record)).rejects.toThrow("already exists");
 
-		// Only one record stored
-		expect(store.size).toBe(1);
-
-		store.stopCleanup();
 	});
 
 	test("concurrent creates with same challengeId — one succeeds, one rejects", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const record = makeChallengeRecord();
 
 		const results = await Promise.allSettled([store.create(record), store.create(record)]);
@@ -144,15 +134,12 @@ describe("Concurrency — idempotent create", () => {
 
 		expect(fulfilled.length).toBe(1);
 		expect(rejected.length).toBe(1);
-		expect(store.size).toBe(1);
-
-		store.stopCleanup();
 	});
 });
 
 describe("Concurrency — rapid sequential operations", () => {
 	test("many sequential transitions maintain consistency", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 
 		// Create 10 challenges and transition them all
 		const records = Array.from({ length: 10 }, () => makeChallengeRecord());
@@ -178,7 +165,5 @@ describe("Concurrency — rapid sequential operations", () => {
 			const loaded = await store.get(r.challengeId);
 			expect(loaded!.state).toBe("PAID");
 		}
-
-		store.stopCleanup();
 	});
 });
