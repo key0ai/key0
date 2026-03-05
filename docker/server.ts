@@ -125,6 +125,7 @@ app.use(
 			onVerifyResource: async () => true,
 			onIssueToken,
 			...(GAS_WALLET_PRIVATE_KEY ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY } : {}),
+			redis,
 		},
 		adapter,
 		store,

@@ -1,0 +1,21 @@
+{
+	"name": "agentgate-e2e",
+	"version": "0.0.1",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"test": "bun test --preload ./global-setup.ts --timeout 60000",
+		"test:card": "bun test scenarios/agent-card.test.ts --timeout 30000",
+		"test:happy": "bun test scenarios/happy-path.test.ts --timeout 120000"
+	},
+	"dependencies": {
+		"express": "^4.21.0",
+		"ioredis": "^5.0.0",
+		"jose": "^6.0.0",
+		"viem": "^2.21.0"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.9",
+		"@types/express": "^5.0.0"
+	}
+}

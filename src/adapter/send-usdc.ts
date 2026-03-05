@@ -76,14 +76,8 @@ export async function sendUsdc(params: SendUsdcParams): Promise<`0x${string}`> {
 			nonce,
 		};
 
-		// USDC owner signs off-chain
-		const usdcOwnerWalletClient = createWalletClient({
-			account: usdcOwnerAccount,
-			chain,
-			transport: http(networkConfig.rpcUrl),
-		});
-		const signature = await usdcOwnerWalletClient.signTypedData({
-			account: usdcOwnerAccount,
+		// USDC owner signs off-chain — no RPC needed, pure local signing
+		const signature = await usdcOwnerAccount.signTypedData({
 			domain,
 			types,
 			primaryType: "TransferWithAuthorization",

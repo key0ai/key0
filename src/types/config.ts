@@ -40,6 +40,21 @@ export type ProductTier = {
 
 export type ResourceVerifier = (resourceId: string, tierId: string) => Promise<boolean>;
 
+/**
+ * Minimal Redis interface required for distributed gas wallet lock.
+ * Satisfied by any ioredis client instance.
+ */
+export type IRedisLockClient = {
+	set(
+		key: string,
+		value: string,
+		nx: "NX",
+		px: "PX",
+		ttlMs: number,
+	): Promise<string | null>;
+	eval(script: string, numkeys: number, ...args: string[]): Promise<unknown>;
+};
+
 export type SellerConfig = {
 	// Identity
 	readonly agentName: string;
@@ -81,4 +96,13 @@ export type SellerConfig = {
 	// Settlement strategy (optional — defaults to facilitatorUrl mode)
 	readonly gasWalletPrivateKey?: `0x${string}`; // enables gas wallet mode (self-contained settlement)
 	readonly facilitatorUrl?: string; // override default facilitatorUrl from CHAIN_CONFIGS
+
+	/**
+	 * Redis client for distributed gas wallet settlement locking.
+	 * When provided alongside gasWalletPrivateKey, concurrent settlement
+	 * requests across multiple instances are serialized via a Redis lock,
+	 * preventing gas wallet nonce conflicts.
+	 * When absent, falls back to an in-process serial queue (single-instance only).
+	 */
+	readonly redis?: IRedisLockClient;
 };

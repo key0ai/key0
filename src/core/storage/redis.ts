@@ -100,15 +100,32 @@ function deserializeChallengeRecord(flat: FlatHash): ChallengeRecord | null {
 }
 
 // ─── Lua script for atomic state transition ──────────────────────────
+//
+// KEYS[1] = challenge hash key
+// KEYS[2] = paid sorted set key
+// ARGV[1] = fromState
+// ARGV[2] = toState
+// ARGV[3] = challengeId (used for zadd/zrem)
+// ARGV[4] = paidAt epoch ms as string, or "" if not a PAID transition
+// ARGV[5..] = alternating field/value pairs to write alongside state
 
 const TRANSITION_LUA = `
 local current = redis.call('HGET', KEYS[1], 'state')
 if current ~= ARGV[1] then
   return 0
 end
-redis.call('HSET', KEYS[1], 'state', ARGV[2])
-for i = 3, #ARGV, 2 do
+local fromState = ARGV[1]
+local toState = ARGV[2]
+local challengeId = ARGV[3]
+local score = ARGV[4]
+redis.call('HSET', KEYS[1], 'state', toState)
+for i = 5, #ARGV, 2 do
   redis.call('HSET', KEYS[1], ARGV[i], ARGV[i+1])
+end
+if toState == 'PAID' and score ~= '' then
+  redis.call('ZADD', KEYS[2], score, challengeId)
+elseif fromState == 'PAID' then
+  redis.call('ZREM', KEYS[2], challengeId)
 end
 return 1
 `;
@@ -193,9 +210,14 @@ export class RedisChallengeStore implements IChallengeStore {
 		updates?: ChallengeTransitionUpdates,
 	): Promise<boolean> {
 		const key = this.challengeKey(challengeId);
+		const paidSetKey = this.paidSetKey();
 
-		// Build Lua ARGV: [fromState, toState, ...field/value pairs]
-		const argv: string[] = [fromState, toState];
+		// ARGV layout: [fromState, toState, challengeId, paidAtScore, ...field/value pairs]
+		// paidAtScore is the paidAt epoch ms (for ZADD on PAID transitions), or "" otherwise.
+		const score = toState === "PAID" && updates?.paidAt
+			? updates.paidAt.getTime().toString()
+			: "";
+		const argv: string[] = [fromState, toState, challengeId, score];
 
 		if (updates) {
 			if (updates.txHash) {
@@ -224,17 +246,13 @@ export class RedisChallengeStore implements IChallengeStore {
 			}
 		}
 
-		const result = await this.redis.eval(TRANSITION_LUA, 1, key, ...argv);
+		// KEYS[1] = challenge hash, KEYS[2] = paid sorted set
+		// Sorted set maintenance (ZADD/ZREM) is inside the Lua script — fully atomic.
+		const result = await this.redis.eval(TRANSITION_LUA, 2, key, paidSetKey, ...argv);
 		if (result !== 1) return false;
 
-		// Maintain agentgate:paid sorted set for efficient refund cron queries
-		if (toState === "PAID" && updates?.paidAt) {
-			await this.redis.zadd(this.paidSetKey(), updates.paidAt.getTime(), challengeId);
-		} else if (fromState === "PAID") {
-			await this.redis.zrem(this.paidSetKey(), challengeId);
-		}
-
-		// DELIVERED records no longer need the full 7-day window — shorten TTL to 12 hours
+		// DELIVERED records no longer need the full 7-day window — shorten TTL to 12 hours.
+		// This EXPIRE is intentionally outside Lua (TTL adjustment, not a correctness invariant).
 		if (toState === "DELIVERED") {
 			await this.redis.expire(key, this.deliveredTTL);
 		}
