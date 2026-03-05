@@ -194,7 +194,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 		expect(challenge["destination"]).toBe(WALLET);
 	});
 
-	test("3. Idempotent access request returns same challenge", async () => {
+	test("2. Idempotent access request returns same challenge", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
 		const { executor } = createAgentGate({ config, adapter });
@@ -216,7 +216,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 		expect(c1["challengeId"]).toBe(c2["challengeId"]);
 	});
 
-	test("4. Resource not found returns failed task", async () => {
+	test("3. Resource not found returns failed task", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
 		const { executor } = createAgentGate({ config, adapter });
@@ -236,7 +236,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 		expect(textPart.text).toContain("not found");
 	});
 
-	test("6. Default resourceId when not provided", async () => {
+	test("4. Default resourceId when not provided", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
 		const { executor } = createAgentGate({ config, adapter });
