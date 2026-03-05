@@ -114,21 +114,7 @@ const results = await processRefunds({
 
 ## Store TTLs
 
-Records are automatically cleaned up based on their final state.
-
-### In-Memory Store
-
-
-| State group                                           | Clock starts  | Retention (default) |
-| ----------------------------------------------------- | ------------- | ------------------- |
-| `EXPIRED`, `CANCELLED`                                | `createdAt`   | 1 hour              |
-| `PAID`, `REFUND_PENDING`, `REFUNDED`, `REFUND_FAILED` | `createdAt`   | **7 days**          |
-| `DELIVERED`                                           | `deliveredAt` | **12 hours**        |
-
-
-`DELIVERED` uses `deliveredAt` as the clock so the 12-hour window starts when delivery was confirmed, not when the challenge was originally created.
-
-Cleanup runs every 5 minutes by default in a background `setInterval` (unreffed so it doesn't block process exit).
+Records are automatically cleaned up based on their final state. Redis is the only supported store — TTLs are managed via Redis key expiry.
 
 ### Redis Store
 
@@ -157,33 +143,7 @@ new RedisChallengeStore({
 
 ## Usage Examples
 
-### Minimal setup — in-memory, no refunds
-
-No extra configuration needed. The store defaults to in-memory with 7-day retention.
-
-```typescript
-import { createAgentGate, X402Adapter } from '@riklr/agentgate';
-
-const { requestHandler } = createAgentGate({
-  adapter: new X402Adapter({ network: 'testnet' }),
-  config: {
-    walletAddress: '0xSELLER...',
-    network: 'testnet',
-    products: [{ tierId: 'basic', amount: '$0.10' }],
-    onVerifyResource: async (id) => true,
-    onIssueToken: async ({ challengeId }) => ({
-      token: jwt.sign({ jti: challengeId }, SECRET, { expiresIn: '1h' }),
-      expiresAt: new Date(Date.now() + 3600_000),
-    }),
-  },
-});
-```
-
-The SDK automatically transitions the record to `DELIVERED` after `onIssueToken` succeeds. No refunds are ever sent. Suitable for development or services where every payment is immediately fulfilled synchronously.
-
----
-
-### Full setup — production with Redis and refund cron
+### Full setup — Redis and refund cron
 
 ```typescript
 import Redis from 'ioredis';
@@ -259,11 +219,7 @@ await refundQueue.add('process', {}, { repeat: { every: 60_000 } });
 
 ## How the Cron Prevents Double-Refunds
 
-The transition `PAID → REFUND_PENDING` is atomic in both store implementations.
-
-**In-memory:** Node.js is single-threaded. The Map write is synchronous and cannot be interleaved with another call.
-
-**Redis:** A Lua script runs atomically on the Redis server:
+The transition `PAID → REFUND_PENDING` is atomic. A Lua script runs atomically on the Redis server:
 
 ```lua
 local current = redis.call('HGET', KEYS[1], 'state')
@@ -280,16 +236,6 @@ If two cron workers fire at exactly the same time, both read `PAID`. The first L
 ---
 
 ## How findPendingForRefund Works
-
-### In-memory
-
-Iterates every record in the Map and returns those where:
-
-- `state === "PAID"`
-- `fromAddress` is present (was a real on-chain payment)
-- `paidAt + minAgeMs <= now`
-
-### Redis
 
 Uses a sorted set `agentgate:paid` (member = `challengeId`, score = `paidAt` epoch ms) maintained alongside the hash:
 

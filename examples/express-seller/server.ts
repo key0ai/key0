@@ -1,7 +1,13 @@
-import { AccessTokenIssuer, RedisSeenTxStore, X402Adapter } from "@riklr/agentgate";
+import {
+	AccessTokenIssuer,
+	RedisChallengeStore,
+	RedisSeenTxStore,
+	X402Adapter,
+} from "@riklr/agentgate";
 import type { NetworkName } from "@riklr/agentgate";
 import { agentGateRouter, validateAccessToken } from "@riklr/agentgate/express";
 import express from "express";
+import Redis from "ioredis";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 const PUBLIC_URL = process.env["PUBLIC_URL"] ?? `http://localhost:${PORT}`;
@@ -10,6 +16,7 @@ const WALLET = (process.env["AGENTGATE_WALLET_ADDRESS"] ??
 	"0x0000000000000000000000000000000000000000") as `0x${string}`;
 const SECRET =
 	process.env["AGENTGATE_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
+const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
 
 const app = express();
 app.use(express.json());
@@ -19,6 +26,11 @@ const adapter = new X402Adapter({
 	network: NETWORK,
 	rpcUrl: process.env["AGENTGATE_RPC_URL"],
 });
+
+// Storage — Redis required
+const redis = new Redis(REDIS_URL);
+const store = new RedisChallengeStore({ redis });
+const seenTxStore = new RedisSeenTxStore({ redis });
 
 // Create token issuer (opt-in utility for JWT generation)
 const tokenIssuer = new AccessTokenIssuer(SECRET);
@@ -82,6 +94,8 @@ app.use(
 			resourceEndpointTemplate: `${PUBLIC_URL}/api/photos/{resourceId}`,
 		},
 		adapter,
+		store,
+		seenTxStore,
 	}),
 );
 

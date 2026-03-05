@@ -1,10 +1,5 @@
 import { DefaultRequestHandler, InMemoryTaskStore } from "@a2a-js/sdk/server";
-import {
-	ChallengeEngine,
-	InMemoryChallengeStore,
-	InMemorySeenTxStore,
-	buildAgentCard,
-} from "./core/index.js";
+import { ChallengeEngine, buildAgentCard } from "./core/index.js";
 import { AgentGateExecutor } from "./executor.js";
 import type {
 	AgentCard,
@@ -17,8 +12,8 @@ import type {
 export type AgentGateConfig = {
 	readonly config: SellerConfig;
 	readonly adapter: IPaymentAdapter;
-	readonly store?: IChallengeStore | undefined;
-	readonly seenTxStore?: ISeenTxStore | undefined;
+	readonly store: IChallengeStore;
+	readonly seenTxStore: ISeenTxStore;
 };
 
 export type AgentGateInstance = {
@@ -29,8 +24,22 @@ export type AgentGateInstance = {
 };
 
 export function createAgentGate(opts: AgentGateConfig): AgentGateInstance {
-	const store = opts.store ?? new InMemoryChallengeStore();
-	const seenTxStore = opts.seenTxStore ?? new InMemorySeenTxStore();
+	if (!opts.store) {
+		throw new Error(
+			"[AgentGate] store is required. Use RedisChallengeStore for production.\n" +
+				"  import { RedisChallengeStore } from '@riklr/agentgate';\n" +
+				"  const store = new RedisChallengeStore({ redis });",
+		);
+	}
+	if (!opts.seenTxStore) {
+		throw new Error(
+			"[AgentGate] seenTxStore is required. Use RedisSeenTxStore for production.\n" +
+				"  import { RedisSeenTxStore } from '@riklr/agentgate';\n" +
+				"  const seenTxStore = new RedisSeenTxStore({ redis });",
+		);
+	}
+	const store = opts.store;
+	const seenTxStore = opts.seenTxStore;
 
 	const engine = new ChallengeEngine({
 		config: opts.config,

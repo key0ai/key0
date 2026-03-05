@@ -56,7 +56,7 @@ body:
       label: Steps to reproduce
       description: Step-by-step instructions to trigger the bug.
       placeholder: |
-        1. Configure AgentGate with Express using the default in-memory storage
+        1. Configure AgentGate with Express using Redis storage
         2. Send a POST /access request with a valid transaction hash
         3. Observe the 500 response
     validations:
@@ -114,8 +114,7 @@ body:
       label: Storage backend
       description: Which storage backend are you using?
       options:
-        - In-memory (default)
-        - Redis
+        - Redis (required)
         - Not applicable
     validations:
       required: true
@@ -128,10 +127,10 @@ body:
       render: typescript
       placeholder: |
         createAgentGate({
-          network: 'testnet',
-          receiverAddress: '0xREDACTED',
-          pricing: { amount: '0.01', currency: 'USDC' },
-          storage: { type: 'memory' },
+          config: { network: 'testnet', walletAddress: '0xREDACTED', ... },
+          adapter: new X402Adapter({ network: 'testnet' }),
+          store: new RedisChallengeStore({ redis }),
+          seenTxStore: new RedisSeenTxStore({ redis }),
         })
 
   - type: textarea
