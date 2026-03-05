@@ -10,6 +10,7 @@ export type {
 export type {
 	PaymentRequirements,
 	ResourceInfo,
+	AgentGateExtension,
 	X402PaymentRequiredResponse,
 	X402PaymentPayload,
 	EIP3009Authorization,

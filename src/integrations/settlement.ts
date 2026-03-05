@@ -49,7 +49,7 @@ export function decodePaymentSignature(paymentSignature: string): X402PaymentPay
 // ---------------------------------------------------------------------------
 
 /**
- * Build the HTTP 402 PaymentRequirements response body.
+ * Build the HTTP 402 PaymentRequirements response body for a single tier.
  * Shared between the HTTP middleware and the A2A executor.
  */
 export function buildHttpPaymentRequirements(
@@ -57,6 +57,11 @@ export function buildHttpPaymentRequirements(
 	resourceId: string,
 	config: SellerConfig,
 	networkConfig: NetworkConfig,
+	options?: {
+		inputSchema?: object;
+		outputSchema?: object;
+		description?: string;
+	},
 ): X402PaymentRequiredResponse {
 	const tier = config.products.find((t: ProductTier) => t.tierId === tierId);
 	if (!tier) {
@@ -70,7 +75,7 @@ export function buildHttpPaymentRequirements(
 	const amountRaw = parseDollarToUsdcMicro(tier.amount);
 	const network = `eip155:${networkConfig.chainId}`;
 
-	return {
+	const response: X402PaymentRequiredResponse = {
 		x402Version: 2,
 		resource: {
 			url: resourceUrl,
@@ -93,6 +98,100 @@ export function buildHttpPaymentRequirements(
 				},
 			},
 		],
+	};
+
+	// Add schema if provided
+	if (options?.inputSchema || options?.outputSchema || options?.description) {
+		response.extensions = {
+			agentgate: {
+				...(options.inputSchema && { inputSchema: options.inputSchema }),
+				...(options.outputSchema && { outputSchema: options.outputSchema }),
+				...(options.description && { description: options.description }),
+			},
+		};
+	}
+
+	return response;
+}
+
+/**
+ * Build a discovery 402 response covering all product tiers.
+ * Used when a bare request is made without specifying a tierId.
+ * Does not create any PENDING records — pure discovery.
+ */
+export function buildDiscoveryResponse(
+	config: SellerConfig,
+	networkConfig: NetworkConfig,
+): X402PaymentRequiredResponse {
+	const basePath = config.basePath ?? "/a2a";
+	const baseUrl = config.agentUrl.replace(/\/$/, "");
+	const resourceUrl = `${baseUrl}/x402/access`;
+
+	const network = `eip155:${networkConfig.chainId}`;
+
+	// Build accepts array with one entry per tier
+	const accepts = config.products.map((tier: ProductTier) => {
+		const amountRaw = parseDollarToUsdcMicro(tier.amount);
+		return {
+			scheme: "exact" as const,
+			network,
+			asset: networkConfig.usdcAddress,
+			amount: amountRaw.toString(),
+			payTo: config.walletAddress,
+			maxTimeoutSeconds: 300,
+			extra: {
+				name: networkConfig.usdcDomain.name,
+				version: networkConfig.usdcDomain.version,
+				tierId: tier.tierId,
+				label: tier.label,
+				description: `${tier.label} — ${tier.amount} USDC`,
+			},
+		};
+	});
+
+	return {
+		x402Version: 2,
+		resource: {
+			url: resourceUrl,
+			method: "POST",
+			description: `${config.agentName} — Pay-per-use access with USDC. POST with { tierId } to start a payment flow, or POST with { tierId, requestId } + PAYMENT-SIGNATURE header to complete payment.`,
+			mimeType: "application/json",
+		},
+		accepts,
+		extensions: {
+			agentgate: {
+				inputSchema: {
+					type: "object",
+					properties: {
+						tierId: {
+							type: "string",
+							description: `Tier to purchase. Available tiers: ${config.products.map((t) => t.tierId).join(", ")}`,
+						},
+						requestId: {
+							type: "string",
+							description: "Client-generated UUID for idempotency (auto-generated if omitted)",
+						},
+						resourceId: {
+							type: "string",
+							description: "Optional: Specific resource identifier (defaults to 'default')",
+						},
+					},
+					required: ["tierId"],
+				},
+				outputSchema: {
+					type: "object",
+					properties: {
+						accessToken: { type: "string", description: "JWT token for API access" },
+						tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
+						expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
+						resourceEndpoint: { type: "string", description: "URL to access the protected resource" },
+						txHash: { type: "string", description: "On-chain transaction hash" },
+						explorerUrl: { type: "string", description: "Blockchain explorer URL" },
+					},
+				},
+				description: `${config.agentDescription}`,
+			},
+		},
 	};
 }
 

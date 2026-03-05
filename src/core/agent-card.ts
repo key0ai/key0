@@ -15,6 +15,11 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	const networkName =
 		CHAIN_ID_TO_NETWORK[networkConfig.chainId] ?? `chain-${networkConfig.chainId}`;
 
+	// Build endpoint URL first (needed for skills)
+	const basePath = config.basePath ?? "/a2a";
+	const baseUrl = config.agentUrl.replace(/\/$/, "");
+	const endpointUrl = `${baseUrl}${basePath}`;
+
 	// Build skills - one per product tier (minimal, reference-style)
 	const skills: AgentSkill[] = config.products.map((tier: ProductTier) => {
 		const pricingEntry: SkillPricing = {
@@ -29,8 +34,9 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 		return {
 			id: tier.tierId,
 			name: tier.label,
-			description: `${tier.label} — ${tier.amount} USDC on ${networkName}. Send via JSON-RPC method 'message/send' with a data part containing type "AccessRequest". The server responds with a 402 payment challenge; reply with the x402 payment payload in message metadata to complete payment.`,
+			description: `${tier.label} — ${tier.amount} USDC on ${networkName}. Access via JSON-RPC method 'message/send' with AccessRequest, or direct HTTP POST to the URL field with body: { tierId, requestId, resourceId }. Server responds with HTTP 402 payment challenge; include PAYMENT-SIGNATURE header with x402 payment payload to complete payment.`,
 			tags: ["x402", "payment"],
+			url: `${baseUrl}/x402/access`,
 			examples: [
 				JSON.stringify({
 					messageId: "<uuid>",
@@ -47,6 +53,7 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 						},
 					],
 				}),
+				`POST ${baseUrl}/x402/access with body: ${JSON.stringify({ tierId: tier.tierId, requestId: "<uuid>", resourceId: "default" })}`,
 			],
 			inputSchema: {
 				type: "object",
@@ -86,11 +93,6 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 		};
 	});
 
-	const basePath = config.basePath ?? "/a2a";
-	// Ensure no double slashes if agentUrl ends with /
-	const baseUrl = config.agentUrl.replace(/\/$/, "");
-	const endpointUrl = `${baseUrl}${basePath}`;
-
 	const x402Extension: AgentExtension = {
 		uri: X402_EXTENSION_URI,
 		description: `Supports x402 payments with USDC on ${networkName}.`,
@@ -100,7 +102,7 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	return {
 		name: config.agentName,
 		description: config.agentDescription,
-		url: `${endpointUrl}/jsonrpc`,
+		url: `${baseUrl}/x402/access`,
 		version: config.version ?? "1.0.0",
 		protocolVersion: "0.3.0",
 		capabilities: {

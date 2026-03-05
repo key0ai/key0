@@ -30,6 +30,7 @@ export type AgentSkill = {
 	readonly inputSchema: AgentSkillInputSchema;
 	readonly outputSchema: AgentSkillInputSchema;
 	readonly pricing?: readonly SkillPricing[];
+	readonly url?: string; // Direct HTTP POST endpoint for this skill
 };
 
 export type AgentInterface = {

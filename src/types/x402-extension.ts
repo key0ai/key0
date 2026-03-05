@@ -44,6 +44,16 @@ export type ResourceInfo = {
 };
 
 /**
+ * AgentGate extension data for embedding API schema in x402 responses.
+ * Follows the pattern used by Allium's `extensions.bazaar`.
+ */
+export type AgentGateExtension = {
+	readonly inputSchema?: object;
+	readonly outputSchema?: object;
+	readonly description?: string;
+};
+
+/**
  * The x402PaymentRequiredResponse object, sent when payment is needed (x402 v2).
  * Placed in task.status.message.metadata["x402.payment.required"] (Standalone Flow).
  */
@@ -52,7 +62,10 @@ export type X402PaymentRequiredResponse = {
 	readonly resource: ResourceInfo;
 	readonly accepts: readonly PaymentRequirements[];
 	readonly error?: string;
-	readonly extensions?: Record<string, unknown>;
+	readonly extensions?: {
+		readonly agentgate?: AgentGateExtension;
+		[key: string]: unknown;
+	};
 };
 
 // ---------------------------------------------------------------------------
