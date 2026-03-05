@@ -461,30 +461,38 @@ Client Agent                          Seller Server
 ```
 Client                                Seller Server
      |                                      |
-     |  1. POST /a2a/jsonrpc                |
-     |     (AccessRequest, no payment)      |
+     |  1. POST /x402/access  {}            |
+     |------------------------------------->|
+     |  <-- HTTP 402 + all tiers            |
+     |      (discovery, no PENDING record)  |
+     |                                      |
+     |  2. POST /x402/access               |
+     |     { tierId, requestId? }           |
      |------------------------------------->|
      |  <-- HTTP 402 + PaymentRequirements  |
      |       + challengeId                  |
+     |      (requestId auto-generated       |
+     |       if omitted)                    |
      |                                      |
-     |  2. POST /a2a/jsonrpc                |
-     |     (AccessRequest + PAYMENT-        |
-     |      SIGNATURE header with signed    |
-     |      EIP-3009 authorization)         |
+     |  3. POST /x402/access               |
+     |     { tierId, requestId }            |
+     |     + PAYMENT-SIGNATURE header       |
+     |       (signed EIP-3009 auth)         |
      |------------------------------------->|
      |      Gas wallet / facilitator        |
      |      settles on-chain -------------> |
      |  <-- AccessGrant (JWT + endpoint)    |
      |                                      |
-     |  3. GET /api/resource/:id            |
+     |  4. GET /api/resource/:id            |
      |     Authorization: Bearer <JWT>      |
      |------------------------------------->|
      |  <-- Protected content               |
 ```
 
-1. **Challenge (402)** — Client sends an `AccessRequest` without a payment header. Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` and the `challengeId`
-2. **Payment + Settlement** — Client sends the same request with a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles the payment on-chain, then the server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`
-3. **Access** — Client uses the token as a Bearer header to access the protected resource
+1. **Discovery (optional)** — Client POSTs to `/x402/access` with no body to receive a 402 listing all available tiers and pricing. No `PENDING` record is created.
+2. **Challenge** — Client POSTs `{ tierId }` (and optionally `requestId`, `resourceId`). Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` for that tier. `requestId` is auto-generated if omitted.
+3. **Payment + Settlement** — Client resends with the same `{ tierId, requestId }` plus a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles on-chain; server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`.
+4. **Access** — Client uses the token as a Bearer header to access the protected resource.
 
 If `onIssueToken` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
 

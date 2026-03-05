@@ -158,6 +158,7 @@ type AgentSkill = {
   name: string;
   description: string;
   tags: string[];
+  url?: string;          // Direct HTTP POST endpoint (e.g. /x402/access)
   inputSchema: JSONSchema;
   outputSchema: JSONSchema;
   pricing?: SkillPricing[];
@@ -385,15 +386,33 @@ After verification: mark challenge as `PAID`, call `onIssueToken`, fire `onPayme
 
 ### 7.2 x402 HTTP Endpoint
 
-In addition to A2A, AgentGate mounts a standard x402 HTTP endpoint at `POST /a2a/access`:
+In addition to A2A, AgentGate mounts a standard x402 HTTP endpoint at `POST /x402/access`.
+The endpoint handles three cases based on the request body and headers:
 
+**Case 1 — Discovery** (no `tierId` in body):
 ```
-Client POST /a2a/access (no PAYMENT-SIGNATURE)
-  → Server responds HTTP 402 with x402 PaymentRequirements
-Client signs EIP-3009 authorization off-chain
-Client POST /a2a/access (with PAYMENT-SIGNATURE header)
-  → Server settles payment (facilitator or gas wallet)
-  → Server responds 200 with AccessGrant
+Client POST /x402/access  {}
+  → Server responds HTTP 402 with PaymentRequirements for all tiers
+  → No PENDING record created — pure discovery
+  → Sets payment-required and www-authenticate headers
+```
+
+**Case 2 — Challenge** (`tierId` present, no `PAYMENT-SIGNATURE` header):
+```
+Client POST /x402/access  { tierId, requestId?, resourceId? }
+  → Server creates PENDING record
+  → Server responds HTTP 402 with PaymentRequirements for that tier + schema
+  → requestId is auto-generated if omitted
+  → Sets payment-required and www-authenticate headers
+```
+
+**Case 3 — Settlement** (`tierId` + `PAYMENT-SIGNATURE` header):
+```
+Client POST /x402/access  { tierId, requestId, resourceId? }
+    + PAYMENT-SIGNATURE: <base64-encoded EIP-3009 authorization>
+  → Server settles payment on-chain (facilitator or gas wallet)
+  → Server responds 200 with AccessGrant (JWT + resource endpoint)
+  → Sets payment-response header
 ```
 
 ---
@@ -536,7 +555,7 @@ Step 5: Mount the agent router
   //   GET  /.well-known/agent.json
   //   POST /a2a/jsonrpc  (A2A JSON-RPC)
   //   POST /a2a/rest     (A2A REST)
-  //   POST /a2a/access   (x402 HTTP)
+  //   POST /x402/access  (x402 HTTP)
 
 Step 6: Protect your API
   app.use("/api", validateAccessToken({ secret: ACCESS_TOKEN_SECRET }))

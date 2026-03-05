@@ -23,6 +23,7 @@ const X_A2A_EXTENSIONS_HEADER = "x-a2a-extensions";
 // Re-export shared settlement utilities so callers can import from a single place
 export {
 	buildHttpPaymentRequirements,
+	buildDiscoveryResponse,
 	decodePaymentSignature,
 	settlePayment,
 } from "./settlement.js";
