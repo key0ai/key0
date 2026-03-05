@@ -44,7 +44,7 @@ Client → Protected API with Bearer JWT
 1. **Types** (`src/types/`) — Protocol-agnostic interfaces: `IPaymentAdapter`, `IChallengeStore`, `ISeenTxStore`, plus all message types (`AccessRequest`, `X402Challenge`, `PaymentProof`, `AccessGrant`).
 
 2. **Core** (`src/core/`) — Business logic:
-   - `challenge-engine.ts` — State machine (PENDING → PAID/EXPIRED/CANCELLED). Owns the full challenge lifecycle, on-chain verification dispatch, and token issuance.
+   - `challenge-engine.ts` — State machine (PENDING → PAID → DELIVERED | PENDING → EXPIRED | PENDING → CANCELLED | PAID → REFUND_PENDING → REFUNDED | PAID → REFUND_PENDING → REFUND_FAILED). Owns the full challenge lifecycle, on-chain verification dispatch, and token issuance.
    - `access-token.ts` — JWT issuance/verification (HS256 or RS256). Supports fallback secrets for zero-downtime rotation.
    - `agent-card.ts` — Auto-generates A2A discovery card from `SellerConfig`.
    - `storage/` — `IChallengeStore` + `ISeenTxStore` with Redis implementations (`RedisChallengeStore`, `RedisSeenTxStore`). Uses atomic Lua scripts for concurrent state transitions. Both are required fields.
