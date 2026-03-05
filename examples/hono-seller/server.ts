@@ -101,6 +101,6 @@ export default {
 
 console.log(`\nPhoto Gallery Agent (Hono) running on http://localhost:${PORT}`);
 console.log(`  Agent card: http://localhost:${PORT}/.well-known/agent.json`);
-console.log(`  A2A endpoint: http://localhost:${PORT}/agent`);
+console.log(`  A2A endpoint: http://localhost:${PORT}/a2a/jsonrpc`);
 console.log(`  Network: ${NETWORK}`);
 console.log(`  Wallet: ${WALLET}\n`);

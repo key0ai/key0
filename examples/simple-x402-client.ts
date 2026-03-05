@@ -101,9 +101,9 @@ async function main() {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
-			tier: pricing.tierId,
+			tierId: pricing.tierId,
 			requestId,
-			resource: "photo-1",
+			resourceId: "photo-1",
 		}),
 	});
 
@@ -179,9 +179,9 @@ async function main() {
 			"PAYMENT-SIGNATURE": paymentSignatureHeader,
 		},
 		body: JSON.stringify({
-			tier: pricing.tierId,
+			tierId: pricing.tierId,
 			requestId,
-			resource: "photo-1",
+			resourceId: "photo-1",
 		}),
 	});
 

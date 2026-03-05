@@ -113,7 +113,7 @@ async function main() {
 	// -----------------------------------------------------------------------
 	console.log("2. Requesting access...");
 	const requestId = crypto.randomUUID();
-	const basePath = "/agent";
+	const basePath = "/a2a/jsonrpc";
 
 	const accessRes = await fetch(`${SELLER_URL}${basePath}`, {
 		method: "POST",
