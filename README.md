@@ -663,7 +663,7 @@ bun run start
 ```bash
 bun install          # Install dependencies
 bun run typecheck    # Type-check
-bun run lint         # Lint with Biome
+bun run lint         # Lint with Biome v2
 bun test             # Run all tests
 bun run build        # Compile to ./dist
 ```
