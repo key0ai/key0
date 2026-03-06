@@ -86,6 +86,7 @@ Optional callbacks: `onPaymentReceived`, `onIssueToken` (override default JWT ge
 ## Related Documentation
 
 - `SPEC.md` — Requirements and security invariants
+- `AGENT_CARD.md` — Complete field-by-field documentation of the Agent Card format
 
 ## Available Agents
 
@@ -95,3 +96,5 @@ Optional callbacks: `onPaymentReceived`, `onIssueToken` (override default JWT ge
 ## Agent Invocation Rules
 
 **Always invoke `@security-reviewer` after any edit to payment-critical files** (see agent definition for the full file list). Do not skip this even for small changes.
+
+**Always run `/agent-card-updater` after any edit to `src/types/agent-card.ts` or `src/core/agent-card.ts`.**
