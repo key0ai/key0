@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { USDC_DECIMALS } from "../../types/index.js";
-import { USDC_TRANSFER_EVENT_SIGNATURE, parseDollarToUsdcMicro } from "../usdc.js";
+import { parseDollarToUsdcMicro, USDC_TRANSFER_EVENT_SIGNATURE } from "../usdc.js";
 
 describe("USDC constants", () => {
 	test("USDC_DECIMALS is 6", () => {

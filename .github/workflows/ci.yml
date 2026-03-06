@@ -34,4 +34,4 @@ jobs:
         run: bun run lint
 
       - name: Test
-        run: bun test --recursive
+        run: bun test src/

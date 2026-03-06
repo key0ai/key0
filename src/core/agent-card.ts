@@ -1,14 +1,12 @@
-import { CHAIN_CONFIGS, CHAIN_ID_TO_NETWORK, X402_EXTENSION_URI } from "../types/index.js";
 import type {
 	AgentCard,
 	AgentExtension,
 	AgentSkill,
-	NetworkConfig,
-	NetworkName,
 	ProductTier,
 	SellerConfig,
 	SkillPricing,
 } from "../types/index.js";
+import { CHAIN_CONFIGS, CHAIN_ID_TO_NETWORK, X402_EXTENSION_URI } from "../types/index.js";
 
 export function buildAgentCard(config: SellerConfig): AgentCard {
 	const networkConfig = CHAIN_CONFIGS[config.network];
@@ -18,7 +16,7 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	// Build endpoint URL first (needed for skills)
 	const basePath = config.basePath ?? "/a2a";
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
-	const endpointUrl = `${baseUrl}${basePath}`;
+	const _endpointUrl = `${baseUrl}${basePath}`;
 
 	// Build skills - one per product tier (minimal, reference-style)
 	const skills: AgentSkill[] = config.products.map((tier: ProductTier) => {

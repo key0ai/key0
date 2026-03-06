@@ -62,19 +62,19 @@ class MockEventBus implements ExecutionEventBus {
 		this.events.push(message);
 	}
 
-	on(eventName: ExecutionEventName, listener: (event: AgentExecutionEvent) => void): this {
+	on(_eventName: ExecutionEventName, _listener: (event: AgentExecutionEvent) => void): this {
 		return this;
 	}
 
-	off(eventName: ExecutionEventName, listener: (event: AgentExecutionEvent) => void): this {
+	off(_eventName: ExecutionEventName, _listener: (event: AgentExecutionEvent) => void): this {
 		return this;
 	}
 
-	once(eventName: ExecutionEventName, listener: (event: AgentExecutionEvent) => void): this {
+	once(_eventName: ExecutionEventName, _listener: (event: AgentExecutionEvent) => void): this {
 		return this;
 	}
 
-	removeAllListeners(eventName?: ExecutionEventName): this {
+	removeAllListeners(_eventName?: ExecutionEventName): this {
 		return this;
 	}
 }
@@ -148,7 +148,12 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 	test("1. AccessRequest → input-required Task with x402 metadata", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
-		const { executor, agentCard } = createAgentGate({ config, adapter, store: new TestChallengeStore(), seenTxStore: new TestSeenTxStore() });
+		const { executor, agentCard } = createAgentGate({
+			config,
+			adapter,
+			store: new TestChallengeStore(),
+			seenTxStore: new TestSeenTxStore(),
+		});
 
 		// Agent card check
 		expect(agentCard.name).toBe("E2E Test Agent");
@@ -197,7 +202,12 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 	test("2. Idempotent access request returns same challenge", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
-		const { executor } = createAgentGate({ config, adapter, store: new TestChallengeStore(), seenTxStore: new TestSeenTxStore() });
+		const { executor } = createAgentGate({
+			config,
+			adapter,
+			store: new TestChallengeStore(),
+			seenTxStore: new TestSeenTxStore(),
+		});
 
 		const requestId = uuidv4();
 		const reqData = {
@@ -219,7 +229,12 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 	test("3. Resource not found returns failed task", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
-		const { executor } = createAgentGate({ config, adapter, store: new TestChallengeStore(), seenTxStore: new TestSeenTxStore() });
+		const { executor } = createAgentGate({
+			config,
+			adapter,
+			store: new TestChallengeStore(),
+			seenTxStore: new TestSeenTxStore(),
+		});
 
 		const events = await runTask(executor, {
 			type: "AccessRequest",
@@ -239,7 +254,12 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 	test("4. Default resourceId when not provided", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
-		const { executor } = createAgentGate({ config, adapter, store: new TestChallengeStore(), seenTxStore: new TestSeenTxStore() });
+		const { executor } = createAgentGate({
+			config,
+			adapter,
+			store: new TestChallengeStore(),
+			seenTxStore: new TestSeenTxStore(),
+		});
 
 		const events = await runTask(executor, {
 			type: "AccessRequest",

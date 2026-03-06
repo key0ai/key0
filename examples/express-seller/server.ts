@@ -1,10 +1,10 @@
+import type { NetworkName } from "@riklr/agentgate";
 import {
 	AccessTokenIssuer,
 	RedisChallengeStore,
 	RedisSeenTxStore,
 	X402Adapter,
 } from "@riklr/agentgate";
-import type { NetworkName } from "@riklr/agentgate";
 import { agentGateRouter, validateAccessToken } from "@riklr/agentgate/express";
 import express from "express";
 import Redis from "ioredis";

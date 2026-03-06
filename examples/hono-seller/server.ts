@@ -1,5 +1,5 @@
-import { AccessTokenIssuer, X402Adapter } from "@riklr/agentgate";
 import type { NetworkName } from "@riklr/agentgate";
+import { AccessTokenIssuer, X402Adapter } from "@riklr/agentgate";
 import { agentGateApp, honoValidateAccessToken } from "@riklr/agentgate/hono";
 import { Hono } from "hono";
 

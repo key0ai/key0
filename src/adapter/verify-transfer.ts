@@ -1,4 +1,4 @@
-import { type PublicClient, decodeEventLog } from "viem";
+import { decodeEventLog, type PublicClient } from "viem";
 import type { NetworkConfig, VerificationResult } from "../types/index.js";
 import { USDC_ABI, USDC_TRANSFER_EVENT_SIGNATURE } from "./usdc.js";
 

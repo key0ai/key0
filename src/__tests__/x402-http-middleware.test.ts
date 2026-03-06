@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { NextFunction, Request, Response } from "express";
 import { ChallengeEngine } from "../core/challenge-engine.js";
-import { TestChallengeStore, TestSeenTxStore } from "../test-utils/stores.js";
 import {
 	buildHttpPaymentRequirements,
 	createX402HttpMiddleware,
@@ -9,6 +8,7 @@ import {
 	settleViaFacilitator,
 } from "../integrations/x402-http-middleware.js";
 import { MockPaymentAdapter } from "../test-utils/index.js";
+import { TestChallengeStore, TestSeenTxStore } from "../test-utils/stores.js";
 import { CHAIN_CONFIGS } from "../types/config-shared.js";
 import type { SellerConfig } from "../types/index.js";
 
@@ -77,7 +77,7 @@ function createMockResponse(): {
 			jsonData = data;
 			return this;
 		},
-		send: function (data: any) {
+		send: function (_data: any) {
 			return this;
 		},
 		setHeader: function (name: string, value: string) {

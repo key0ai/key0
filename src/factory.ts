@@ -1,5 +1,5 @@
 import { DefaultRequestHandler, InMemoryTaskStore } from "@a2a-js/sdk/server";
-import { ChallengeEngine, buildAgentCard } from "./core/index.js";
+import { buildAgentCard, ChallengeEngine } from "./core/index.js";
 import { AgentGateExecutor } from "./executor.js";
 import type {
 	AgentCard,

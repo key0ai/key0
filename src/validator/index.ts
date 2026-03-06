@@ -1,4 +1,4 @@
-import { type JWTPayload, importSPKI, jwtVerify } from "jose";
+import { importSPKI, type JWTPayload, jwtVerify } from "jose";
 
 export type AccessTokenPayload = JWTPayload & {
 	readonly sub: string; // requestId

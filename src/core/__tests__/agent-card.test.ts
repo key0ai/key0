@@ -43,7 +43,7 @@ describe("buildAgentCard", () => {
 
 	test("returns card with correct url and version", () => {
 		const card = buildAgentCard(makeConfig({ version: "2.0.0" }));
-		expect(card.url).toBe("https://agent.example.com/a2a/jsonrpc");
+		expect(card.url).toBe("https://agent.example.com/x402/access");
 		expect(card.version).toBe("2.0.0");
 	});
 

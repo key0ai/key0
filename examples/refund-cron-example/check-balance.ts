@@ -1,4 +1,4 @@
-import { http, createPublicClient, formatUnits } from "viem";
+import { createPublicClient, formatUnits, http } from "viem";
 import { base, baseSepolia } from "viem/chains";
 
 const NETWORK = process.env["AGENTGATE_NETWORK"] ?? "testnet";

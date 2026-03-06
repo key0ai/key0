@@ -1,16 +1,16 @@
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import {
-	UserBuilder,
 	agentCardHandler,
 	jsonRpcHandler,
 	restHandler,
+	UserBuilder,
 } from "@a2a-js/sdk/server/express";
 import { type NextFunction, type Request, type Response, Router } from "express";
 import { type AgentGateConfig, createAgentGate } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
+import type { X402PaymentRequiredResponse } from "../types/index.js";
 import { AgentGateError, CHAIN_CONFIGS } from "../types/index.js";
-import type { AccessRequest, X402PaymentRequiredResponse } from "../types/index.js";
 import {
 	buildDiscoveryResponse,
 	buildHttpPaymentRequirements,
@@ -74,18 +74,21 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 			// ===== CASE 1: No tierId → Discovery (402 with all tiers, no PENDING record) =====
 			if (!tierId) {
 				console.log("[x402-access] → CASE 1: No tierId provided, returning discovery 402");
-				
+
 				const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig);
-				console.log("[x402-access] Discovery response:", JSON.stringify(discoveryResponse, null, 2));
+				console.log(
+					"[x402-access] Discovery response:",
+					JSON.stringify(discoveryResponse, null, 2),
+				);
 
 				// Encode as base64 for PAYMENT-REQUIRED header
 				const encoded = Buffer.from(JSON.stringify(discoveryResponse)).toString("base64");
 				res.setHeader("payment-required", encoded);
-				
+
 				// Add www-authenticate header for HTTP spec compliance
 				const authHeader = `Payment realm="${opts.config.agentUrl}", accept="exact"`;
 				res.setHeader("www-authenticate", authHeader);
-				
+
 				console.log(`[x402-access] payment-required header set (${encoded.length} bytes)`);
 				console.log(`[x402-access] www-authenticate header set`);
 				console.log("[x402-access] → Returning HTTP 402 Payment Required (Discovery)");
@@ -102,11 +105,15 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 				console.log(`[x402-access] Auto-generated requestId: ${requestId}`);
 			}
 
-			console.log(`[x402-access] Parsed request - tierId: ${tierId}, requestId: ${requestId}, resourceId: ${resourceId}`);
+			console.log(
+				`[x402-access] Parsed request - tierId: ${tierId}, requestId: ${requestId}, resourceId: ${resourceId}`,
+			);
 
 			// ===== CASE 2: tierId present, no PAYMENT-SIGNATURE → Challenge (402 + PENDING record) =====
 			if (!paymentSignature) {
-				console.log("[x402-access] → CASE 2: tierId provided, no PAYMENT-SIGNATURE, issuing 402 challenge");
+				console.log(
+					"[x402-access] → CASE 2: tierId provided, no PAYMENT-SIGNATURE, issuing 402 challenge",
+				);
 				console.log(`[x402-access] Creating PENDING record for requestId: ${requestId}`);
 
 				// Create PENDING record via engine (handles tier/resource validation and idempotency)
@@ -145,7 +152,10 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 								accessToken: { type: "string", description: "JWT token for API access" },
 								tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
 								expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
-								resourceEndpoint: { type: "string", description: "URL to access the protected resource" },
+								resourceEndpoint: {
+									type: "string",
+									description: "URL to access the protected resource",
+								},
 								txHash: { type: "string", description: "On-chain transaction hash" },
 								explorerUrl: { type: "string", description: "Blockchain explorer URL" },
 							},
@@ -158,11 +168,11 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 				// Encode as base64 for payment-required header
 				const encoded = Buffer.from(JSON.stringify(requirements)).toString("base64");
 				res.setHeader("payment-required", encoded);
-				
+
 				// Add www-authenticate header
 				const authHeader = `Payment realm="${opts.config.agentUrl}", accept="exact", challenge="${challengeId}"`;
 				res.setHeader("www-authenticate", authHeader);
-				
+
 				console.log(`[x402-access] payment-required header set (${encoded.length} bytes)`);
 				console.log(`[x402-access] www-authenticate header set`);
 				console.log("[x402-access] → Returning HTTP 402 Payment Required (Challenge)");
@@ -176,12 +186,17 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 
 			// ===== CASE 3: tierId + PAYMENT-SIGNATURE → Settle and return access grant =====
 			console.log("[x402-access] → CASE 3: Processing payment");
-			console.log(`[x402-access] PAYMENT-SIGNATURE header received (${paymentSignature.length} bytes)`);
+			console.log(
+				`[x402-access] PAYMENT-SIGNATURE header received (${paymentSignature.length} bytes)`,
+			);
 
 			// Decode header then settle via shared settlement layer
 			console.log("[x402-access] Decoding payment signature...");
 			const paymentPayload = decodePaymentSignature(paymentSignature);
-			console.log("[x402-access] Payment payload decoded:", JSON.stringify(paymentPayload, null, 2));
+			console.log(
+				"[x402-access] Payment payload decoded:",
+				JSON.stringify(paymentPayload, null, 2),
+			);
 
 			console.log("[x402-access] Settling payment on-chain...");
 			const { txHash, settleResponse, payer } = await settlePayment(
@@ -219,7 +234,7 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 			console.error(`[x402-access] ✗ Error occurred after ${elapsed}ms`);
 			console.error("[x402-access] Error type:", err?.constructor?.name || typeof err);
 			console.error("[x402-access] Error details:", err);
-			
+
 			if (err instanceof Error) {
 				console.error("[x402-access] Error message:", err.message);
 				console.error("[x402-access] Error stack:", err.stack);
@@ -229,7 +244,7 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 				console.error(`[x402-access] AgentGate error: ${err.code} (HTTP ${err.httpStatus})`);
 				return res.status(err.httpStatus).json(err.toJSON());
 			}
-			
+
 			console.error("[x402-access] Returning 500 Internal Server Error");
 			return res.status(500).json({
 				error: "INTERNAL_ERROR",

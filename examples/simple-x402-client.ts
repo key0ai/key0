@@ -17,8 +17,8 @@
  */
 
 import type { AccessGrant, AgentCard } from "@riklr/agentgate";
-import { CHAIN_CONFIGS, USDC_ABI, parseDollarToUsdcMicro } from "@riklr/agentgate";
-import { http, createPublicClient, createWalletClient, formatUnits } from "viem";
+import { CHAIN_CONFIGS, parseDollarToUsdcMicro, USDC_ABI } from "@riklr/agentgate";
+import { createPublicClient, createWalletClient, formatUnits, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 
