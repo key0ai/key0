@@ -47,7 +47,7 @@ Client → Protected API with Bearer JWT
    - `challenge-engine.ts` — State machine (PENDING → PAID/EXPIRED/CANCELLED). Owns the full challenge lifecycle, on-chain verification dispatch, and token issuance.
    - `access-token.ts` — JWT issuance/verification (HS256 or RS256). Supports fallback secrets for zero-downtime rotation.
    - `agent-card.ts` — Auto-generates A2A discovery card from `SellerConfig`.
-   - `storage/` — `IChallengeStore` + `ISeenTxStore` with in-memory (default) and Redis (production) implementations. Redis uses atomic Lua scripts for concurrent state transitions.
+   - `storage/` — `IChallengeStore` + `ISeenTxStore` with Redis implementations (`RedisChallengeStore`, `RedisSeenTxStore`). Uses atomic Lua scripts for concurrent state transitions. Both are required fields.
 
 3. **Adapter** (`src/adapter/`) — `X402Adapter`: verifies ERC-20 Transfer events on Base via viem. Supports `mainnet` (chainId 8453) and `testnet`/Base Sepolia (chainId 84532).
 
@@ -90,7 +90,7 @@ Optional callbacks: `onPaymentReceived`, `onIssueToken` (override default JWT ge
 ## Available Agents
 
 - `@security-reviewer` — Reviews payment-critical files (`challenge-engine.ts`, `verify-transfer.ts`, `storage/`, `access-token.ts`, middleware) against the repo's security invariants (state transition atomicity, double-spend prevention, on-chain verification completeness, JWT security).
-- `@test-writer` — Writes Bun tests matching project conventions (`bun:test`, `makeConfig()`/`makeEngine()` factory pattern, injectable clock, `InMemoryChallengeStore({ cleanupIntervalMs: 0 })`, concurrency assertions).
+- `@test-writer` — Writes Bun tests matching project conventions (`bun:test`, `makeConfig()`/`makeEngine()` factory pattern, injectable clock, `TestChallengeStore` from `test-utils`, concurrency assertions).
 
 ## Agent Invocation Rules
 

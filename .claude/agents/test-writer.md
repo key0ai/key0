@@ -16,7 +16,7 @@ You are a test writer for the AgentGate SDK. You write `bun:test` tests that mat
 
 ```ts
 makeConfig(overrides?: Partial<SellerConfig>): SellerConfig
-makeEngine(opts?: { config?: Partial<SellerConfig>; adapter?: MockPaymentAdapter; clock?: () => number; store?: InMemoryChallengeStore; seenTxStore?: InMemorySeenTxStore })
+makeEngine(opts?: { config?: Partial<SellerConfig>; adapter?: MockPaymentAdapter; clock?: () => number; store?: TestChallengeStore; seenTxStore?: TestSeenTxStore })
 // returns: { engine, adapter, store, seenTxStore }
 
 makeRequest(overrides?: Partial<AccessRequest>): AccessRequest
@@ -105,7 +105,7 @@ mock.module("../../adapter/send-usdc.js", () => ({ sendUsdc: () => sendUsdcImpl(
 1. `transition()` — only one caller wins under concurrent calls (CAS)
 2. `transition()` — returns `false` when `fromState` doesn't match
 3. `markUsed()` — returns `false` on duplicate txHash
-4. Cleanup — expired records are removed after TTL
+4. `findPendingForRefund()` — returns only PAID records older than `minAgeMs`
 
 ### Adapter / Middleware
 

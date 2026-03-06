@@ -1,6 +1,7 @@
 import {
 	AccessTokenIssuer,
 	RedisChallengeStore,
+	RedisSeenTxStore,
 	X402Adapter,
 	processRefunds,
 } from "@riklr/agentgate";
@@ -37,6 +38,7 @@ const tokenIssuer = new AccessTokenIssuer(SECRET);
 
 const redis = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
 const store = new RedisChallengeStore({ redis, challengeTTLSeconds: 900 });
+const seenTxStore = new RedisSeenTxStore({ redis });
 
 // BullMQ bundles its own ioredis, so pass plain options to avoid type conflicts
 const makeBullConnection = () => {
@@ -53,6 +55,7 @@ const makeBullConnection = () => {
 app.use(
 	agentGateRouter({
 		store,
+		seenTxStore,
 		config: {
 			agentName: "Refund Cron Demo",
 			agentDescription: "Seller with automatic refund cron for undelivered payments",

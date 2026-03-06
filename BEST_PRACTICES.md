@@ -99,7 +99,7 @@ Agents are focused AI personas invoked with `@agent-name`. Each has a restricted
 
 ### `@security-reviewer`
 
-**When to use**: Any time you modify payment-critical files — `challenge-engine.ts`, `verify-transfer.ts`, `storage/memory.ts`, `storage/redis.ts`, `access-token.ts`, or the x402 middleware.
+**When to use**: Any time you modify payment-critical files — `challenge-engine.ts`, `verify-transfer.ts`, `storage/redis.ts`, `access-token.ts`, or the x402 middleware.
 
 **What it does**: Reviews code against the five security invariants that protect this payment system:
 
@@ -130,7 +130,7 @@ It outputs a PASS/FAIL/N/A verdict per invariant and a final APPROVE / REQUEST C
 **What it does**: Writes `bun:test` tests that match the established project conventions exactly:
 - Uses `makeConfig()` / `makeEngine()` factory helpers (not inline config objects)
 - Injectable `clock` for time-travel testing instead of `setTimeout`
-- `InMemoryChallengeStore({ cleanupIntervalMs: 0 })` + `store.stopCleanup()` pattern
+- `TestChallengeStore` + `TestSeenTxStore` from `src/test-utils/stores.js` (no config needed)
 - `Promise.all` + `.filter(Boolean).length === 1` for concurrency assertions
 - `AgentGateError` assertions check both `.code` and `.httpStatus`
 - `MockPaymentAdapter.setVerifyResult()` for controlling verification outcomes
@@ -173,7 +173,7 @@ The invariants (in brief):
 
 The exact `bun:test` patterns for this codebase. Only `@test-writer` preloads this.
 
-Contains: imports, `makeConfig()`/`makeEngine()`/`makeRequest()` factory patterns, injectable clock for time-travel testing, `InMemoryChallengeStore({ cleanupIntervalMs: 0 })` + `stopCleanup()`, `Promise.all` + filter-Boolean concurrency assertions, `AgentGateError` `.code`/`.httpStatus` assertions, `MockPaymentAdapter.setVerifyResult()`.
+Contains: imports, `makeConfig()`/`makeEngine()`/`makeRequest()` factory patterns, injectable clock for time-travel testing, `TestChallengeStore`/`TestSeenTxStore` from `test-utils/stores.js`, `Promise.all` + filter-Boolean concurrency assertions, `AgentGateError` `.code`/`.httpStatus` assertions, `MockPaymentAdapter.setVerifyResult()`.
 
 ---
 

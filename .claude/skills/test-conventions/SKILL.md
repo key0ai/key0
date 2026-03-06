@@ -21,7 +21,7 @@ import {
 	type SellerConfig,
 } from "../../types";
 import { ChallengeEngine, type ChallengeEngineConfig } from "../challenge-engine.js";
-import { InMemoryChallengeStore, InMemorySeenTxStore } from "../storage/memory.js";
+import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
 ```
 
 ---
@@ -58,12 +58,12 @@ function makeEngine(opts?: {
 	config?: Partial<SellerConfig>;
 	adapter?: MockPaymentAdapter;
 	clock?: () => number;
-	store?: InMemoryChallengeStore;
-	seenTxStore?: InMemorySeenTxStore;
+	store?: TestChallengeStore;
+	seenTxStore?: TestSeenTxStore;
 }) {
 	const adapter = opts?.adapter ?? new MockPaymentAdapter();
-	const store = opts?.store ?? new InMemoryChallengeStore();
-	const seenTxStore = opts?.seenTxStore ?? new InMemorySeenTxStore();
+	const store = opts?.store ?? new TestChallengeStore();
+	const seenTxStore = opts?.seenTxStore ?? new TestSeenTxStore();
 	const config = makeConfig(opts?.config);
 	const engineConfig: ChallengeEngineConfig = {
 		config,
@@ -112,22 +112,14 @@ now += 901_000;
 
 ---
 
-## InMemoryChallengeStore Pattern
+## TestChallengeStore Pattern
 
-When creating a store **directly in a test** (not via `makeEngine`), always pass `cleanupIntervalMs: 0` and call `stopCleanup()` when done:
+When creating a store **directly in a test** (not via `makeEngine`), use `TestChallengeStore` from `test-utils/stores.js`. It has no cleanup timer and no size guard — zero configuration needed:
 
 ```ts
-const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
-// ... test ...
-store.stopCleanup();
+const store = new TestChallengeStore();
+const seenTxStore = new TestSeenTxStore();
 ```
-
-When reused across tests:
-```ts
-afterEach(() => { store.stopCleanup(); });
-```
-
-`makeEngine()` omits `cleanupIntervalMs: 0` intentionally — the default timer is `unref()`'d so it won't block process exit.
 
 ### `makeChallengeRecord` — for store-level tests
 

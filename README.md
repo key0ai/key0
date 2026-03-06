@@ -218,13 +218,18 @@ bun add ioredis   # Redis-backed storage for multi-process deployments
 ```typescript
 import express from "express";
 import { agentGateRouter, validateAccessToken } from "@riklr/agentgate/express";
-import { X402Adapter, AccessTokenIssuer } from "@riklr/agentgate";
+import { X402Adapter, AccessTokenIssuer, RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
+import Redis from "ioredis";
 
 const app = express();
 app.use(express.json());
 
 const adapter = new X402Adapter({ network: "testnet" });
 const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
+
+const redis = new Redis(process.env.REDIS_URL!);
+const store = new RedisChallengeStore({ redis });
+const seenTxStore = new RedisSeenTxStore({ redis });
 
 app.use(
   agentGateRouter({
@@ -256,6 +261,8 @@ app.use(
       },
     },
     adapter,
+    store,
+    seenTxStore,
   })
 );
 
@@ -271,10 +278,17 @@ app.listen(3000);
 ```typescript
 import { Hono } from "hono";
 import { agentGateApp, honoValidateAccessToken } from "@riklr/agentgate/hono";
-import { X402Adapter } from "@riklr/agentgate";
+import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
+import Redis from "ioredis";
 
 const adapter = new X402Adapter({ network: "testnet" });
-const gate = agentGateApp({ config: { /* same config */ }, adapter });
+const redis = new Redis(process.env.REDIS_URL!);
+const gate = agentGateApp({
+  config: { /* same config */ },
+  adapter,
+  store: new RedisChallengeStore({ redis }),
+  seenTxStore: new RedisSeenTxStore({ redis }),
+});
 
 const app = new Hono();
 app.route("/", gate);
@@ -292,12 +306,19 @@ export default { port: 3000, fetch: app.fetch };
 ```typescript
 import Fastify from "fastify";
 import { agentGatePlugin, fastifyValidateAccessToken } from "@riklr/agentgate/fastify";
-import { X402Adapter } from "@riklr/agentgate";
+import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
+import Redis from "ioredis";
 
 const fastify = Fastify();
 const adapter = new X402Adapter({ network: "testnet" });
+const redis = new Redis(process.env.REDIS_URL!);
 
-await fastify.register(agentGatePlugin, { config: { /* same config */ }, adapter });
+await fastify.register(agentGatePlugin, {
+  config: { /* same config */ },
+  adapter,
+  store: new RedisChallengeStore({ redis }),
+  seenTxStore: new RedisSeenTxStore({ redis }),
+});
 fastify.addHook("onRequest", fastifyValidateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }));
 
 fastify.listen({ port: 3000 });
@@ -461,30 +482,38 @@ Client Agent                          Seller Server
 ```
 Client                                Seller Server
      |                                      |
-     |  1. POST /a2a/jsonrpc                |
-     |     (AccessRequest, no payment)      |
+     |  1. POST /x402/access  {}            |
+     |------------------------------------->|
+     |  <-- HTTP 402 + all tiers            |
+     |      (discovery, no PENDING record)  |
+     |                                      |
+     |  2. POST /x402/access               |
+     |     { tierId, requestId? }           |
      |------------------------------------->|
      |  <-- HTTP 402 + PaymentRequirements  |
      |       + challengeId                  |
+     |      (requestId auto-generated       |
+     |       if omitted)                    |
      |                                      |
-     |  2. POST /a2a/jsonrpc                |
-     |     (AccessRequest + PAYMENT-        |
-     |      SIGNATURE header with signed    |
-     |      EIP-3009 authorization)         |
+     |  3. POST /x402/access               |
+     |     { tierId, requestId }            |
+     |     + PAYMENT-SIGNATURE header       |
+     |       (signed EIP-3009 auth)         |
      |------------------------------------->|
      |      Gas wallet / facilitator        |
      |      settles on-chain -------------> |
      |  <-- AccessGrant (JWT + endpoint)    |
      |                                      |
-     |  3. GET /api/resource/:id            |
+     |  4. GET /api/resource/:id            |
      |     Authorization: Bearer <JWT>      |
      |------------------------------------->|
      |  <-- Protected content               |
 ```
 
-1. **Challenge (402)** — Client sends an `AccessRequest` without a payment header. Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` and the `challengeId`
-2. **Payment + Settlement** — Client sends the same request with a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles the payment on-chain, then the server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`
-3. **Access** — Client uses the token as a Bearer header to access the protected resource
+1. **Discovery (optional)** — Client POSTs to `/x402/access` with no body to receive a 402 listing all available tiers and pricing. No `PENDING` record is created.
+2. **Challenge** — Client POSTs `{ tierId }` (and optionally `requestId`, `resourceId`). Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` for that tier. `requestId` is auto-generated if omitted.
+3. **Payment + Settlement** — Client resends with the same `{ tierId, requestId }` plus a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles on-chain; server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`.
+4. **Access** — Client uses the token as a Bearer header to access the protected resource.
 
 If `onIssueToken` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
 
@@ -513,7 +542,7 @@ The seller never needs to pre-register clients, issue API keys manually, or mana
 
 ## Storage
 
-By default, AgentGate uses in-memory storage (suitable for development and single-process deployments). For production with multiple processes, use Redis:
+AgentGate requires Redis for storage. `store` and `seenTxStore` are mandatory fields.
 
 ```typescript
 import { RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";

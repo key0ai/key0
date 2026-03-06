@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ChallengeRecord } from "../../types/index.js";
-import { InMemoryChallengeStore } from "../storage/memory.js";
+import { TestChallengeStore } from "../../test-utils/stores.js";
 
 // ─── Module mock — intercepts the sendUsdc import inside refund.ts ──────────
 
@@ -56,7 +56,7 @@ function makePaidChallenge(overrides?: Partial<ChallengeRecord>): ChallengeRecor
 
 describe("processRefunds", () => {
 	test("returns empty array when store has no records", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 
 		const results = await processRefunds({
 			store,
@@ -68,7 +68,7 @@ describe("processRefunds", () => {
 	});
 
 	test("skips records that are newer than the grace period", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		// Paid 1 minute ago — within default 5-min grace period
 		const record = makePaidChallenge({ paidAt: new Date(Date.now() - 60_000) });
 		await store.create(record);
@@ -86,7 +86,7 @@ describe("processRefunds", () => {
 	});
 
 	test("refunds an eligible record and returns success result", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const record = makePaidChallenge();
 		await store.create(record);
 
@@ -106,7 +106,7 @@ describe("processRefunds", () => {
 	});
 
 	test("transitions eligible record to REFUNDED with refundTxHash", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const record = makePaidChallenge();
 		await store.create(record);
 
@@ -127,7 +127,7 @@ describe("processRefunds", () => {
 			throw new Error("RPC connection refused");
 		};
 
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const record = makePaidChallenge();
 		await store.create(record);
 
@@ -148,7 +148,7 @@ describe("processRefunds", () => {
 	});
 
 	test("skips records that are already DELIVERED", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const record = makePaidChallenge({ state: "DELIVERED" });
 		await store.create(record);
 
@@ -164,7 +164,7 @@ describe("processRefunds", () => {
 	});
 
 	test("processes multiple eligible records and returns all results", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const recordA = makePaidChallenge({ txHash: `0x${"aa".repeat(32)}` as `0x${string}` });
 		const recordB = makePaidChallenge({ txHash: `0x${"bb".repeat(32)}` as `0x${string}` });
 		await store.create(recordA);
@@ -186,7 +186,7 @@ describe("processRefunds", () => {
 	});
 
 	test("handles mixed batch: some succeed, some fail", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const goodRecord = makePaidChallenge({ txHash: `0x${"aa".repeat(32)}` as `0x${string}` });
 		const badRecord = makePaidChallenge({ txHash: `0x${"bb".repeat(32)}` as `0x${string}` });
 		await store.create(goodRecord);
@@ -213,7 +213,7 @@ describe("processRefunds", () => {
 	});
 
 	test("prevents double-refund: concurrent claim fails silently", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const record = makePaidChallenge();
 		await store.create(record);
 
@@ -239,7 +239,7 @@ describe("processRefunds", () => {
 	});
 
 	test("only refunds records past the custom minAgeMs, ignores newer ones", async () => {
-		const store = new InMemoryChallengeStore({ cleanupIntervalMs: 0 });
+		const store = new TestChallengeStore();
 		const oldRecord = makePaidChallenge({ paidAt: new Date(Date.now() - 10 * 60 * 1000) }); // 10 min ago
 		const newRecord = makePaidChallenge({ paidAt: new Date(Date.now() - 2 * 60 * 1000) }); // 2 min ago
 		await store.create(oldRecord);
