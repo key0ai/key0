@@ -25,6 +25,8 @@ import {
 	type ISeenTxStore,
 	type IssueTokenParams,
 	type NetworkName,
+	PostgresChallengeStore,
+	PostgresSeenTxStore,
 	processRefunds,
 	RedisChallengeStore,
 	RedisSeenTxStore,
@@ -44,6 +46,7 @@ const SECRET = process.env.AGENTGATE_ACCESS_TOKEN_SECRET!;
 const BACKEND_API_URL = process.env.BACKEND_API_URL!;
 const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 const AUTH_STRATEGY = process.env.AUTH_STRATEGY || "shared-secret"; // "shared-secret" | "jwt"
+const STORAGE_BACKEND = process.env.STORAGE_BACKEND || "redis"; // "redis" | "postgres"
 
 // Gas wallet configuration for facilitation
 const GAS_WALLET_PRIVATE_KEY = process.env.GAS_WALLET_PRIVATE_KEY;
@@ -70,8 +73,13 @@ if (!BACKEND_API_URL) {
 	process.exit(1);
 }
 
-if (!process.env.REDIS_URL) {
-	console.error("ERROR: REDIS_URL is required for standalone service");
+if (STORAGE_BACKEND === "redis" && !process.env.REDIS_URL) {
+	console.error("ERROR: REDIS_URL is required when using Redis storage backend");
+	process.exit(1);
+}
+
+if (STORAGE_BACKEND === "postgres" && !process.env.DATABASE_URL) {
+	console.error("ERROR: DATABASE_URL is required when using Postgres storage backend");
 	process.exit(1);
 }
 
@@ -83,9 +91,23 @@ if (AUTH_STRATEGY === "shared-secret" && !INTERNAL_AUTH_SECRET) {
 const app = express();
 app.use(express.json());
 
-const redis = new Redis(process.env.REDIS_URL);
-const store: IChallengeStore = new RedisChallengeStore({ redis, challengeTTLSeconds: 900 });
-const seenTxStore: ISeenTxStore = new RedisSeenTxStore({ redis });
+// Initialize storage backend based on configuration
+let store: IChallengeStore;
+let seenTxStore: ISeenTxStore;
+
+if (STORAGE_BACKEND === "postgres") {
+	console.log("📦 Using Postgres storage backend");
+	// biome-ignore lint/suspicious/noExplicitAny: postgres is an optional peer dependency
+	const postgres = (await import("postgres" as any)).default;
+	const sql = postgres(process.env.DATABASE_URL!);
+	store = new PostgresChallengeStore({ sql });
+	seenTxStore = new PostgresSeenTxStore({ sql });
+} else {
+	console.log("📦 Using Redis storage backend");
+	const redis = new Redis(process.env.REDIS_URL!);
+	store = new RedisChallengeStore({ redis, challengeTTLSeconds: 900 });
+	seenTxStore = new RedisSeenTxStore({ redis });
+}
 
 // Create the x402 payment adapter
 const adapter = new X402Adapter({
@@ -223,6 +245,7 @@ app.get("/health", (_req, res) => {
 	res.json({
 		status: "ok",
 		service: "agentgate",
+		storage: STORAGE_BACKEND,
 		tokenMode,
 		network: NETWORK,
 	});
@@ -242,6 +265,7 @@ app.listen(PORT, () => {
 	console.log("\n🚀 AgentGate Standalone Service");
 	console.log(`   Port: ${PORT}`);
 	console.log(`   Network: ${NETWORK}`);
+	console.log(`   Storage: ${STORAGE_BACKEND.toUpperCase()}`);
 	console.log(`   Token Mode: ${tokenMode}`);
 	console.log(`   Facilitation Mode: ${USE_GAS_WALLET ? "Gas Wallet" : "Standard"}`);
 	console.log(`   Backend URL: ${BACKEND_API_URL}`);
@@ -297,7 +321,16 @@ async function runRefundCron(): Promise<void> {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 async function start() {
-	const parsed = new URL(process.env.REDIS_URL as string);
+	// BullMQ requires Redis for job queue, regardless of storage backend
+	const redisUrl = process.env.REDIS_URL || process.env.BULLMQ_REDIS_URL;
+	if (!redisUrl) {
+		console.warn(
+			"[Cron] WARNING: No Redis connection available for BullMQ. Set REDIS_URL or BULLMQ_REDIS_URL to enable background job processing.",
+		);
+		return;
+	}
+
+	const parsed = new URL(redisUrl);
 	const bullConnection = {
 		host: parsed.hostname,
 		port: Number(parsed.port) || 6379,

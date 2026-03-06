@@ -39,7 +39,8 @@
 		"express": ">=4.0.0",
 		"fastify": ">=4.0.0",
 		"hono": ">=4.0.0",
-		"ioredis": "^5.0.0"
+		"ioredis": "^5.0.0",
+		"postgres": "^3.0.0"
 	},
 	"peerDependenciesMeta": {
 		"express": {
@@ -52,6 +53,9 @@
 			"optional": true
 		},
 		"ioredis": {
+			"optional": true
+		},
+		"postgres": {
 			"optional": true
 		}
 	},
