@@ -372,10 +372,15 @@ export async function settleViaGasWallet(
 
 	const scheme = new ExactEvmScheme(walletClient as any, { deployERC4337WithEIP6492: true });
 
-	// STEP 1: Verify
+	// STEP 1: Verify (30s timeout)
 	let verifyResult: any;
 	try {
-		verifyResult = await scheme.verify(paymentPayload as any, requirement as any);
+		verifyResult = await Promise.race([
+			scheme.verify(paymentPayload as any, requirement as any),
+			new Promise<never>((_, reject) =>
+				setTimeout(() => reject(new Error("Gas wallet verify timed out")), 30_000),
+			),
+		]);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : "Unknown verification error";
 		throw new AgentGateError("PAYMENT_FAILED", `Payment verification failed: ${msg}`, 402);
@@ -392,10 +397,15 @@ export async function settleViaGasWallet(
 
 	console.log("[settleViaGasWallet] ✓ Payment verified");
 
-	// STEP 2: Settle
+	// STEP 2: Settle (90s timeout — includes on-chain tx confirmation)
 	let settlement: any;
 	try {
-		settlement = await scheme.settle(paymentPayload as any, requirement as any);
+		settlement = await Promise.race([
+			scheme.settle(paymentPayload as any, requirement as any),
+			new Promise<never>((_, reject) =>
+				setTimeout(() => reject(new Error("Gas wallet settle timed out")), 90_000),
+			),
+		]);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : "Unknown settlement error";
 		throw new AgentGateError("PAYMENT_FAILED", `Settlement failed: ${msg}`, 500);
@@ -512,7 +522,14 @@ export async function settlePayment(
 			try {
 				return await settleViaGasWallet(paymentPayload, privateKey, networkConfig);
 			} finally {
-				await releaseRedisLock(config.redis, lockKey, lockToken);
+				try {
+					await releaseRedisLock(config.redis, lockKey, lockToken);
+				} catch (releaseErr) {
+					console.warn(
+						`[AgentGate] Failed to release settlement lock ${lockKey} — will expire via TTL:`,
+						releaseErr,
+					);
+				}
 			}
 		}
 

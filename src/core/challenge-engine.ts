@@ -444,16 +444,32 @@ export class ChallengeEngine {
 			explorerUrl,
 		};
 
-		// 12. Store grant and mark as delivered — SDK auto-transitions to DELIVERED
-		await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", {
+		// 12. Persist grant durably BEFORE returning to client (outbox pattern).
+		//     Write accessGrant while still PAID so refund cron skips this record
+		//     even if the DELIVERED transition fails.
+		await this.store.transition(challenge.challengeId, "PAID", "PAID", {
 			accessGrant: grant,
-			deliveredAt: new Date(this.now()),
 		});
 
-		// 13. Fire hook
+		// 13. Mark as DELIVERED — best-effort status update, not the critical write.
+		try {
+			await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", {
+				deliveredAt: new Date(this.now()),
+			});
+		} catch (err) {
+			console.error(
+				`[AgentGate] Failed to mark DELIVERED for ${challenge.challengeId} — record stays PAID with accessGrant set:`,
+				err,
+			);
+		}
+
+		// 14. Fire hook
 		if (this.config.onPaymentReceived) {
 			this.config.onPaymentReceived(grant).catch((err: unknown) => {
-				console.error("[AgentGate] onPaymentReceived hook error:", err);
+				console.error(
+					`[AgentGate] onPaymentReceived hook error for challenge ${challenge.challengeId}:`,
+					err,
+				);
 			});
 		}
 
@@ -734,16 +750,30 @@ export class ChallengeEngine {
 			explorerUrl,
 		};
 
-		// 9. Transition PAID → DELIVERED
-		await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", {
+		// 9. Persist grant durably BEFORE returning to client (outbox pattern).
+		await this.store.transition(challenge.challengeId, "PAID", "PAID", {
 			accessGrant: grant,
-			deliveredAt: new Date(this.now()),
 		});
 
-		// 10. Fire hook if configured
+		// 10. Mark as DELIVERED — best-effort status update, not the critical write.
+		try {
+			await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", {
+				deliveredAt: new Date(this.now()),
+			});
+		} catch (err) {
+			console.error(
+				`[AgentGate] Failed to mark DELIVERED for ${challenge.challengeId} — record stays PAID with accessGrant set:`,
+				err,
+			);
+		}
+
+		// 11. Fire hook if configured
 		if (this.config.onPaymentReceived) {
 			this.config.onPaymentReceived(grant).catch((err: unknown) => {
-				console.error("[AgentGate] onPaymentReceived hook error:", err);
+				console.error(
+					`[AgentGate] onPaymentReceived hook error for challenge ${challenge.challengeId}:`,
+					err,
+				);
 			});
 		}
 

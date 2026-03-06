@@ -200,7 +200,12 @@ export class RedisChallengeStore implements IChallengeStore {
 		const reqKey = this.requestKey(record.requestId);
 		pipeline.set(reqKey, record.challengeId, "EX", this.requestTTL);
 
-		await pipeline.exec();
+		const results = await pipeline.exec();
+		if (results) {
+			for (const [err] of results) {
+				if (err) throw new Error(`Redis pipeline command failed: ${err.message}`);
+			}
+		}
 	}
 
 	async transition(
@@ -246,7 +251,13 @@ export class RedisChallengeStore implements IChallengeStore {
 
 		// KEYS[1] = challenge hash, KEYS[2] = paid sorted set
 		// Sorted set maintenance (ZADD/ZREM) is inside the Lua script — fully atomic.
-		const result = await this.redis.eval(TRANSITION_LUA, 2, key, paidSetKey, ...argv);
+		let result: unknown;
+		try {
+			result = await this.redis.eval(TRANSITION_LUA, 2, key, paidSetKey, ...argv);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			throw new Error(`Redis connection error during state transition: ${msg}`);
+		}
 		if (result !== 1) return false;
 
 		// DELIVERED records no longer need the full 7-day window — shorten TTL to 12 hours.
@@ -267,8 +278,17 @@ export class RedisChallengeStore implements IChallengeStore {
 		const records: ChallengeRecord[] = [];
 		for (const challengeId of challengeIds) {
 			const record = await this.get(challengeId);
-			if (record && record.state === "PAID" && record.fromAddress) {
+			if (!record) {
+				// Ghost entry — challenge hash expired but sorted set entry remains
+				await this.redis.zrem(this.paidSetKey(), challengeId);
+				continue;
+			}
+			if (record.state === "PAID" && record.fromAddress && !record.accessGrant) {
 				records.push(record);
+			} else if (record.state === "PAID" && !record.fromAddress) {
+				console.warn(
+					`[AgentGate] PAID record ${challengeId} has no fromAddress — cannot auto-refund. Manual intervention required.`,
+				);
 			}
 		}
 		return records;
