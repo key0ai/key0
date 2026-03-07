@@ -1,12 +1,10 @@
 /**
- * Expired Challenge Proof — submitting proof after the challenge TTL has expired.
+ * Expired Challenge Proof — verifies that payment is rejected when a challenge has expired.
  *
- * This is different from expired-authorization.test.ts (which tests an expired EIP-3009 signature).
- * Here the challenge itself has expired (PENDING → EXPIRED), so proof submission
- * must return CHALLENGE_EXPIRED (410).
+ * The pre-settlement check and processHttpPayment both reject EXPIRED challenges.
+ * No USDC is burned — the rejection happens before on-chain settlement.
  *
- * Simulates expiry by deleting the challenge's requestId index key and
- * directly transitioning the challenge state to EXPIRED in Redis.
+ * Also tests that re-requesting access after expiry creates a new challenge.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -26,8 +24,7 @@ describe("Expired Challenge Proof Submission", () => {
 			requestId,
 		});
 
-		// Step 2: Simulate challenge expiry by setting expiresAt to the past
-		// and transitioning state to EXPIRED
+		// Step 2: Simulate challenge expiry by setting state to EXPIRED in Redis
 		const challengeKey = `agentgate:challenge:${challengeId}`;
 		await redis.hset(challengeKey, "expiresAt", new Date(Date.now() - 60_000).toISOString());
 		await redis.hset(challengeKey, "state", "EXPIRED");
@@ -39,7 +36,7 @@ describe("Expired Challenge Proof Submission", () => {
 			amountRaw: BigInt(requirements.amount),
 		});
 
-		// Step 4: Submit payment — should be rejected
+		// Step 4: Submit payment — should be rejected by pre-settlement check
 		const result = await client.submitPayment({
 			tierId: DEFAULT_TIER_ID,
 			requestId,

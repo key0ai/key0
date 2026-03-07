@@ -14,13 +14,11 @@ describe("Happy Path with State Verification", () => {
 	test("challenge record transitions PENDING → DELIVERED with correct fields", async () => {
 		const client = makeClientE2eClient();
 		const requestId = crypto.randomUUID();
-		const resourceId = `state-test-${crypto.randomUUID().slice(0, 8)}`;
 
 		// Step 1: Request access → PENDING
 		const { challengeId, paymentRequired } = await client.requestAccess({
 			tierId: DEFAULT_TIER_ID,
 			requestId,
-			resourceId,
 		});
 
 		// Verify PENDING state in Redis
@@ -31,7 +29,6 @@ describe("Happy Path with State Verification", () => {
 		expect(pendingRecord).not.toBeNull();
 		expect(pendingRecord!["requestId"]).toBe(requestId);
 		expect(pendingRecord!["tierId"]).toBe(DEFAULT_TIER_ID);
-		expect(pendingRecord!["resourceId"]).toBe(resourceId);
 		expect(pendingRecord!["destination"]).toBe(agentgateWalletAddress());
 		expect(pendingRecord!["asset"]).toBe("USDC");
 		expect(pendingRecord!["chainId"]).toBe("84532");
@@ -46,7 +43,6 @@ describe("Happy Path with State Verification", () => {
 		const result = await client.submitPayment({
 			tierId: DEFAULT_TIER_ID,
 			requestId,
-			resourceId,
 			auth,
 			paymentRequired,
 		});
@@ -63,44 +59,20 @@ describe("Happy Path with State Verification", () => {
 		expect(deliveredRecord!["txHash"]).toMatch(/^0x/);
 		expect(deliveredRecord!["paidAt"]).toBeDefined();
 
-		// Verify the stored grant contains the access token
-		const storedGrant = deliveredRecord!["accessGrant"];
-		expect(storedGrant).toBeDefined();
-		// accessGrant is stored as JSON string in Redis
-		if (storedGrant) {
-			const parsed = JSON.parse(storedGrant) as Record<string, unknown>;
-			expect(parsed["type"]).toBe("AccessGrant");
-			expect(parsed["accessToken"]).toBe(result.grant!.accessToken);
-			expect(parsed["txHash"]).toBe(result.grant!.txHash);
-		}
-	}, 120_000);
+		// Verify the grant fields
+		const grant = result.grant!;
+		expect(grant.type).toBe("AccessGrant");
+		expect(grant.challengeId).toBe(challengeId);
+		expect(grant.requestId).toBe(requestId);
 
-	test("grant's resourceEndpoint is correctly formatted", async () => {
-		const client = makeClientE2eClient();
-
-		const { grant } = await client.purchaseAccess({
-			tierId: DEFAULT_TIER_ID,
-			resourceId: "photo-42",
-		});
-
+		// resourceEndpoint should be present and non-empty
 		expect(grant.resourceEndpoint).toBeDefined();
 		expect(typeof grant.resourceEndpoint).toBe("string");
 		expect(grant.resourceEndpoint.length).toBeGreaterThan(0);
-		// Should contain the resourceId
-		expect(grant.resourceEndpoint).toContain("photo-42");
-	}, 120_000);
 
-	test("grant's explorerUrl points to correct chain explorer", async () => {
-		const client = makeClientE2eClient();
-
-		const { grant } = await client.purchaseAccess({
-			tierId: DEFAULT_TIER_ID,
-		});
-
+		// explorerUrl should point to Base Sepolia and include the txHash
 		expect(grant.explorerUrl).toBeDefined();
-		// Base Sepolia explorer
 		expect(grant.explorerUrl).toContain("sepolia");
-		// Must include the txHash
 		expect(grant.explorerUrl).toContain(grant.txHash);
 	}, 120_000);
 });

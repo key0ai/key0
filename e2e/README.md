@@ -198,26 +198,26 @@ Fires `purchaseAccess()` from two `E2eTestClient` instances (CLIENT and GAS wall
 
 ### `concurrent-same-challenge.test.ts` — Concurrent Same-Challenge Proof (1 test)
 
-Verifies atomicity of `store.transition(PENDING → PAID)` when two clients race to submit proof for the **same** challenge.
+Verifies the pre-settlement check prevents duplicate on-chain settlement when two clients race to submit proof for the **same** requestId.
 
-Client A requests a challenge. Both Client A and Client B sign independent EIP-3009 authorizations for that challenge and submit payment simultaneously via `Promise.all`. Exactly one must succeed (200 + AccessGrant), the other must fail. The challenge record must end in `DELIVERED` state. This tests the core compare-and-swap guard that prevents double-redemption on a single challenge.
+Client A requests a challenge. Both Client A and Client B sign independent EIP-3009 authorizations and submit payment simultaneously via `Promise.all`. The first to settle creates PENDING → PAID → DELIVERED. The second hits the pre-settlement check, finds DELIVERED, and gets the cached grant WITHOUT burning USDC on-chain. Both get 200 — no fund loss, no 500 errors, challenge ends in DELIVERED.
 
 ---
 
 ### `already-redeemed.test.ts` — Already Redeemed (2 tests)
 
-Verifies the `PROOF_ALREADY_REDEEMED` recovery paths.
+Verifies the `PROOF_ALREADY_REDEEMED` recovery paths — the middleware now returns the `AccessGrant` directly (not wrapped in an error envelope) for better client UX.
 
-- **Re-submit after DELIVERED**: Completes a full purchase, then re-sends the same `requestId` to `/x402/access`. The server must either return the existing grant (200) or a 402 with the same challengeId — but must NOT create a duplicate PENDING record. State must remain `DELIVERED`.
-- **New requestId after DELIVERED**: A fresh `requestId` for the same tier creates an independent challenge (not confused with the prior DELIVERED one).
+- **Re-submit payment after DELIVERED**: Completes a full purchase, then re-submits a payment with the same `requestId`. The pre-settlement check finds DELIVERED and returns the cached grant (200 with `type: "AccessGrant"`) without settling on-chain. Verifies the same `challengeId` and `accessToken` are returned.
+- **Re-request access (no payment) after DELIVERED**: Same `requestId` → engine throws `PROOF_ALREADY_REDEEMED` → middleware returns the grant directly as 200 with `type: "AccessGrant"`.
 
 ---
 
 ### `expired-challenge-proof.test.ts` — Expired Challenge Proof (2 tests)
 
-Verifies proof submission is rejected after a challenge expires (distinct from `expired-authorization.test.ts` which tests an expired EIP-3009 signature).
+Verifies proof submission is rejected after a challenge expires (distinct from `expired-authorization.test.ts` which tests an expired EIP-3009 signature). The pre-settlement check rejects EXPIRED challenges before any on-chain settlement — no USDC is burned.
 
-- **Proof after expiry**: Creates a challenge, sets `expiresAt` to the past and state to `EXPIRED` in Redis, then submits a valid payment. Must be rejected (not 200). State must remain `EXPIRED`.
+- **Proof after expiry**: Creates a challenge, sets state to `EXPIRED` in Redis, then submits a valid payment. The pre-settlement check rejects it (not 200, no on-chain settlement). State must remain `EXPIRED`.
 - **Re-request after expiry**: Same `requestId` after expiry creates a new challenge with a different `challengeId`.
 
 ---

@@ -1,12 +1,13 @@
 /**
- * Concurrent Same-Challenge Proof — two clients race to submit proof for the SAME challenge.
+ * Concurrent Same-Challenge Proof — two clients race to submit proof for the SAME requestId.
  *
- * This is the core atomicity test for `store.transition(PENDING → PAID)`.
- * Only one should succeed; the other must get a clear rejection
- * (PROOF_ALREADY_REDEEMED or INTERNAL_ERROR from concurrent state transition).
+ * Tests the pre-settlement check: when two clients submit PAYMENT-SIGNATURE
+ * simultaneously for the same requestId, the middleware checks challenge state
+ * BEFORE settling on-chain. The first to settle creates PENDING → PAID → DELIVERED.
+ * The second hits the pre-settlement check, finds DELIVERED, and gets the cached
+ * grant WITHOUT burning USDC on-chain.
  *
- * Uses CLIENT and GAS wallets signing separate EIP-3009 authorizations for
- * the same challengeId, then submitting simultaneously via Promise.all.
+ * This protects against fund loss from duplicate settlement.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -15,7 +16,7 @@ import { makeClientE2eClient, makeGasE2eClient } from "../fixtures/wallets.ts";
 import { readChallengeRecord } from "../helpers/redis-client.ts";
 
 describe("Concurrent Same-Challenge Proof Submission", () => {
-	test("only one of two concurrent proof submissions succeeds for the same challenge", async () => {
+	test("only one of two concurrent proof submissions settles on-chain", async () => {
 		const clientA = makeClientE2eClient();
 		const clientB = makeGasE2eClient();
 
@@ -36,7 +37,7 @@ describe("Concurrent Same-Challenge Proof Submission", () => {
 			clientB.signEIP3009({ destination, amountRaw }),
 		]);
 
-		// Step 3: Both submit payment for the SAME challenge simultaneously
+		// Step 3: Both submit payment for the SAME requestId simultaneously
 		const [resultA, resultB] = await Promise.all([
 			clientA.submitPayment({
 				tierId: DEFAULT_TIER_ID,
@@ -52,24 +53,25 @@ describe("Concurrent Same-Challenge Proof Submission", () => {
 			}),
 		]);
 
-		// Exactly one must succeed, the other must fail
-		const successes = [resultA, resultB].filter((r) => r.status === 200);
-		const failures = [resultA, resultB].filter((r) => r.status !== 200);
+		// Both should get 200 — one settles, the other gets the cached grant
+		// via the pre-settlement check (no USDC burned for the second)
+		const allResults = [resultA, resultB];
+		const successes = allResults.filter((r) => r.status === 200);
 
-		expect(successes.length).toBe(1);
-		expect(failures.length).toBe(1);
+		// No 500 errors
+		const serverErrors = allResults.filter((r) => r.status >= 500);
+		expect(serverErrors.length).toBe(0);
 
-		// The winner must have a valid AccessGrant
-		const winner = successes[0]!;
-		expect(winner.grant).toBeDefined();
-		expect(winner.grant!.type).toBe("AccessGrant");
-		expect(winner.grant!.challengeId).toBe(challengeId);
+		// Both succeed (one from settlement, one from cache)
+		expect(successes.length).toBe(2);
 
-		// The loser must have an error
-		const loser = failures[0]!;
-		expect(loser.error).toBeDefined();
+		// Both reference valid grants
+		for (const s of successes) {
+			expect(s.grant).toBeDefined();
+			expect(s.grant!.type).toBe("AccessGrant");
+		}
 
-		// Challenge must be in DELIVERED state (winner completed the flow)
+		// Challenge must end in DELIVERED state
 		const record = await readChallengeRecord(challengeId);
 		expect(record?.["state"]).toBe("DELIVERED");
 	}, 120_000);

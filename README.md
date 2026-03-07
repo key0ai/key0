@@ -568,6 +568,7 @@ Redis storage provides:
 
 ## Security
 
+- **Pre-settlement state check** — Middleware checks challenge state before on-chain settlement to prevent duplicate USDC burns (DELIVERED returns cached grant, EXPIRED/CANCELLED reject without settling)
 - **Double-spend prevention** — Each transaction hash can only be redeemed once (enforced atomically)
 - **Idempotent requests** — Same `requestId` returns the same challenge (safe to retry)
 - **On-chain verification** — Payments are verified against the actual blockchain (recipient, amount, timing)
