@@ -174,6 +174,13 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 				`[x402-http-middleware] PAYMENT-SIGNATURE (first 50 chars): ${paymentSignatureRaw.substring(0, 50)}...`,
 			);
 
+			// Pre-settlement check: avoid burning USDC if already delivered/expired/cancelled
+			const existingGrant = await engine.preSettlementCheck(requestId);
+			if (existingGrant) {
+				console.log("[x402-http-middleware] ✓ Already delivered, returning cached grant");
+				return res.status(200).json(existingGrant);
+			}
+
 			// Decode the header then settle via shared settlement layer
 			const paymentPayload = decodePaymentSignature(paymentSignatureRaw);
 			const { txHash, settleResponse, payer } = await settlePayment(
@@ -208,6 +215,10 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 		} catch (err: unknown) {
 			console.error("[x402-http-middleware] ✗ ERROR:", err);
 			if (err instanceof AgentGateError) {
+				// Return the grant directly for PROOF_ALREADY_REDEEMED (status 200)
+				if (err.code === "PROOF_ALREADY_REDEEMED" && err.details?.["grant"]) {
+					return res.status(200).json(err.details["grant"]);
+				}
 				return res.status(err.httpStatus).json(err.toJSON());
 			}
 			return res.status(500).json({

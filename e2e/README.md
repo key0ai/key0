@@ -196,6 +196,61 @@ Fires `purchaseAccess()` from two `E2eTestClient` instances (CLIENT and GAS wall
 
 ---
 
+### `concurrent-same-challenge.test.ts` — Concurrent Same-Challenge Proof (1 test)
+
+Verifies the pre-settlement check prevents duplicate on-chain settlement when two clients race to submit proof for the **same** requestId.
+
+Client A requests a challenge. Both Client A and Client B sign independent EIP-3009 authorizations and submit payment simultaneously via `Promise.all`. The first to settle creates PENDING → PAID → DELIVERED. The second hits the pre-settlement check, finds DELIVERED, and gets the cached grant WITHOUT burning USDC on-chain. Both get 200 — no fund loss, no 500 errors, challenge ends in DELIVERED.
+
+---
+
+### `already-redeemed.test.ts` — Already Redeemed (2 tests)
+
+Verifies the `PROOF_ALREADY_REDEEMED` recovery paths — the middleware now returns the `AccessGrant` directly (not wrapped in an error envelope) for better client UX.
+
+- **Re-submit payment after DELIVERED**: Completes a full purchase, then re-submits a payment with the same `requestId`. The pre-settlement check finds DELIVERED and returns the cached grant (200 with `type: "AccessGrant"`) without settling on-chain. Verifies the same `challengeId` and `accessToken` are returned.
+- **Re-request access (no payment) after DELIVERED**: Same `requestId` → engine throws `PROOF_ALREADY_REDEEMED` → middleware returns the grant directly as 200 with `type: "AccessGrant"`.
+
+---
+
+### `expired-challenge-proof.test.ts` — Expired Challenge Proof (2 tests)
+
+Verifies proof submission is rejected after a challenge expires (distinct from `expired-authorization.test.ts` which tests an expired EIP-3009 signature). The pre-settlement check rejects EXPIRED challenges before any on-chain settlement — no USDC is burned.
+
+- **Proof after expiry**: Creates a challenge, sets state to `EXPIRED` in Redis, then submits a valid payment. The pre-settlement check rejects it (not 200, no on-chain settlement). State must remain `EXPIRED`.
+- **Re-request after expiry**: Same `requestId` after expiry creates a new challenge with a different `challengeId`.
+
+---
+
+### `happy-path-state-verification.test.ts` — Happy Path State Verification (3 tests)
+
+Extends the basic happy-path test with Redis state assertions at each lifecycle step.
+
+- **PENDING → DELIVERED with fields**: After requesting access, verifies the Redis hash contains correct `requestId`, `tierId`, `resourceId`, `destination`, `asset`, `chainId`. After payment, verifies `DELIVERED` state with `txHash`, `paidAt`, and the stored `accessGrant` JSON matching the returned grant.
+- **resourceEndpoint format**: Verifies the grant's `resourceEndpoint` contains the requested `resourceId`.
+- **explorerUrl format**: Verifies the grant's `explorerUrl` contains `sepolia` (Base Sepolia) and the `txHash`.
+
+---
+
+### `cancel-challenge.test.ts` — Cancel Challenge (2 tests)
+
+Verifies the `PENDING → CANCELLED` transition and its effects.
+
+- **Proof after cancel**: Creates a challenge, atomically transitions it to `CANCELLED` via a Lua script (mimicking `engine.cancelChallenge()`), then submits a valid payment. Must be rejected.
+- **Re-request after cancel**: Same `requestId` after cancellation creates a new `PENDING` challenge.
+
+---
+
+### `refund-batch.test.ts` — Refund Batch Processing (1 test)
+
+Verifies the refund cron handles multiple PAID records in a single cycle.
+
+Writes 3 PAID records to Redis (all past `REFUND_MIN_AGE_MS`), then polls until all have transitioned. All 3 must reach `REFUNDED` state, confirming the cron processes batches rather than one record per cycle.
+
+USDC cost per run: ~$0.03 (3 x $0.01 refunds).
+
+---
+
 ## Infrastructure Notes
 
 **Refund cron timings** (configured in `docker-compose.e2e.yml` for speed):

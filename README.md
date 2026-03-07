@@ -568,6 +568,7 @@ Redis storage provides:
 
 ## Security
 
+- **Pre-settlement state check** — Middleware checks challenge state before on-chain settlement to prevent duplicate USDC burns (DELIVERED returns cached grant, EXPIRED/CANCELLED reject without settling)
 - **Double-spend prevention** — Each transaction hash can only be redeemed once (enforced atomically)
 - **Idempotent requests** — Same `requestId` returns the same challenge (safe to retry)
 - **On-chain verification** — Payments are verified against the actual blockchain (recipient, amount, timing)
@@ -664,7 +665,8 @@ bun run start
 bun install          # Install dependencies
 bun run typecheck    # Type-check
 bun run lint         # Lint with Biome v2
-bun test src/        # Run unit tests (e2e tests require separate setup — see e2e/)
+bun test src/        # Run unit tests
+                     # E2E tests require Docker + funded wallets — see e2e/README.md
 bun run build        # Compile to ./dist
 ```
 

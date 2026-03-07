@@ -444,6 +444,43 @@ export class ChallengeEngine {
 	}
 
 	/**
+	 * Pre-settlement check for the HTTP x402 flow.
+	 * Called by the middleware BEFORE settling on-chain to avoid burning USDC
+	 * when the challenge is already delivered, expired, or cancelled.
+	 *
+	 * Returns the existing AccessGrant if already DELIVERED (caller should return it).
+	 * Throws if the challenge is EXPIRED or CANCELLED (caller should not settle).
+	 * Returns null if safe to proceed with on-chain settlement.
+	 */
+	async preSettlementCheck(requestId: string): Promise<AccessGrant | null> {
+		const existing = await this.store.findActiveByRequestId(requestId);
+		if (!existing) return null;
+
+		if (existing.state === "DELIVERED" && existing.accessGrant) {
+			return existing.accessGrant;
+		}
+
+		if (existing.state === "EXPIRED") {
+			throw new AgentGateError(
+				"CHALLENGE_EXPIRED",
+				"Challenge expired. Re-request access to get a new challenge.",
+				410,
+			);
+		}
+
+		if (existing.state === "CANCELLED") {
+			throw new AgentGateError(
+				"CHALLENGE_EXPIRED",
+				"Challenge was cancelled. Re-request access to get a new challenge.",
+				410,
+			);
+		}
+
+		// PENDING or PAID — safe to proceed
+		return null;
+	}
+
+	/**
 	 * Create a PENDING challenge record for the HTTP x402 flow (step 1: 402 response).
 	 * Analogous to requestAccess() but skips adapter.issueChallenge() since x402
 	 * payment requirements are built separately by the middleware.
@@ -587,7 +624,8 @@ export class ChallengeEngine {
 		}
 
 		// 4. Look up PENDING record created by requestHttpAccess (step 1).
-		//    If client skipped step 1 or record expired, auto-create one.
+		//    If client skipped step 1, auto-create one.
+		//    If record is EXPIRED or CANCELLED, reject (don't auto-create).
 		let challenge = await this.store.findActiveByRequestId(requestId);
 		if (challenge?.state === "DELIVERED" && challenge.accessGrant) {
 			throw new AgentGateError(
@@ -595,6 +633,20 @@ export class ChallengeEngine {
 				"This request has already been paid. Returning existing access grant.",
 				200,
 				{ grant: challenge.accessGrant },
+			);
+		}
+		if (challenge?.state === "EXPIRED") {
+			throw new AgentGateError(
+				"CHALLENGE_EXPIRED",
+				"Challenge expired. Re-request access to get a new challenge.",
+				410,
+			);
+		}
+		if (challenge?.state === "CANCELLED") {
+			throw new AgentGateError(
+				"CHALLENGE_EXPIRED",
+				"Challenge was cancelled. Re-request access to get a new challenge.",
+				410,
 			);
 		}
 		if (!challenge || challenge.state !== "PENDING") {
