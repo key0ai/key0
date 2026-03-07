@@ -1,11 +1,17 @@
 import { sendUsdc } from "../adapter/send-usdc.js";
-import { CHAIN_CONFIGS } from "../types/index.js";
 import type { IChallengeStore, NetworkName } from "../types/index.js";
+import { CHAIN_CONFIGS } from "../types/index.js";
 
 export type RefundConfig = {
 	readonly store: IChallengeStore;
-	/** Wallet private key — used to send USDC back to payers. */
+	/** Wallet private key — owns the USDC to be refunded. */
 	readonly walletPrivateKey: `0x${string}`;
+	/**
+	 * Optional gas wallet private key. When provided, uses EIP-3009
+	 * transferWithAuthorization so the gas wallet pays gas instead of the
+	 * USDC-holding wallet (which may have no ETH).
+	 */
+	readonly gasWalletPrivateKey?: `0x${string}`;
 	readonly network: NetworkName;
 	/** Grace period before a PAID record is eligible for refund. Default: 300_000 (5 mins). */
 	readonly minAgeMs?: number;
@@ -30,7 +36,7 @@ export type RefundResult = {
  * broadcasting — concurrent cron runs will not double-refund.
  */
 export async function processRefunds(config: RefundConfig): Promise<RefundResult[]> {
-	const { store, walletPrivateKey, network, minAgeMs = 300_000 } = config;
+	const { store, walletPrivateKey, gasWalletPrivateKey, network, minAgeMs = 300_000 } = config;
 	const networkConfig = CHAIN_CONFIGS[network];
 	const results: RefundResult[] = [];
 
@@ -57,6 +63,7 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 				to: fromAddress,
 				amountRaw: record.amountRaw,
 				privateKey: walletPrivateKey,
+				...(gasWalletPrivateKey ? { gasWalletPrivateKey } : {}),
 				networkConfig,
 			});
 

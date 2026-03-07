@@ -19,21 +19,21 @@
 import {
 	AccessTokenIssuer,
 	type AuthHeaderProvider,
+	createRemoteResourceVerifier,
+	createRemoteTokenIssuer,
 	type IChallengeStore,
 	type ISeenTxStore,
 	type IssueTokenParams,
 	type NetworkName,
 	PostgresChallengeStore,
 	PostgresSeenTxStore,
+	processRefunds,
 	RedisChallengeStore,
 	RedisSeenTxStore,
-	type TokenIssuanceResult,
-	X402Adapter,
-	createRemoteResourceVerifier,
-	createRemoteTokenIssuer,
-	processRefunds,
 	sharedSecretAuth,
 	signedJwtAuth,
+	type TokenIssuanceResult,
+	X402Adapter,
 } from "@riklr/agentgate";
 import { agentGateRouter } from "@riklr/agentgate/express";
 import { Queue, Worker } from "bullmq";
@@ -240,7 +240,7 @@ app.use(
 );
 
 // Health check
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
 	res.json({
 		status: "ok",
 		service: "agentgate",
@@ -251,7 +251,7 @@ app.get("/health", (req, res) => {
 });
 
 // Token info endpoint (for backend to discover token format)
-app.get("/.well-known/token-info", (req, res) => {
+app.get("/.well-known/token-info", (_req, res) => {
 	res.json({
 		tokenType: "JWT",
 		algorithm: tokenMode === "remote" ? "custom" : "HS256", // Could be RS256 if configured

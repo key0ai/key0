@@ -11,10 +11,10 @@ import {
 	type IChallengeStore,
 	type NetworkName,
 	type ProductTier,
+	processRefunds,
 	RedisChallengeStore,
 	RedisSeenTxStore,
 	X402Adapter,
-	processRefunds,
 } from "@riklr/agentgate";
 import { agentGateRouter } from "@riklr/agentgate/express";
 import express from "express";
@@ -125,6 +125,7 @@ app.use(
 			onVerifyResource: async () => true,
 			onIssueToken,
 			...(GAS_WALLET_PRIVATE_KEY ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY } : {}),
+			redis,
 		},
 		adapter,
 		store,
@@ -153,6 +154,7 @@ async function runRefundCron(): Promise<void> {
 	const results = await processRefunds({
 		store,
 		walletPrivateKey: WALLET_PRIVATE_KEY,
+		gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY,
 		network: NETWORK,
 		minAgeMs: REFUND_MIN_AGE_MS,
 	});

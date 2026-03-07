@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { IssueChallengeParams, VerifyProofParams } from "../../types";
 import { X402Adapter } from "../adapter.js";
-import { CHAIN_CONFIGS } from "../chain-config.js";
 
 describe("X402Adapter", () => {
 	test("protocol is x402", () => {

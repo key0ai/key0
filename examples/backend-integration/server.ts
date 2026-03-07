@@ -10,8 +10,8 @@
  *   bun run start
  */
 
-import { validateAgentGateToken } from "@riklr/agentgate";
 import type { AccessTokenPayload } from "@riklr/agentgate";
+import { validateAgentGateToken } from "@riklr/agentgate";
 import express from "express";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -186,7 +186,7 @@ app.get("/api/data/:id", (req, res) => {
 });
 
 // Health check
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
 	res.json({ status: "ok", service: "backend" });
 });
 

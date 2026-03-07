@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { encodeAbiParameters, pad } from "viem";
 import type { PublicClient } from "viem";
+import { encodeAbiParameters, pad } from "viem";
 import { CHAIN_CONFIGS } from "../chain-config.js";
 import { USDC_TRANSFER_EVENT_SIGNATURE } from "../usdc.js";
 import { type VerifyTransferParams, verifyTransfer } from "../verify-transfer.js";

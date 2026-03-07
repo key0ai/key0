@@ -1,4 +1,4 @@
-import { SignJWT, importPKCS8, jwtVerify } from "jose";
+import { importPKCS8, jwtVerify, SignJWT } from "jose";
 
 export type TokenClaims = {
 	readonly sub: string; // requestId

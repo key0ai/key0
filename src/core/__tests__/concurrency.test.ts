@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ChallengeRecord } from "../../types";
 import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
+import type { ChallengeRecord } from "../../types";
 
 function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRecord {
 	return {
@@ -120,7 +120,6 @@ describe("Concurrency — idempotent create", () => {
 
 		await store.create(record);
 		await expect(store.create(record)).rejects.toThrow("already exists");
-
 	});
 
 	test("concurrent creates with same challengeId — one succeeds, one rejects", async () => {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { ChallengeRecord } from "../../types/index.js";
 import { TestChallengeStore } from "../../test-utils/stores.js";
+import type { ChallengeRecord } from "../../types/index.js";
 
 // ─── Module mock — intercepts the sendUsdc import inside refund.ts ──────────
 

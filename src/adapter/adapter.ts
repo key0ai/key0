@@ -1,4 +1,4 @@
-import { http, type PublicClient, createPublicClient } from "viem";
+import { createPublicClient, http, type PublicClient } from "viem";
 import { base, baseSepolia } from "viem/chains";
 import type {
 	ChallengePayload,

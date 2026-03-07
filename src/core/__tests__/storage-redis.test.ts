@@ -69,11 +69,16 @@ function createMockRedis() {
 			return "OK";
 		},
 
-		eval(_script: string, _numKeys: number, ...args: string[]): number {
-			// Simulate the Lua transition script
+		eval(_script: string, numKeys: number, ...args: string[]): number {
+			// Simulate the Lua transition script.
+			// KEYS[1]=challenge hash, KEYS[2]=paid sorted set
+			// ARGV: [fromState, toState, challengeId, score, ...field/value pairs]
 			const key = args[0] as string;
-			const fromState = args[1] as string;
-			const toState = args[2] as string;
+			const paidSetKey = args[1] as string;
+			const fromState = args[numKeys] as string;
+			const toState = args[numKeys + 1] as string;
+			const challengeId = args[numKeys + 2] as string;
+			const score = args[numKeys + 3] as string;
 
 			const hash = store.get(key);
 			if (!(hash instanceof Map)) return 0;
@@ -82,10 +87,18 @@ function createMockRedis() {
 			if (current !== fromState) return 0;
 
 			hash.set("state", toState);
-			// Apply field/value pairs
-			for (let i = 3; i < args.length; i += 2) {
+			// Apply field/value pairs (start after the 4 fixed ARGV slots)
+			for (let i = numKeys + 4; i < args.length; i += 2) {
 				hash.set(args[i] as string, args[i + 1] as string);
 			}
+
+			// Simulate sorted set maintenance (mirrors the Lua ZADD/ZREM logic)
+			if (toState === "PAID" && score !== "") {
+				mock.zadd(paidSetKey, Number(score), challengeId);
+			} else if (fromState === "PAID") {
+				mock.zrem(paidSetKey, challengeId);
+			}
+
 			return 1;
 		},
 

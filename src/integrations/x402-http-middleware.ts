@@ -22,12 +22,13 @@ const X_A2A_EXTENSIONS_HEADER = "x-a2a-extensions";
 
 // Re-export shared settlement utilities so callers can import from a single place
 export {
-	buildHttpPaymentRequirements,
 	buildDiscoveryResponse,
+	buildHttpPaymentRequirements,
 	decodePaymentSignature,
 	settlePayment,
+	settleViaFacilitator,
+	settleViaGasWallet,
 } from "./settlement.js";
-export { settleViaFacilitator, settleViaGasWallet } from "./settlement.js";
 
 /**
  * Express middleware that intercepts AccessRequest calls on the JSON-RPC endpoint

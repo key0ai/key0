@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { MockPaymentAdapter } from "../../test-utils";
+import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
 import {
 	type AccessRequest,
 	AgentGateError,
@@ -7,7 +8,6 @@ import {
 	type SellerConfig,
 } from "../../types";
 import { ChallengeEngine, type ChallengeEngineConfig } from "../challenge-engine.js";
-import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

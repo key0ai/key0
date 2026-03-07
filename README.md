@@ -28,7 +28,7 @@ Run AgentGate as a pre-built Docker container. No code required — configure en
 │  discover    │───────▶│  /.well-known/agent.json  │        │                  │
 │              │◀───────│  agent card + pricing      │        │                  │
 │              │        │                           │        │                  │
-│  request     │───────▶│  /a2a/access              │        │                  │
+│  request     │───────▶│  /x402/access             │        │                  │
 │              │        │  [store: PENDING]         │        │                  │
 │              │◀───────│  402 + payment terms       │        │                  │
 │              │        │                           │        │                  │
@@ -97,7 +97,7 @@ Build from source: `docker build -t riklr/agentgate .`
 | `PROVIDER_URL` | | `https://agentgate.dev` | Your organization URL shown in the agent card `provider` field |
 | `PRODUCTS` | | `[{"tierId":"basic","label":"Basic","amount":"$0.10","resourceType":"api","accessDurationSeconds":3600}]` | JSON array of pricing tiers — each with `tierId`, `label`, `amount`, `resourceType`, and optional `accessDurationSeconds` |
 | `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
-| `BASE_PATH` | ✅ | — | URL path prefix for A2A endpoints (e.g. `/a2a` mounts `/a2a/access` and `/a2a/.well-known/agent.json`) |
+| `BASE_PATH` | ✅ | — | URL path prefix for A2A endpoints (e.g. `/a2a` mounts `/a2a/jsonrpc` and `/a2a/.well-known/agent.json`) |
 | `ISSUE_TOKEN_API_SECRET` | | — | If set, sent as `Authorization: Bearer <secret>` on every request to `ISSUE_TOKEN_API` |
 | `REDIS_URL` | ✅ | — | Redis connection URL — required for multi-replica deployments and the BullMQ refund cron |
 | `GAS_WALLET_PRIVATE_KEY` | | — | Private key of a wallet holding ETH on Base — enables self-contained settlement without a CDP facilitator |
@@ -185,7 +185,7 @@ Install the SDK and add AgentGate as middleware inside your existing application
 │              │        │  ┌────────────────────────────────────────────┐  │
 │  discover    │───────▶│  │           AgentGate Middleware              │  │
 │              │◀───────│  │  /.well-known/agent.json  (auto-generated)  │  │
-│              │        │  │  /a2a/access  (x402 payment + settlement)   │  │
+│              │        │  │  /x402/access  (x402 payment + settlement)  │  │
 │  request     │───────▶│  │  onVerifyResource()  ──▶  your DB/logic     │  │
 │              │        │  │  [store: PENDING]                          │  │
 │              │◀───────│  │  402 + payment terms                        │  │
@@ -345,6 +345,7 @@ fastify.listen({ port: 3000 });
 | `basePath` | `string` | | `"/a2a"` | A2A endpoint path prefix |
 | `resourceEndpointTemplate` | `string` | | auto | URL template (use `{resourceId}`) |
 | `gasWalletPrivateKey` | `0x${string}` | | — | Private key for self-contained settlement |
+| `redis` | `IRedisLockClient` | | — | Redis client for distributed gas wallet settlement locking across replicas |
 | `facilitatorUrl` | `string` | | CDP default | Override the x402 facilitator URL |
 | `onPaymentReceived` | `(grant) => Promise<void>` | | — | Fired after successful payment |
 | `onChallengeExpired` | `(challengeId) => Promise<void>` | | — | Fired when a challenge expires |
@@ -662,8 +663,9 @@ bun run start
 ```bash
 bun install          # Install dependencies
 bun run typecheck    # Type-check
-bun run lint         # Lint with Biome
-bun test             # Run all tests
+bun run lint         # Lint with Biome v2
+bun test src/        # Run unit tests
+                     # E2E tests require Docker + funded wallets — see e2e/README.md
 bun run build        # Compile to ./dist
 ```
 

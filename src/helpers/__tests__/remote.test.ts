@@ -1,6 +1,6 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
-import { AgentGateError } from "../../types/index.js";
 import type { IssueTokenParams } from "../../types/index.js";
+import { AgentGateError } from "../../types/index.js";
 import { createRemoteResourceVerifier, createRemoteTokenIssuer } from "../remote.js";
 
 // ---------------------------------------------------------------------------

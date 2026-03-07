@@ -1,14 +1,15 @@
+import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import {
 	type AccessGrant,
 	type AccessRequest,
 	AgentGateError,
+	CHAIN_CONFIGS,
 	CHAIN_ID_TO_NETWORK,
 	type ChallengeRecord,
 	type IChallengeStore,
 	type IPaymentAdapter,
 	type ISeenTxStore,
 	type NetworkConfig,
-	type NetworkName,
 	type PaymentProof,
 	type ProductTier,
 	type SellerConfig,
@@ -16,9 +17,6 @@ import {
 	type X402PaymentRequiredResponse,
 	type X402SettleResponse,
 } from "../types/index.js";
-
-import { parseDollarToUsdcMicro } from "../adapter/index.js";
-import { CHAIN_CONFIGS } from "../types/index.js";
 import { validateSellerConfig } from "./config-validation.js";
 import { validateNonEmpty, validateTxHash, validateUUID } from "./validation.js";
 

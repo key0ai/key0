@@ -1,5 +1,5 @@
-import { AgentGateError } from "../types/index.js";
 import type { IssueTokenParams, ResourceVerifier, TokenIssuanceResult } from "../types/index.js";
+import { AgentGateError } from "../types/index.js";
 import { type AuthHeaderProvider, sharedSecretAuth } from "./auth.js";
 
 export type RemoteVerifierConfig = {

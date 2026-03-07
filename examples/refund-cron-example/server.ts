@@ -1,11 +1,11 @@
+import type { NetworkName } from "@riklr/agentgate";
 import {
 	AccessTokenIssuer,
+	processRefunds,
 	RedisChallengeStore,
 	RedisSeenTxStore,
 	X402Adapter,
-	processRefunds,
 } from "@riklr/agentgate";
-import type { NetworkName } from "@riklr/agentgate";
 import { agentGateRouter, validateAccessToken } from "@riklr/agentgate/express";
 import { Queue, Worker } from "bullmq";
 import express from "express";
@@ -32,7 +32,7 @@ const adapter = new X402Adapter({
 	rpcUrl: process.env["AGENTGATE_RPC_URL"],
 });
 
-const tokenIssuer = new AccessTokenIssuer(SECRET);
+const _tokenIssuer = new AccessTokenIssuer(SECRET);
 
 // ─── Redis + Store ────────────────────────────────────────────────────────────
 
