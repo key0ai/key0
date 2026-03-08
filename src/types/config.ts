@@ -83,6 +83,10 @@ export type SellerConfig = {
 	readonly onPaymentReceived?: (grant: AccessGrant) => Promise<void>;
 	readonly onChallengeExpired?: (challengeId: string) => Promise<void>;
 
+	// MCP
+	/** When true, MCP discovery and Streamable HTTP endpoint are mounted. */
+	readonly mcp?: boolean | undefined;
+
 	// Customization
 	readonly basePath?: string; // defaults to "/a2a"
 	readonly resourceEndpointTemplate?: string; // e.g. "https://api.example.com/photos/{resourceId}"

@@ -208,6 +208,7 @@ app.use(
 				}
 			},
 			resourceEndpointTemplate: `${BACKEND_API_URL}/api/{resourceId}`,
+			mcp: true,
 			// Gas wallet mode: provide private key to enable self-contained settlement
 			...(USE_GAS_WALLET ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY as `0x${string}` } : {}),
 		},

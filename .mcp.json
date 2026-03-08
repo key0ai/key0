@@ -1,0 +1,12 @@
+{
+	"mcpServers": {
+		"agentgate": {
+			"transport": "http",
+			"url": "https://valene-malpighiaceous-presystematically.ngrok-free.dev/mcp"
+		},
+		"payments-mcp": {
+			"command": "node",
+			"args": ["/Users/gaurav/.payments-mcp/bundle.js"]
+		}
+	}
+}
