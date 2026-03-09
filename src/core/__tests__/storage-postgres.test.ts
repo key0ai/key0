@@ -76,14 +76,38 @@ function createMockSql() {
 		if (query.includes("select * from") && query.includes("where challenge_id")) {
 			const tableName = values[0];
 			const challengeId = values[1];
-			result = findRows(tableName, (r) => r.challenge_id === challengeId);
+			result = findRows(
+				tableName,
+				(r) =>
+					r.challenge_id === challengeId && (r.deleted_at === null || r.deleted_at === undefined),
+			);
 			count = 0;
 		}
-		// SELECT * WHERE request_id
+		// SELECT * WHERE request_id (with optional state and expires_at filters for findActiveByRequestId)
 		else if (query.includes("select * from") && query.includes("where request_id")) {
 			const tableName = values[0];
 			const requestId = values[1];
-			result = findRows(tableName, (r) => r.request_id === requestId);
+			const now = new Date();
+			// Check if this is the findActiveByRequestId query (has state and expires_at filters)
+			if (query.includes("state = 'pending'") && query.includes("expires_at > now()")) {
+				const matches = findRows(
+					tableName,
+					(r) =>
+						r.request_id === requestId &&
+						r.state === "PENDING" &&
+						new Date(r.expires_at as Date) > now &&
+						(r.deleted_at === null || r.deleted_at === undefined),
+				);
+				// Sort by created_at DESC and take first (matching ORDER BY created_at DESC LIMIT 1)
+				result = matches
+					.sort(
+						(a, b) =>
+							new Date(b.created_at as Date).getTime() - new Date(a.created_at as Date).getTime(),
+					)
+					.slice(0, 1);
+			} else {
+				result = findRows(tableName, (r) => r.request_id === requestId);
+			}
 			count = 0;
 		}
 		// SELECT * WHERE state = 'PAID'
@@ -91,7 +115,11 @@ function createMockSql() {
 			const tableName = values[0];
 			result = findRows(
 				tableName,
-				(r) => r.state === "PAID" && r.from_address !== null && r.from_address !== undefined,
+				(r) =>
+					r.state === "PAID" &&
+					r.from_address !== null &&
+					r.from_address !== undefined &&
+					(r.deleted_at === null || r.deleted_at === undefined),
 			);
 			count = 0;
 		}
@@ -132,6 +160,7 @@ function createMockSql() {
 				refund_tx_hash: values[19],
 				refunded_at: values[20],
 				refund_error: values[21],
+				deleted_at: null, // Default to null for new records
 			};
 			rows.push(newRow);
 			tables.set(tableName, rows);
@@ -168,7 +197,7 @@ function createMockSql() {
 			result = findRows(tableName, (r) => r.tx_hash === txHash);
 			count = 0;
 		}
-		// UPDATE
+		// UPDATE (for transition and cleanup)
 		else if (query.includes("update") && query.includes("where challenge_id")) {
 			const tableName = values[0];
 			const setArg = values[1];
@@ -184,9 +213,62 @@ function createMockSql() {
 
 			count = updateRows(
 				tableName,
-				(r) => r.challenge_id === challengeId && r.state === fromState,
+				(r) =>
+					r.challenge_id === challengeId &&
+					r.state === fromState &&
+					(r.deleted_at === null || r.deleted_at === undefined),
 				updates,
 			);
+			result = [];
+		}
+		// UPDATE for cleanup (soft-delete old records)
+		else if (query.includes("update") && query.includes("set deleted_at = now()")) {
+			const tableName = values[0];
+			const now = new Date();
+			let updated = 0;
+			const rows = tables.get(tableName) || [];
+			for (const row of rows) {
+				if (row.deleted_at !== null && row.deleted_at !== undefined) continue;
+
+				const state = row.state as string;
+				const deliveredAt = row.delivered_at as Date | undefined;
+				const createdAt = new Date(row.created_at as Date);
+
+				let shouldDelete = false;
+				if (state === "DELIVERED" && deliveredAt) {
+					const deliveredTTL = values.find((v) => typeof v === "number" && v === 43200) || 43200;
+					const ttlMs = deliveredTTL * 1000;
+					if (new Date(deliveredAt).getTime() <= now.getTime() - ttlMs) {
+						shouldDelete = true;
+					}
+				} else {
+					const recordTTL = values.find((v) => typeof v === "number" && v === 604800) || 604800;
+					const ttlMs = recordTTL * 1000;
+					if (createdAt.getTime() <= now.getTime() - ttlMs) {
+						shouldDelete = true;
+					}
+				}
+
+				if (shouldDelete) {
+					row.deleted_at = now;
+					updated++;
+				}
+			}
+			count = updated;
+			result = [];
+		}
+		// DELETE for purgeDeleted
+		else if (query.includes("delete from") && query.includes("where deleted_at")) {
+			const tableName = values[0];
+			const olderThan = values[1] as Date;
+			const rows = tables.get(tableName) || [];
+			const beforeCount = rows.length;
+			const filtered = rows.filter((r) => {
+				if (r.deleted_at === null || r.deleted_at === undefined) return true;
+				return new Date(r.deleted_at as Date) >= olderThan;
+			});
+			tables.set(tableName, filtered);
+			count = beforeCount - filtered.length;
 			result = [];
 		}
 
@@ -346,7 +428,11 @@ describe("PostgresChallengeStore", () => {
 		const sql = createMockSql();
 		const store = new PostgresChallengeStore({ sql: sql as never });
 
-		const record = makeChallengeRecord();
+		const futureDate = new Date(Date.now() + 1000 * 60 * 60); // 1 hour from now
+		const record = makeChallengeRecord({
+			state: "PENDING",
+			expiresAt: futureDate,
+		});
 		await store.create(record);
 
 		const found = await store.findActiveByRequestId(record.requestId);
@@ -360,6 +446,72 @@ describe("PostgresChallengeStore", () => {
 
 		const found = await store.findActiveByRequestId("no-such-request");
 		expect(found).toBeNull();
+	});
+
+	test("findActiveByRequestId returns null for expired challenge", async () => {
+		const sql = createMockSql();
+		const store = new PostgresChallengeStore({ sql: sql as never });
+
+		const pastDate = new Date(Date.now() - 1000 * 60 * 60); // 1 hour ago
+		const record = makeChallengeRecord({
+			state: "PENDING",
+			expiresAt: pastDate,
+		});
+		await store.create(record);
+
+		const found = await store.findActiveByRequestId(record.requestId);
+		expect(found).toBeNull();
+	});
+
+	test("findActiveByRequestId returns null for non-PENDING challenge", async () => {
+		const sql = createMockSql();
+		const store = new PostgresChallengeStore({ sql: sql as never });
+
+		const futureDate = new Date(Date.now() + 1000 * 60 * 60); // 1 hour from now
+		const record = makeChallengeRecord({
+			state: "CANCELLED",
+			expiresAt: futureDate,
+		});
+		await store.create(record);
+
+		const found = await store.findActiveByRequestId(record.requestId);
+		expect(found).toBeNull();
+	});
+
+	test("findActiveByRequestId returns only active PENDING challenge", async () => {
+		const sql = createMockSql();
+		const store = new PostgresChallengeStore({ sql: sql as never });
+
+		const requestId = crypto.randomUUID();
+		const futureDate = new Date(Date.now() + 1000 * 60 * 60); // 1 hour from now
+		const pastDate = new Date(Date.now() - 1000 * 60 * 60); // 1 hour ago
+
+		// Create multiple challenges with same requestId but different states/expiry
+		await store.create(
+			makeChallengeRecord({
+				requestId,
+				state: "CANCELLED",
+				expiresAt: futureDate,
+			}),
+		);
+		await store.create(
+			makeChallengeRecord({
+				requestId,
+				state: "PENDING",
+				expiresAt: pastDate, // expired
+			}),
+		);
+		const activeRecord = makeChallengeRecord({
+			requestId,
+			state: "PENDING",
+			expiresAt: futureDate,
+		});
+		await store.create(activeRecord);
+
+		const found = await store.findActiveByRequestId(requestId);
+		expect(found).not.toBeNull();
+		expect(found!.challengeId).toBe(activeRecord.challengeId);
+		expect(found!.state).toBe("PENDING");
 	});
 
 	test("transition succeeds when state matches", async () => {
@@ -442,6 +594,76 @@ describe("PostgresChallengeStore", () => {
 		const results = await store.findPendingForRefund(300_000);
 		expect(results.length).toBe(1);
 		expect(results[0].challengeId).toBe(record.challengeId);
+	});
+
+	test("cleanup soft-deletes old records", async () => {
+		const sql = createMockSql();
+		const store = new PostgresChallengeStore({
+			sql: sql as never,
+			recordTTLSeconds: 604_800, // 7 days
+			deliveredTTLSeconds: 43_200, // 12 hours
+		});
+
+		// Create old records that should be cleaned up
+		const oldCreatedAt = new Date(Date.now() - 1000 * 60 * 60 * 24 * 8); // 8 days ago
+		const oldDeliveredAt = new Date(Date.now() - 1000 * 60 * 60 * 13); // 13 hours ago
+
+		const oldRecord = makeChallengeRecord({
+			state: "PAID",
+			createdAt: oldCreatedAt,
+		});
+		await store.create(oldRecord);
+
+		const oldDeliveredRecord = makeChallengeRecord({
+			state: "DELIVERED",
+			deliveredAt: oldDeliveredAt,
+			createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
+		});
+		await store.create(oldDeliveredRecord);
+
+		// Create a recent record that should NOT be cleaned up
+		const recentRecord = makeChallengeRecord({
+			state: "PENDING",
+			createdAt: new Date(), // Now
+		});
+		await store.create(recentRecord);
+
+		// Run cleanup
+		const deletedCount = await store.cleanup();
+		expect(deletedCount).toBe(2); // Should delete 2 old records
+
+		// Verify old records are soft-deleted (get returns null)
+		expect(await store.get(oldRecord.challengeId)).toBeNull();
+		expect(await store.get(oldDeliveredRecord.challengeId)).toBeNull();
+
+		// Verify recent record is still accessible
+		expect(await store.get(recentRecord.challengeId)).not.toBeNull();
+	});
+
+	test("purgeDeleted permanently deletes soft-deleted records", async () => {
+		const sql = createMockSql();
+		const store = new PostgresChallengeStore({ sql: sql as never });
+
+		// Create and soft-delete a record
+		const record = makeChallengeRecord();
+		await store.create(record);
+
+		// Manually soft-delete by setting deleted_at (simulating cleanup)
+		const tables = (sql as { _tables: Map<string, Row[]> })._tables;
+		const rows = tables.get("agentgate_challenges") || [];
+		const row = rows.find((r) => r.challenge_id === record.challengeId);
+		if (row) {
+			row.deleted_at = new Date(Date.now() - 1000 * 60 * 60 * 24); // 1 day ago
+		}
+
+		// Purge records deleted more than 12 hours ago
+		const purgeDate = new Date(Date.now() - 1000 * 60 * 60 * 12);
+		const purgedCount = await store.purgeDeleted(purgeDate);
+		expect(purgedCount).toBe(1);
+
+		// Verify record is permanently deleted
+		const remainingRows = tables.get("agentgate_challenges") || [];
+		expect(remainingRows.find((r) => r.challenge_id === record.challengeId)).toBeUndefined();
 	});
 });
 

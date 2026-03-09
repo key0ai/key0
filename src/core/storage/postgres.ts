@@ -37,6 +37,9 @@ export type PostgresStoreConfig = {
 	readonly sql: Sql;
 	readonly tablePrefix?: string | undefined; // default: "agentgate"
 	readonly autoMigrate?: boolean | undefined; // default: true — set false to manage migrations externally
+	readonly challengeTTLSeconds?: number | undefined; // default: 900 (15 min) — request index TTL for findActiveByRequestId
+	readonly recordTTLSeconds?: number | undefined; // default: 604_800 (7 days) — general record lifecycle TTL
+	readonly deliveredTTLSeconds?: number | undefined; // default: 43_200 (12 hours) — TTL for DELIVERED records
 };
 
 // ─── Row types ───────────────────────────────────────────────────────
@@ -63,6 +66,7 @@ type ChallengeRow = {
 	refund_tx_hash?: string;
 	refunded_at?: Date;
 	refund_error?: string;
+	deleted_at?: Date;
 };
 
 type SeenTxRow = {
@@ -106,11 +110,15 @@ export class PostgresChallengeStore implements IChallengeStore {
 	private readonly tablePrefix: string;
 	private readonly tableName: string;
 	private readonly ready: Promise<void>;
+	private readonly recordTTL: number; // seconds — general record lifecycle TTL
+	private readonly deliveredTTL: number; // seconds — TTL for DELIVERED records
 
 	constructor(config: PostgresStoreConfig) {
 		this.sql = config.sql;
 		this.tablePrefix = config.tablePrefix ?? "agentgate";
 		this.tableName = `${this.tablePrefix}_challenges`;
+		this.recordTTL = config.recordTTLSeconds ?? 604_800; // 7 days
+		this.deliveredTTL = config.deliveredTTLSeconds ?? 43_200; // 12 hours
 		this.ready = config.autoMigrate !== false ? this.createSchema() : Promise.resolve();
 	}
 
@@ -141,7 +149,8 @@ export class PostgresChallengeStore implements IChallengeStore {
 				delivered_at TIMESTAMPTZ,
 				refund_tx_hash TEXT,
 				refunded_at TIMESTAMPTZ,
-				refund_error TEXT
+				refund_error TEXT,
+				deleted_at TIMESTAMPTZ
 			)
 		`;
 
@@ -154,6 +163,17 @@ export class PostgresChallengeStore implements IChallengeStore {
 			CREATE INDEX IF NOT EXISTS ${this.sql(`${this.tableName}_state_idx`)}
 			ON ${this.sql(this.tableName)} (state)
 		`;
+
+		await this.sql`
+			CREATE INDEX IF NOT EXISTS ${this.sql(`${this.tableName}_deleted_at_idx`)}
+			ON ${this.sql(this.tableName)} (deleted_at)
+			WHERE deleted_at IS NOT NULL
+		`;
+
+		await this.sql`
+			CREATE INDEX IF NOT EXISTS ${this.sql(`${this.tableName}_created_at_idx`)}
+			ON ${this.sql(this.tableName)} (created_at)
+		`;
 	}
 
 	async get(challengeId: string): Promise<ChallengeRecord | null> {
@@ -161,6 +181,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 		const rows = await this.sql<ChallengeRow>`
 			SELECT * FROM ${this.sql(this.tableName)}
 			WHERE challenge_id = ${challengeId}
+			  AND deleted_at IS NULL
 		`;
 
 		if (rows.length === 0) return null;
@@ -172,6 +193,9 @@ export class PostgresChallengeStore implements IChallengeStore {
 		const rows = await this.sql<ChallengeRow>`
 			SELECT * FROM ${this.sql(this.tableName)}
 			WHERE request_id = ${requestId}
+			  AND state = 'PENDING'
+			  AND expires_at > NOW()
+			  AND deleted_at IS NULL
 			ORDER BY created_at DESC
 			LIMIT 1
 		`;
@@ -279,7 +303,9 @@ export class PostgresChallengeStore implements IChallengeStore {
 		const result = await this.sql`
 			UPDATE ${this.sql(this.tableName)}
 			SET ${this.sql(updateObj, ...Object.keys(updateObj))}
-			WHERE challenge_id = ${challengeId} AND state = ${fromState}
+			WHERE challenge_id = ${challengeId} 
+			  AND state = ${fromState}
+			  AND deleted_at IS NULL
 		`;
 
 		// postgres.js result has .count property for affected rows
@@ -293,12 +319,69 @@ export class PostgresChallengeStore implements IChallengeStore {
 		const rows = await this.sql<ChallengeRow>`
 			SELECT * FROM ${this.sql(this.tableName)}
 			WHERE state = 'PAID'
-			  AND paid_at <= NOW() - INTERVAL '${this.sql.unsafe(`${minAgeSec} seconds`)}'
+			  AND paid_at <= NOW() - make_interval(secs => ${minAgeSec})
 			  AND from_address IS NOT NULL
+			  AND deleted_at IS NULL
 			ORDER BY paid_at ASC
 		`;
 
 		return rows.map(rowToChallengeRecord);
+	}
+
+	/**
+	 * Clean up old records that have exceeded their TTL.
+	 * This method soft-deletes records by setting deleted_at.
+	 *
+	 * @param olderThan Optional timestamp. If provided, only deletes records older than this.
+	 *                  If not provided, uses TTL-based logic (recordTTL for general records,
+	 *                  deliveredTTL for DELIVERED records).
+	 * @returns Number of records cleaned up
+	 */
+	async cleanup(olderThan?: Date): Promise<number> {
+		await this.ready;
+
+		if (olderThan) {
+			// Hard delete records older than the specified timestamp
+			const result = await this.sql`
+				DELETE FROM ${this.sql(this.tableName)}
+				WHERE deleted_at IS NOT NULL
+				  AND deleted_at < ${olderThan}
+			`;
+			return (result as unknown as { count: number }).count;
+		}
+
+		// Soft-delete records that have exceeded their TTL
+		const result = await this.sql`
+			UPDATE ${this.sql(this.tableName)}
+			SET deleted_at = NOW()
+			WHERE deleted_at IS NULL
+			  AND (
+				-- DELIVERED records: check delivered_at + deliveredTTL
+				(state = 'DELIVERED' AND delivered_at IS NOT NULL AND delivered_at <= NOW() - make_interval(secs => ${this.deliveredTTL}))
+				OR
+				-- Other records: check created_at + recordTTL
+				(state != 'DELIVERED' OR delivered_at IS NULL) AND created_at <= NOW() - make_interval(secs => ${this.recordTTL})
+			  )
+		`;
+
+		return (result as unknown as { count: number }).count;
+	}
+
+	/**
+	 * Permanently delete soft-deleted records older than the specified timestamp.
+	 * Use this for periodic hard cleanup after soft-delete.
+	 *
+	 * @param olderThan Only delete records with deleted_at older than this timestamp
+	 * @returns Number of records permanently deleted
+	 */
+	async purgeDeleted(olderThan: Date): Promise<number> {
+		await this.ready;
+		const result = await this.sql`
+			DELETE FROM ${this.sql(this.tableName)}
+			WHERE deleted_at IS NOT NULL
+			  AND deleted_at < ${olderThan}
+		`;
+		return (result as unknown as { count: number }).count;
 	}
 }
 
