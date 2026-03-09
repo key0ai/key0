@@ -8,7 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { agentgateWalletAddress, makeClientE2eClient } from "../fixtures/wallets.ts";
-import { readChallengeRecord, readChallengeState } from "../helpers/redis-client.ts";
+import { readChallengeRecord, readChallengeState } from "../helpers/storage-client.ts";
 
 describe("Happy Path with State Verification", () => {
 	test("challenge record transitions PENDING → DELIVERED with correct fields", async () => {

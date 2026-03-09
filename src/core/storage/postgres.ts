@@ -190,8 +190,6 @@ export class PostgresChallengeStore implements IChallengeStore {
 		const rows = await this.sql<ChallengeRow>`
 			SELECT * FROM ${this.sql(this.tableName)}
 			WHERE request_id = ${requestId}
-			  AND state = 'PENDING'
-			  AND expires_at > NOW()
 			  AND deleted_at IS NULL
 			ORDER BY created_at DESC
 			LIMIT 1

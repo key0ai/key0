@@ -9,7 +9,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient, makeGasE2eClient } from "../fixtures/wallets.ts";
-import { readChallengeRecord } from "../helpers/redis-client.ts";
+import { readChallengeRecord } from "../helpers/storage-client.ts";
 
 describe("Concurrent Purchases", () => {
 	test("two clients purchasing simultaneously both receive distinct grants", async () => {

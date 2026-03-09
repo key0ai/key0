@@ -15,10 +15,9 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID, REFUND_POLL_TIMEOUT_MS } from "../fixtures/constants.ts";
 import { agentgateWalletAddress, clientWalletAddress } from "../fixtures/wallets.ts";
 import {
-	connectRedis,
 	readChallengeState,
 	writePaidChallengeRecord,
-} from "../helpers/redis-client.ts";
+} from "../helpers/storage-client.ts";
 import { waitForChallengeState } from "../helpers/wait.ts";
 
 // $0.01 USDC — small amount to minimize testnet spend
@@ -28,44 +27,40 @@ describe("Refund Success", () => {
 	test(
 		"PAID record with fromAddress is refunded by the cron within timeout",
 		async () => {
-			const challengeId = `e2e-refund-${crypto.randomUUID()}`;
-			const clientAddr = clientWalletAddress();
-			const agentgateAddr = agentgateWalletAddress();
-			const redis = connectRedis();
+		const challengeId = `e2e-refund-${crypto.randomUUID()}`;
+		const clientAddr = clientWalletAddress();
+		const agentgateAddr = agentgateWalletAddress();
 
-			// Record balance before refund
-			// (actual USDC check requires on-chain read — simplified here to state check)
+		// Record balance before refund
+		// (actual USDC check requires on-chain read — simplified here to state check)
 
-			// Write a PAID record to Redis that is past REFUND_MIN_AGE_MS (3s)
-			// paidAt is in the past to be immediately eligible
-			const paidAt = new Date(Date.now() - 10_000); // 10 seconds ago
-			await writePaidChallengeRecord(
-				{
-					challengeId,
-					requestId: crypto.randomUUID(),
-					clientAgentId: `agent://${clientAddr}`,
-					resourceId: "refund-test-resource",
-					tierId: DEFAULT_TIER_ID,
-					amount: "$0.01",
-					amountRaw: REFUND_AMOUNT_RAW,
-					destination: agentgateAddr,
-					fromAddress: clientAddr,
-					txHash: `0x${"ab".repeat(32)}` as `0x${string}`,
-					paidAt,
-				},
-				redis,
-			);
+		// Write a PAID record that is past REFUND_MIN_AGE_MS (3s)
+		// paidAt is in the past to be immediately eligible
+		const paidAt = new Date(Date.now() - 10_000); // 10 seconds ago
+		await writePaidChallengeRecord({
+			challengeId,
+			requestId: crypto.randomUUID(),
+			clientAgentId: `agent://${clientAddr}`,
+			resourceId: "refund-test-resource",
+			tierId: DEFAULT_TIER_ID,
+			amount: "$0.01",
+			amountRaw: REFUND_AMOUNT_RAW,
+			destination: agentgateAddr,
+			fromAddress: clientAddr,
+			txHash: `0x${"ab".repeat(32)}` as `0x${string}`,
+			paidAt,
+		});
 
-			// Verify initial state
-			const initialState = await readChallengeState(challengeId, redis);
-			expect(initialState).toBe("PAID");
+		// Verify initial state
+		const initialState = await readChallengeState(challengeId);
+		expect(initialState).toBe("PAID");
 
-			// Poll until refund cron transitions to REFUNDED (or REFUND_FAILED = also accepted, check error)
-			const finalState = await waitForChallengeState(
-				() => readChallengeState(challengeId, redis),
-				"REFUNDED",
-				REFUND_POLL_TIMEOUT_MS,
-			);
+		// Poll until refund cron transitions to REFUNDED (or REFUND_FAILED = also accepted, check error)
+		const finalState = await waitForChallengeState(
+			() => readChallengeState(challengeId),
+			"REFUNDED",
+			REFUND_POLL_TIMEOUT_MS,
+		);
 
 			expect(finalState).toBe("REFUNDED");
 		},

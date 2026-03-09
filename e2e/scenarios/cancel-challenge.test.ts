@@ -12,12 +12,15 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
-import { connectRedis, readChallengeState } from "../helpers/redis-client.ts";
+import {
+	expireRequestIdIndex,
+	readChallengeState,
+	transitionChallengeState,
+} from "../helpers/storage-client.ts";
 
 describe("Cancel Challenge", () => {
 	test("submitting proof for a CANCELLED challenge is rejected", async () => {
 		const client = makeClientE2eClient();
-		const redis = connectRedis();
 		const requestId = crypto.randomUUID();
 
 		// Step 1: Request access → PENDING
@@ -29,18 +32,10 @@ describe("Cancel Challenge", () => {
 		const state = await readChallengeState(challengeId);
 		expect(state).toBe("PENDING");
 
-		// Step 2: Cancel the challenge (simulate engine.cancelChallenge via Redis)
-		const challengeKey = `agentgate:challenge:${challengeId}`;
-		// Atomic: only set if current state is PENDING (mimics transition)
-		const script = `
-			if redis.call('hget', KEYS[1], 'state') == 'PENDING' then
-				redis.call('hset', KEYS[1], 'state', 'CANCELLED')
-				return 1
-			end
-			return 0
-		`;
-		const cancelled = await redis.eval(script, 1, challengeKey);
-		expect(cancelled).toBe(1);
+		// Step 2: Cancel the challenge (simulate engine.cancelChallenge)
+		// Atomic transition: PENDING → CANCELLED
+		const cancelled = await transitionChallengeState(challengeId, "PENDING", "CANCELLED");
+		expect(cancelled).toBe(true);
 
 		const cancelledState = await readChallengeState(challengeId);
 		expect(cancelledState).toBe("CANCELLED");
@@ -65,7 +60,6 @@ describe("Cancel Challenge", () => {
 
 	test("re-requesting access after cancellation creates a new challenge", async () => {
 		const client = makeClientE2eClient();
-		const redis = connectRedis();
 		const requestId = crypto.randomUUID();
 
 		// Create and cancel
@@ -74,10 +68,10 @@ describe("Cancel Challenge", () => {
 			requestId,
 		});
 
-		const challengeKey = `agentgate:challenge:${firstId}`;
-		await redis.hset(challengeKey, "state", "CANCELLED");
-		// Delete requestId index so a new challenge can be created
-		await redis.del(`agentgate:request:${requestId}`);
+		// Cancel the challenge
+		await transitionChallengeState(firstId, "PENDING", "CANCELLED");
+		// Expire requestId index so a new challenge can be created
+		await expireRequestIdIndex(requestId);
 
 		// Re-request with same requestId
 		const { challengeId: secondId } = await client.requestAccess({

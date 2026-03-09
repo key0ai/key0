@@ -445,11 +445,7 @@ describe("PostgresChallengeStore", () => {
 		const sql = createMockSql();
 		const store = new PostgresChallengeStore({ sql: sql as never });
 
-		const futureDate = new Date(Date.now() + 1000 * 60 * 60); // 1 hour from now
-		const record = makeChallengeRecord({
-			state: "PENDING",
-			expiresAt: futureDate,
-		});
+		const record = makeChallengeRecord();
 		await store.create(record);
 
 		const found = await store.findActiveByRequestId(record.requestId);
@@ -465,70 +461,32 @@ describe("PostgresChallengeStore", () => {
 		expect(found).toBeNull();
 	});
 
-	test("findActiveByRequestId returns null for expired challenge", async () => {
-		const sql = createMockSql();
-		const store = new PostgresChallengeStore({ sql: sql as never });
-
-		const pastDate = new Date(Date.now() - 1000 * 60 * 60); // 1 hour ago
-		const record = makeChallengeRecord({
-			state: "PENDING",
-			expiresAt: pastDate,
-		});
-		await store.create(record);
-
-		const found = await store.findActiveByRequestId(record.requestId);
-		expect(found).toBeNull();
-	});
-
-	test("findActiveByRequestId returns null for non-PENDING challenge", async () => {
-		const sql = createMockSql();
-		const store = new PostgresChallengeStore({ sql: sql as never });
-
-		const futureDate = new Date(Date.now() + 1000 * 60 * 60); // 1 hour from now
-		const record = makeChallengeRecord({
-			state: "CANCELLED",
-			expiresAt: futureDate,
-		});
-		await store.create(record);
-
-		const found = await store.findActiveByRequestId(record.requestId);
-		expect(found).toBeNull();
-	});
-
-	test("findActiveByRequestId returns only active PENDING challenge", async () => {
+	test("findActiveByRequestId returns latest challenge for requestId", async () => {
 		const sql = createMockSql();
 		const store = new PostgresChallengeStore({ sql: sql as never });
 
 		const requestId = crypto.randomUUID();
-		const futureDate = new Date(Date.now() + 1000 * 60 * 60); // 1 hour from now
-		const pastDate = new Date(Date.now() - 1000 * 60 * 60); // 1 hour ago
 
-		// Create multiple challenges with same requestId but different states/expiry
-		await store.create(
-			makeChallengeRecord({
-				requestId,
-				state: "CANCELLED",
-				expiresAt: futureDate,
-			}),
-		);
-		await store.create(
-			makeChallengeRecord({
-				requestId,
-				state: "PENDING",
-				expiresAt: pastDate, // expired
-			}),
-		);
-		const activeRecord = makeChallengeRecord({
+		// Older record
+		const older = makeChallengeRecord({
 			requestId,
+			createdAt: new Date(Date.now() - 60_000),
 			state: "PENDING",
-			expiresAt: futureDate,
 		});
-		await store.create(activeRecord);
+		await store.create(older);
+
+		// Newer record with different state
+		const newer = makeChallengeRecord({
+			requestId,
+			createdAt: new Date(),
+			state: "DELIVERED",
+		});
+		await store.create(newer);
 
 		const found = await store.findActiveByRequestId(requestId);
 		expect(found).not.toBeNull();
-		expect(found!.challengeId).toBe(activeRecord.challengeId);
-		expect(found!.state).toBe("PENDING");
+		expect(found!.challengeId).toBe(newer.challengeId);
+		expect(found!.state).toBe("DELIVERED");
 	});
 
 	test("transition succeeds when state matches", async () => {
