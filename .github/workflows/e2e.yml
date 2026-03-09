@@ -58,6 +58,7 @@ jobs:
 
   e2e-postgres:
     name: E2E (Postgres)
+    needs: e2e-redis # Run sequentially to avoid gas wallet nonce conflicts on Base Sepolia
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
