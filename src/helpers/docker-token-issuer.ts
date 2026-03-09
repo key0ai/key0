@@ -1,4 +1,5 @@
 import type { IssueTokenParams, ProductTier, TokenIssuanceResult } from "../types/index.js";
+import { AgentGateError } from "../types/index.js";
 
 export type DockerTokenIssuerOptions = {
 	/** Bearer secret for ISSUE_TOKEN_API requests (optional) */
@@ -45,12 +46,26 @@ export function buildDockerTokenIssuer(
 				body: JSON.stringify(body),
 				signal: controller.signal,
 			});
+		} catch (err: unknown) {
+			if (err instanceof Error && err.name === "AbortError") {
+				throw new AgentGateError("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504);
+			}
+			throw new AgentGateError(
+				"TOKEN_ISSUE_FAILED",
+				`Network error: ${err instanceof Error ? err.message : String(err)}`,
+				502,
+			);
 		} finally {
 			clearTimeout(timeout);
 		}
 
 		if (!res.ok) {
-			throw new Error(`ISSUE_TOKEN_API returned ${res.status}: ${await res.text()}`);
+			const errorText = await res.text().catch(() => "");
+			throw new AgentGateError(
+				"TOKEN_ISSUE_FAILED",
+				`ISSUE_TOKEN_API returned ${res.status}: ${errorText}`,
+				502,
+			);
 		}
 
 		const data = (await res.json()) as Record<string, unknown>;
