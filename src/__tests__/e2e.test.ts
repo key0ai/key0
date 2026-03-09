@@ -10,11 +10,14 @@ import { createAgentGate } from "../factory.js";
 import { MockPaymentAdapter, TestChallengeStore, TestSeenTxStore } from "../test-utils";
 import type { SellerConfig } from "../types";
 import { X402_METADATA_KEYS } from "../types";
+import { AccessTokenIssuer } from "../core/access-token.js";
 
 const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
 
 function makeConfig(): SellerConfig {
+	const issuer = new AccessTokenIssuer(SECRET);
+
 	return {
 		agentName: "E2E Test Agent",
 		agentDescription: "E2E test",
@@ -32,11 +35,18 @@ function makeConfig(): SellerConfig {
 			return resourceId !== "nonexistent";
 		},
 		onIssueToken: async (params) => {
-			// Mock token issuance to avoid jose import issues
-			return {
-				token: `mock-token-${params.challengeId}`,
-				expiresAt: new Date(Date.now() + 3600 * 1000),
-			};
+			const { token, expiresAt } = await issuer.sign(
+				{
+					sub: params.requestId,
+					jti: params.challengeId,
+					resourceId: params.resourceId,
+					tierId: params.tierId,
+					txHash: params.txHash,
+				},
+				3600,
+			);
+
+			return { token, expiresAt, tokenType: "Bearer" };
 		},
 		resourceEndpointTemplate: "https://api.example.com/photos/{resourceId}",
 	};

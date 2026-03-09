@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { NextFunction, Request, Response } from "express";
 import { ChallengeEngine } from "../core/challenge-engine.js";
+import { AccessTokenIssuer } from "../core/access-token.js";
 import {
 	buildHttpPaymentRequirements,
 	createX402HttpMiddleware,
@@ -16,6 +17,8 @@ const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
 
 function makeConfig(): SellerConfig {
+	const issuer = new AccessTokenIssuer(SECRET);
+
 	return {
 		agentName: "Test Agent",
 		agentDescription: "Test",
@@ -33,11 +36,18 @@ function makeConfig(): SellerConfig {
 			return resourceId !== "nonexistent";
 		},
 		onIssueToken: async (params) => {
-			// Mock token issuance to avoid jose import issues
-			return {
-				token: `mock-token-${params.challengeId}`,
-				expiresAt: new Date(Date.now() + 3600 * 1000),
-			};
+			const { token, expiresAt } = await issuer.sign(
+				{
+					sub: params.requestId,
+					jti: params.challengeId,
+					resourceId: params.resourceId,
+					tierId: params.tierId,
+					txHash: params.txHash,
+				},
+				3600,
+			);
+
+			return { token, expiresAt, tokenType: "Bearer" };
 		},
 	};
 }
