@@ -49,6 +49,11 @@ async function retryWithBackoff<T>(
 			return await fn();
 		} catch (err) {
 			lastError = err;
+			// Don't retry deterministic rejections (invalid sig, insufficient funds, nonce consumed).
+			// Only transient errors (network timeouts, 5xx) are worth retrying.
+			if (err instanceof AgentGateError && err.code === "PAYMENT_FAILED") {
+				throw err;
+			}
 			if (attempt < maxRetries) {
 				await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
 			}

@@ -142,7 +142,11 @@ export async function retryFailedRefunds(
 ): Promise<string[]> {
 	const requeued: string[] = [];
 	for (const id of challengeIds) {
-		const ok = await store.transition(id, "REFUND_FAILED", "PAID");
+		const record = await store.get(id);
+		if (!record || record.state !== "REFUND_FAILED") continue;
+		const ok = await store.transition(id, "REFUND_FAILED", "PAID", {
+			paidAt: record.paidAt ? new Date(record.paidAt) : new Date(),
+		});
 		if (ok) requeued.push(id);
 	}
 	return requeued;

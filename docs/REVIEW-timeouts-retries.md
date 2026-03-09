@@ -677,16 +677,16 @@ This does NOT apply to T5 (`waitForTransactionReceipt`), which retries polling i
 | Operation | Has Timeout? | Default | Configurable? |
 |-----------|-------------|---------|---------------|
 | `onVerifyResource` | Yes | 5s | `resourceVerifyTimeoutMs` |
-| `onIssueToken` | **NO** | - | - |
-| `settleViaFacilitator` /verify | **NO** | - | - |
-| `settleViaFacilitator` /settle | **NO** | - | - |
-| `settleViaGasWallet` verify | **NO** | - | - |
-| `settleViaGasWallet` settle | **NO** | - | - |
+| `onIssueToken` | Yes | 15s | `tokenIssueTimeoutMs` |
+| `settleViaFacilitator` /verify | Yes | 30s | No (hardcoded) |
+| `settleViaFacilitator` /settle | Yes | 60s | No (hardcoded) |
+| `settleViaGasWallet` verify | Yes | 30s | No (hardcoded) |
+| `settleViaGasWallet` settle | Yes | 90s | No (hardcoded) |
 | `verifyTransfer` getTransactionReceipt | Implicit (viem ~10s) | ~10s | No (library default) |
 | `verifyTransfer` getBlock | Implicit (viem ~10s) | ~10s | No (library default) |
 | `sendUsdc` writeContract | Implicit (viem ~10s) | ~10s | No (library default) |
 | `sendUsdc` waitForTransactionReceipt | **NO** | - | - |
-| `acquireRedisLock` | **NO** (loops forever) | - | - |
+| `acquireRedisLock` | Yes | 30s max wait | `maxWaitMs` param |
 | `oauthClientCredentialsAuth` fetch | **NO** | - | - |
 | `buildDockerTokenIssuer` fetch | **NO** | - | - |
 | `RemoteResourceVerifier` | Yes | 5s | `timeoutMs` |
@@ -701,12 +701,46 @@ This does NOT apply to T5 (`waitForTransactionReceipt`), which retries polling i
 
 | Operation | Has Retry? | Strategy | Idempotent? |
 |-----------|-----------|----------|-------------|
-| `onIssueToken` | **NO** | - | Depends on implementation |
+| `onIssueToken` | Yes | 2 retries, exponential backoff (500ms base), **not on timeout** | Depends on implementation |
 | `onVerifyResource` | **NO** | - | Yes (read-only) |
 | Facilitator /verify | **NO** | - | Yes (read-only) |
-| Facilitator /settle | **NO** | - | Partially (nonce-bound) |
+| Facilitator /settle | Yes | 2 retries, exponential backoff (500ms base), **not on PAYMENT_FAILED** | Partially (nonce-bound) |
 | Gas wallet settle | **NO** | - | No (nonce increments) |
 | Redis state transition | **NO** | Atomic Lua (no retry needed) | Yes |
 | Redis markUsed (SET NX) | **NO** | Atomic (no retry needed) | Yes |
 | `sendUsdc` (refund) | **NO** | - | No |
-| Lock acquisition | Yes | Poll every 200ms, **no max** | Yes |
+| Lock acquisition | Yes | Poll every 200ms, 30s max wait | Yes |
+
+---
+
+## Post-Implementation Bugs Found
+
+Bugs discovered during code review of the timeout & retry implementation itself.
+
+### B1. `issueTokenWithRetry` retries on TOKEN_ISSUE_TIMEOUT (HIGH — fixed)
+
+**File**: `src/core/challenge-engine.ts` — `issueTokenWithRetry` catch block
+
+**Problem**: `Promise.race` does not cancel the losing promise. When the timeout fires, the original `onIssueToken` call is still in-flight. The retry loop catches the timeout error and spawns a second concurrent call, risking duplicate token issuance for the same challenge.
+
+**Fix**: Break immediately on `TOKEN_ISSUE_TIMEOUT` — do not retry. Only transient errors (network blips, temporary service unavailability) are retried.
+
+---
+
+### B2. `retryWithBackoff` retries non-retryable PAYMENT_FAILED errors (HIGH — fixed)
+
+**File**: `src/integrations/settlement.ts` — `retryWithBackoff` catch block
+
+**Problem**: The facilitator's `/settle` endpoint throws `PAYMENT_FAILED` for both deterministic rejections (invalid signature, insufficient funds, nonce already consumed) and transient failures. Retrying a deterministic rejection wastes ~3.5s of latency and can never succeed.
+
+**Fix**: Break immediately on `PAYMENT_FAILED` — only retry transient errors (network timeouts, `AbortError`, unexpected failures).
+
+---
+
+### B3. `retryFailedRefunds` orphans records — ZADD skipped (HIGH — fixed)
+
+**File**: `src/core/refund.ts` — `retryFailedRefunds`
+
+**Problem**: `store.transition(id, "REFUND_FAILED", "PAID")` passes no `paidAt`, so the Lua script's `score` argument is `""` and the `ZADD` to the `agentgate:paid` sorted set is skipped. The record's hash state becomes PAID but it is invisible to `findPendingForRefund()` (which queries via `ZRANGEBYSCORE`). The function returns success while the record is permanently orphaned.
+
+**Fix**: Read the record first to get the original `paidAt`, then pass it in the transition so the Lua script fires `ZADD` and the sorted set index is maintained.

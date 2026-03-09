@@ -69,13 +69,7 @@ export class ChallengeEngine {
 				new Promise<never>((_, reject) => {
 					timer = setTimeout(
 						() =>
-							reject(
-								new AgentGateError(
-									"TOKEN_ISSUE_TIMEOUT",
-									"Token issuance timed out",
-									504,
-								),
-							),
+							reject(new AgentGateError("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)),
 						timeoutMs,
 					);
 				}),
@@ -88,6 +82,11 @@ export class ChallengeEngine {
 				return await callWithTimeout();
 			} catch (err) {
 				lastError = err;
+				// Timeout means the original call may still be in-flight — retrying
+				// would risk duplicate token issuance. Break immediately.
+				if (err instanceof AgentGateError && err.code === "TOKEN_ISSUE_TIMEOUT") {
+					throw err;
+				}
 				if (attempt < maxRetries) {
 					const delay = 500 * 2 ** attempt; // 500ms, 1s, 2s...
 					await new Promise((r) => setTimeout(r, delay));
