@@ -561,7 +561,7 @@ This adds:
 
 **Two tools are exposed:**
 - `discover_products` — returns the product catalog (tiers, pricing, wallet, chainId)
-- `request_product_access` — two-step payment flow: call without `txHash` to get payment requirements, call with `txHash` after paying to receive an access token
+- `request_access` — x402 payment-gated tool: call to get payment requirements, then use `payments-mcp` to complete payment via the HTTPS x402 endpoint
 
 **Connect from Claude Code** (`.mcp.json`):
 ```json

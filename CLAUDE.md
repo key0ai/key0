@@ -76,7 +76,7 @@ Client → Protected API with Bearer JWT
 
 Optional callbacks: `onPaymentReceived`, `onIssueToken` (override default JWT generation), `resourceVerifier` (custom access control per request).
 
-When `mcp: true` is set, the Express router also mounts MCP routes (`/.well-known/mcp.json` discovery + `POST /mcp` Streamable HTTP endpoint) exposing `discover_products` and `request_product_access` tools. See `docs/mcp-integration.md`.
+When `mcp: true` is set, the Express router also mounts MCP routes (`/.well-known/mcp.json` discovery + `POST /mcp` Streamable HTTP endpoint) exposing `discover_products` and `request_access` tools. Payment follows the x402 MCP transport spec (`isError` + `structuredContent` + `_meta`). See `docs/mcp-integration.md`.
 
 ## Code Style
 
