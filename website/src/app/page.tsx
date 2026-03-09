@@ -5,7 +5,6 @@ import HowItWorks from "@/components/HowItWorks";
 import ValueProps from "@/components/ValueProps";
 import ComingSoon from "@/components/ComingSoon";
 import Footer from "@/components/Footer";
-import RiveBelowFooter from "@/components/RiveBelowFooter";
 
 export default function Home() {
   return (
@@ -19,7 +18,6 @@ export default function Home() {
         <ComingSoon />
       </main>
       <Footer />
-      <RiveBelowFooter />
     </>
   );
 }

@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@rive-app/react-canvas": "^4.27.0",
     "@types/three": "^0.183.1",
     "lucide-react": "^0.575.0",
     "motion": "^12.34.3",

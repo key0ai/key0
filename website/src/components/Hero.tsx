@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 const AgentScene = dynamic(() => import("@/components/AgentScene"), {
   ssr: false,
   loading: () => (
-    <div style={{ width: "1200px", height: "550px" }} />
+    <div style={{ width: "1280px", height: "550px", background: "#E8E8E8" }} />
   ),
 });
 
@@ -13,7 +13,7 @@ export default function Hero() {
   return (
     <section className="relative pt-0 pb-20 md:pt-0 md:pb-32 overflow-hidden">
       <div className="relative z-10 mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="flex justify-center">
+        <div className="flex justify-center pt-6">
           <AgentScene />
         </div>
 

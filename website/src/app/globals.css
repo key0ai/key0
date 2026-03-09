@@ -3,8 +3,8 @@
 /* ─── Design Tokens ─────────────────────────────────────── */
 
 @theme {
-  --color-surface: #F0EBE3;
-  --color-surface-raised: #F5F0E8;
+  --color-surface: #E8E8E8;
+  --color-surface-raised: #EFEFEF;
   --color-foreground: #1a1a1a;
   --color-muted: #737373;
   --color-accent: #1a1a1a;
@@ -62,7 +62,7 @@ html {
 }
 
 body {
-  background: #F0EBE3;
+  background: #E8E8E8;
   color: #1a1a1a;
   font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   width: 100%;

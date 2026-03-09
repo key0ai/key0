@@ -303,7 +303,7 @@ function DiscoveryAnimation() {
             width="140"
             height="36"
             rx="8"
-            fill="#F0EBE3"
+            fill="#E8E8E8"
             filter="url(#step1-neumorphic)"
           />
           <text x="0" y="22" textAnchor="middle" fontSize="11" fontWeight="700" fill="#1a1a1a">
@@ -334,7 +334,7 @@ function DiscoveryAnimation() {
             width="140"
             height="36"
             rx="8"
-            fill="#F0EBE3"
+            fill="#E8E8E8"
             filter="url(#step1-neumorphic)"
           />
           <text x="0" y="22" textAnchor="middle" fontSize="11" fontWeight="700" fill="#1a1a1a">
@@ -388,7 +388,7 @@ function RequestAnimation() {
         width="222"
         height="205"
         rx="14"
-        fill="#F0EBE3"
+        fill="#E8E8E8"
         filter="url(#step2-neu-card)"
       />
 
@@ -552,7 +552,7 @@ function RequestAnimation() {
           width="144"
           height="58"
           rx="8"
-          fill="#F0EBE3"
+          fill="#E8E8E8"
           filter="url(#step2-neu-card)"
         />
         <text x="0" y="22" textAnchor="middle" fontSize="11" fontWeight="700" fill="#1a1a1a">
@@ -618,7 +618,7 @@ function PayAnimation() {
           width="222"
           height="205"
           rx="14"
-          fill="#F0EBE3"
+          fill="#E8E8E8"
           filter="url(#step3-neu-card)"
         />
 
@@ -804,7 +804,7 @@ function PayAnimation() {
             width="144"
             height="62"
             rx="8"
-            fill="#F0EBE3"
+            fill="#E8E8E8"
             filter="url(#step3-neu-card)"
           />
           <text x="0" y="20" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#1a1a1a">
@@ -1008,7 +1008,7 @@ function AccessAnimation() {
           width="222"
           height="205"
           rx="14"
-          fill="#F0EBE3"
+          fill="#E8E8E8"
           filter="url(#step4-neu-card)"
         />
 
@@ -1260,7 +1260,7 @@ function AccessAnimation() {
             width="144"
             height="48"
             rx="8"
-            fill="#F0EBE3"
+            fill="#E8E8E8"
             filter="url(#step4-neu-card)"
           />
           <text x="0" y="20" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#1a1a1a">
