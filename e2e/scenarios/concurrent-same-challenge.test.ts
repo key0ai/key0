@@ -17,7 +17,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient, makeGasE2eClient } from "../fixtures/wallets.ts";
-import { readChallengeRecord } from "../helpers/redis-client.ts";
+import { readChallengeRecord } from "../helpers/storage-client.ts";
 
 describe("Concurrent Same-Challenge Proof Submission", () => {
 	test("concurrent submissions resolve safely — at least one succeeds, no corruption", async () => {

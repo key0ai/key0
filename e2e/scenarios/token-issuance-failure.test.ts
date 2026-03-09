@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { BACKEND_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
-import { readChallengeState } from "../helpers/redis-client.ts";
+import { readChallengeState } from "../helpers/storage-client.ts";
 
 beforeEach(async () => {
 	// Set backend to fail mode

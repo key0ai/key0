@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { NextFunction, Request, Response } from "express";
+import { AccessTokenIssuer } from "../core/access-token.js";
 import { ChallengeEngine } from "../core/challenge-engine.js";
 import {
 	buildHttpPaymentRequirements,
@@ -16,6 +17,8 @@ const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const WALLET = `0x${"ab".repeat(20)}` as `0x${string}`;
 
 function makeConfig(): SellerConfig {
+	const issuer = new AccessTokenIssuer(SECRET);
+
 	return {
 		agentName: "Test Agent",
 		agentDescription: "Test",
@@ -33,9 +36,7 @@ function makeConfig(): SellerConfig {
 			return resourceId !== "nonexistent";
 		},
 		onIssueToken: async (params) => {
-			const { AccessTokenIssuer } = await import("../core/access-token.js");
-			const issuer = new AccessTokenIssuer(SECRET);
-			return issuer.sign(
+			const { token, expiresAt } = await issuer.sign(
 				{
 					sub: params.requestId,
 					jti: params.challengeId,
@@ -45,6 +46,8 @@ function makeConfig(): SellerConfig {
 				},
 				3600,
 			);
+
+			return { token, expiresAt, tokenType: "Bearer" };
 		},
 	};
 }
