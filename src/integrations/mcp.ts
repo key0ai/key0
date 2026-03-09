@@ -3,11 +3,95 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Request, Response, Router } from "express";
 import { z } from "zod";
 import type { ChallengeEngine } from "../core/index.js";
-import type { SellerConfig } from "../types/index.js";
+import type { NetworkConfig, SellerConfig, X402PaymentPayload } from "../types/index.js";
 import { AgentGateError, CHAIN_CONFIGS } from "../types/index.js";
+import { buildHttpPaymentRequirements, settlePayment } from "./settlement.js";
+
+// ---------------------------------------------------------------------------
+// x402 MCP helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the x402 PaymentRequired tool result per the MCP transport spec.
+ * Returns `isError: true` with both `structuredContent` and `content[0].text`.
+ *
+ * The `resource.url` points to the HTTPS x402 endpoint so that HTTP-based
+ * payment tools (e.g. payments-mcp `make_http_request_with_x402`) can
+ * complete the payment directly. Future x402-native MCP clients can also
+ * use `_meta["x402/payment"]` to pay inline.
+ *
+ * @see https://github.com/coinbase/x402/blob/main/specs/transports-v2/mcp.md
+ */
+function buildPaymentRequiredResult(
+	tierId: string,
+	resourceId: string,
+	config: SellerConfig,
+	networkConfig: NetworkConfig,
+) {
+	const baseUrl = config.agentUrl.replace(/\/$/, "");
+	const x402PaymentUrl = `${baseUrl}/x402/access`;
+	const paymentRequired = buildHttpPaymentRequirements(tierId, resourceId, config, networkConfig);
+
+	const structuredContent = {
+		...paymentRequired,
+		error: "Payment required to access this resource",
+		resource: {
+			url: x402PaymentUrl,
+			description: paymentRequired.resource.description,
+			mimeType: "application/json",
+		},
+	};
+
+	return {
+		isError: true as const,
+		structuredContent,
+		content: [
+			{
+				type: "text" as const,
+				text: JSON.stringify(
+					{
+						...structuredContent,
+						x402PaymentUrl,
+						paymentInstructions: `To complete payment, use make_http_request_with_x402 with: URL="${x402PaymentUrl}", method="POST", body={"tierId":"${tierId}","resourceId":"${resourceId}"}, and pass the accepts array as paymentRequirements.`,
+					},
+					null,
+					2,
+				),
+			},
+		],
+	};
+}
+
+/**
+ * Extract the x402 payment payload from the MCP tool call's `_meta` field.
+ * Returns undefined if no payment is present.
+ */
+function extractPaymentFromMeta(
+	extra: { _meta?: Record<string, unknown> } | undefined,
+): X402PaymentPayload | undefined {
+	const meta = extra?._meta;
+	if (!meta) return undefined;
+	const payment = meta["x402/payment"];
+	if (!payment || typeof payment !== "object") return undefined;
+	return payment as X402PaymentPayload;
+}
+
+// ---------------------------------------------------------------------------
+// McpServer factory
+// ---------------------------------------------------------------------------
 
 /**
  * Create an McpServer with AgentGate tools registered.
+ *
+ * Tools:
+ * - `discover_products` (free) — browse the product catalog
+ * - `request_access` (x402-gated) — purchase an access token
+ *
+ * Payment follows the x402 MCP transport spec:
+ * 1. Call without `_meta["x402/payment"]` → returns `isError: true` + `structuredContent` with PaymentRequired
+ * 2. Call with `_meta["x402/payment"]` containing EIP-3009 signature → settles, returns access grant + `_meta["x402/payment-response"]`
+ *
+ * @see https://github.com/coinbase/x402/blob/main/specs/transports-v2/mcp.md
  */
 export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): McpServer {
 	const networkConfig = CHAIN_CONFIGS[config.network];
@@ -17,7 +101,7 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 		version: config.version ?? "1.0.0",
 	});
 
-	// Tool 1: discover_products
+	// Tool 1: discover_products (free)
 	server.registerTool(
 		"discover_products",
 		{
@@ -44,84 +128,53 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 		},
 	);
 
-	const baseUrl = config.agentUrl.replace(/\/$/, "");
-
-	// Tool 2: request_product_access
+	// Tool 2: request_access (x402-gated)
 	server.registerTool(
-		"request_product_access",
+		"request_access",
 		{
-			title: "Request Product Access",
+			title: "Request Access",
 			description: [
-				"Request access to a product. Two-step flow:",
-				"Step 1: Call WITHOUT txHash to get payment requirements (amount, wallet, chainId).",
-				"Step 2: Call WITH txHash after sending USDC payment to complete the purchase and receive an access token.",
-				"",
-				"IMPORTANT: If using x402 payments (e.g. payments-mcp make_http_request_with_x402),",
-				`use the x402 settlement endpoint: ${baseUrl}/x402/access`,
-				"Pass tierId in the POST body and the endpoint handles the full x402 payment flow.",
-			].join("\n"),
+				`Purchase access to a ${config.agentName} product tier.`,
+				"This tool is x402 payment-gated.",
+				"Call it to get payment requirements (amount, wallet, chainId, x402PaymentUrl).",
+				"Then use make_http_request_with_x402 to POST to the x402PaymentUrl with {tierId, resourceId} in the body and the accepts array as paymentRequirements.",
+				"The x402 endpoint handles EIP-3009 payment signing and settlement automatically.",
+			].join(" "),
 			inputSchema: {
 				tierId: z.string().describe("Product tier ID from discover_products"),
 				resourceId: z
 					.string()
 					.default("default")
 					.describe("Specific resource ID (defaults to 'default')"),
-				txHash: z
-					.string()
-					.optional()
-					.describe(
-						"On-chain USDC transaction hash. Omit for step 1 (get payment requirements), provide for step 2 (claim access token).",
-					),
-				fromAddress: z
-					.string()
-					.optional()
-					.describe("Sender wallet address (for payment verification)"),
 			},
 		},
-		async ({ tierId, resourceId, txHash, fromAddress }) => {
-			const requestId = `mcp-${crypto.randomUUID()}`;
+		async ({ tierId, resourceId }, extra) => {
+			const paymentPayload = extractPaymentFromMeta(extra as { _meta?: Record<string, unknown> });
 
 			try {
-				if (!txHash) {
-					// Step 1: Create challenge, return payment requirements
-					const { challengeId } = await engine.requestHttpAccess(requestId, tierId, resourceId);
-
+				if (!paymentPayload) {
+					// No payment — return x402 PaymentRequired signal
 					const tier = config.products.find((t) => t.tierId === tierId);
 					if (!tier) {
 						throw new AgentGateError("TIER_NOT_FOUND", `Tier "${tierId}" not found`, 400);
 					}
-
-					const requirements = {
-						status: "payment_required",
-						challengeId,
-						requestId,
-						payTo: config.walletAddress,
-						amount: tier.amount,
-						asset: "USDC",
-						chainId: networkConfig.chainId,
-						network: `eip155:${networkConfig.chainId}`,
-						usdcAddress: networkConfig.usdcAddress,
-						explorerBaseUrl: networkConfig.explorerBaseUrl,
-						x402PaymentUrl: `${baseUrl}/x402/access`,
-						tier: {
-							tierId: tier.tierId,
-							label: tier.label,
-							resourceType: tier.resourceType,
-						},
-					};
-
-					return {
-						content: [{ type: "text" as const, text: JSON.stringify(requirements, null, 2) }],
-					};
+					return buildPaymentRequiredResult(tierId, resourceId, config, networkConfig);
 				}
 
-				// Step 2: Process payment, return access grant
+				// Has payment — settle and issue access token
+				const { txHash, settleResponse, payer } = await settlePayment(
+					paymentPayload,
+					config,
+					networkConfig,
+				);
+
+				const requestId = `mcp-${crypto.randomUUID()}`;
 				const grant = await engine.processHttpPayment(
 					requestId,
 					tierId,
 					resourceId,
-					txHash as `0x${string}`,
-					fromAddress as `0x${string}` | undefined,
+					txHash,
+					payer as `0x${string}` | undefined,
 				);
 
 				return {
@@ -131,6 +184,9 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 							text: JSON.stringify({ status: "access_granted", ...grant }, null, 2),
 						},
 					],
+					_meta: {
+						"x402/payment-response": settleResponse,
+					},
 				};
 			} catch (err: unknown) {
 				if (err instanceof AgentGateError) {
@@ -153,8 +209,39 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 							],
 						};
 					}
+
+					// Settlement / payment errors — return PaymentRequired with error reason
+					if (err.code === "PAYMENT_FAILED" || err.httpStatus === 402) {
+						const failResult = buildPaymentRequiredResult(
+							tierId,
+							resourceId,
+							config,
+							networkConfig,
+						);
+						// Override the generic error with the specific failure message
+						const failContent = {
+							...(failResult.structuredContent as Record<string, unknown>),
+							error: err.message,
+						};
+						return {
+							isError: true as const,
+							structuredContent: failContent,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify(failContent, null, 2),
+								},
+							],
+						};
+					}
+
 					return {
-						content: [{ type: "text" as const, text: JSON.stringify(err.toJSON(), null, 2) }],
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify(err.toJSON(), null, 2),
+							},
+						],
 						isError: true as const,
 					};
 				}
