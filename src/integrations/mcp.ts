@@ -81,7 +81,7 @@ const x402PaymentPayloadSchema = z.object({
 			.optional(),
 		txHash: z.string().optional(),
 	}),
-	accepted: z.record(z.unknown()).optional(),
+	accepted: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
