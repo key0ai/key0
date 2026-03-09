@@ -115,25 +115,33 @@ Three transports share the same `ChallengeEngine`, Redis stores, state machine, 
 
 ### Allowed Transitions
 
-
 | From           | To             | Trigger                                     | Fields Written                           |
 | -------------- | -------------- | ------------------------------------------- | ---------------------------------------- |
 | *(new)*        | PENDING        | `create()`                                  | All base fields                          |
 | PENDING        | PAID           | `processHttpPayment()`                      | `txHash`, `paidAt`, `fromAddress`        |
 | PENDING        | EXPIRED        | Expiry check on access                      | —                                        |
 | PENDING        | CANCELLED      | `cancelChallenge()`                         | —                                        |
+| PAID           | PAID           | Grant persisted (outbox)                    | `accessGrant` (full JSON)                |
 | PAID           | DELIVERED      | Token issued successfully                   | `accessGrant` (full JSON), `deliveredAt` |
 | PAID           | PENDING        | `markUsed()` race rollback (extremely rare) | —                                        |
 | PAID           | REFUND_PENDING | Refund cron claims record                   | —                                        |
 | REFUND_PENDING | REFUNDED       | Refund tx confirmed                         | `refundTxHash`, `refundedAt`             |
 | REFUND_PENDING | REFUND_FAILED  | Refund tx failed                            | `refundError`                            |
 
-
 All transitions use **atomic Lua scripts** — if `currentState != expectedFromState`, the transition returns `false` and no fields are written.
 
 ---
 
 ## Redis Schema
+
+### Health Check
+
+`RedisChallengeStore` exposes a `healthCheck()` method that sends a `PING` to Redis and throws if the response is not `PONG`. This is **not called automatically** by `createAgentGate()` — callers should invoke it at startup for fail-fast behavior:
+
+```ts
+const { engine, store } = createAgentGate(config);
+await store.healthCheck(); // throws if Redis is unreachable
+```
 
 ### Key Naming Convention
 
@@ -209,16 +217,15 @@ ZADD agentgate:paid <paidAt_epoch_ms> <challengeId>
 
 ### Redis Commands Per Operation
 
-
-| Operation                 | Redis Commands                                                                                        |
-| ------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **create**                | Pipeline: `EXISTS` (guard) + `HSET` (challenge hash) + `EXPIRE` (7d) + `SET EX` (request index, 900s) |
-| **get**                   | `HGETALL`                                                                                             |
-| **findActiveByRequestId** | `GET` (request index) → `HGETALL` (challenge hash)                                                    |
-| **transition**            | `EVAL` (Lua: check state + `HSET` + conditional `ZADD`/`ZREM`) + conditional `EXPIRE` (if DELIVERED)  |
-| **markUsed**              | `SET NX EX` (7d)                                                                                      |
-| **findPendingForRefund**  | `ZRANGEBYSCORE` → N x `HGETALL`                                                                       |
-
+| Operation                 | Redis Commands                                                                                                    |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **create**                | Pipeline: `EXISTS` (guard) + `HSET` (challenge hash) + `EXPIRE` (7d) + `SET EX` (request index, 900s)            |
+| **get**                   | `HGETALL`                                                                                                         |
+| **findActiveByRequestId** | `GET` (request index) → `HGETALL` (challenge hash)                                                                |
+| **transition**            | `EVAL` (Lua: check state + `HSET` + conditional `ZADD`/`ZREM`) + conditional `EXPIRE` (if DELIVERED)              |
+| **markUsed**              | `SET NX EX` (7d)                                                                                                  |
+| **findPendingForRefund**  | `ZRANGEBYSCORE` → N x (`HGETALL` + conditional `ZREM` for ghost entries)                                          |
+| **healthCheck**           | `PING`                                                                                                            |
 
 ### Lua Script (Atomic Transition)
 
@@ -275,21 +282,24 @@ Engine method: `requestAccess()` or `requestHttpAccess()`
 
 ### Phase 2 — Settlement + Token Issuance
 
-The transport layer calls `settlePayment()` to verify and settle the EIP-3009 signature on-chain, then passes the result to `engine.processHttpPayment()`.
+The transport layer first verifies the resource via `engine.verifyResource()`, then calls `settlePayment()` to settle the EIP-3009 signature on-chain, then passes the result to `engine.processHttpPayment()`.
+
+**Important**: Resource verification happens BEFORE settlement to avoid money-at-risk (if a resource disappears between challenge and payment, the client is not charged).
 
 Engine method: `processHttpPayment(requestId, tierId, resourceId, txHash, fromAddress?)`
 
-1. Look up tier, verify resource
+1. Look up tier (resource verification is NOT done here — callers must verify before settlement)
 2. **Double-spend guard**: `seenTxStore.get(txHash)` — throw `TX_ALREADY_REDEEMED` (409)
 3. Find PENDING record by `requestId` — or auto-create one if challenge phase was skipped or expired
 4. **Atomic transition**: PENDING → PAID (with `txHash`, `paidAt`, `fromAddress`)
 5. **Mark txHash**: `seenTxStore.markUsed(txHash, challengeId)` — SET NX
-  - If returns `false` → rollback PAID→PENDING, throw `TX_ALREADY_REDEEMED` (409)
-6. **Issue token**: call `config.onIssueToken({ requestId, challengeId, resourceId, tierId, txHash })`
+   - If returns `false` → rollback PAID→PENDING, throw `TX_ALREADY_REDEEMED` (409)
+6. **Issue token**: call `config.onIssueToken({ requestId, challengeId, resourceId, tierId, txHash })` with timeout (`tokenIssueTimeoutMs`, default 15s) and retry (`tokenIssueRetries`, default 2 attempts with exponential backoff)
 7. Build `AccessGrant` object
-8. **Transition**: PAID → DELIVERED (with `accessGrant`, `deliveredAt`)
-9. Fire `onPaymentReceived` hook (async, non-blocking)
-10. Return `AccessGrant`
+8. **Persist grant (outbox pattern)**: PAID → PAID write with `accessGrant` stored — ensures grant is durable before returning to client
+9. **Mark DELIVERED (best-effort)**: PAID → DELIVERED (with `deliveredAt`) — if this fails, the record stays PAID with `accessGrant` set; the refund cron skips records that already have `accessGrant`
+10. Fire `onPaymentReceived` hook (async, non-blocking, logs `challengeId` on error)
+11. Return `AccessGrant`
 
 ### Phase 3 — Access Protected Resource
 
@@ -379,7 +389,7 @@ www-authenticate: Payment realm="https://api.example.com", accept="exact"
       "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       "amount": "100000",
       "payTo": "0xSellerWallet...",
-      "maxTimeoutSeconds": 300,
+      "maxTimeoutSeconds": 900,
       "extra": { "name": "USDC", "version": "2", "description": "Basic tier - $0.10 USDC" }
     }
   ],
@@ -424,7 +434,7 @@ payment-signature: eyJ4NDAyVm... (base64-encoded X402PaymentPayload)
 { "tierId": "basic", "requestId": "550e8400-...", "resourceId": "photo-123" }
 ```
 
-Server decodes header → `settlePayment()` → `engine.processHttpPayment()` → returns `AccessGrant`.
+Server decodes header → `engine.verifyResource()` → `settlePayment()` → `engine.processHttpPayment()` → returns `AccessGrant`.
 
 ```
 HTTP/1.1 200 OK
@@ -467,7 +477,7 @@ POST {basePath}/jsonrpc
         │       → engine.requestHttpAccess() → HTTP 402 + payment-required header
         │
         └── Has payment-signature header?
-                → settlePayment() → engine.processHttpPayment() → HTTP 200 + AccessGrant
+                → engine.verifyResource() → settlePayment() → engine.processHttpPayment() → HTTP 200 + AccessGrant
 ```
 
 The middleware extracts `AccessRequest` from `params.message.parts` — either a `data` part with `type: "AccessRequest"` or a `text` part containing JSON.
@@ -617,7 +627,7 @@ Executor processes through intermediate working states:
     "asset": "0x036CbD...",
     "amount": "100000",
     "payTo": "0xSeller...",
-    "maxTimeoutSeconds": 300,
+    "maxTimeoutSeconds": 900,
     "extra": { "name": "USDC", "version": "2" }
   }
 }
@@ -641,12 +651,10 @@ Self-contained settlement using `@x402/evm`:
 
 **Nonce serialization** prevents concurrent settlement from causing nonce conflicts:
 
-
-| Strategy                   | When                    | How                                                                     |
-| -------------------------- | ----------------------- | ----------------------------------------------------------------------- |
-| **Redis distributed lock** | `config.redis` provided | `SET NX` with 60s TTL, Lua-script atomic release. Poll interval: 200ms. |
-| **In-process queue**       | No Redis                | Promise-based serial queue. Single-instance only.                       |
-
+| Strategy                   | When                    | How                                                                                                                                              |
+| -------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Redis distributed lock** | `config.redis` provided | `SET NX` with 60s TTL, Lua-script atomic release. Poll interval: 200ms. Max wait: 30s (throws 503 on timeout). Lock key uses gas wallet address. |
+| **In-process queue**       | No Redis                | Promise-based serial queue. Single-instance only.                                                                                                |
 
 ### Facilitator Mode (default)
 
@@ -745,11 +753,13 @@ The refund cron handles PAID records that were never DELIVERED (e.g., `onIssueTo
 
 ### How It Works
 
-1. **Query**: `store.findPendingForRefund(minAgeMs)` runs `ZRANGEBYSCORE agentgate:paid 0 <cutoff>` to find PAID records older than `minAgeMs`, filtering for state=PAID and `fromAddress` set
-2. **Claim**: For each record, atomically transition PAID → REFUND_PENDING (prevents double-refund from concurrent cron workers)
-3. **Send**: Call `sendUsdc()` to transfer USDC back to `record.fromAddress`
-4. **Success**: Transition REFUND_PENDING → REFUNDED with `refundTxHash` and `refundedAt`
-5. **Failure**: Transition REFUND_PENDING → REFUND_FAILED with `refundError` (needs operator attention; cron does NOT retry)
+1. **Query**: `store.findPendingForRefund(minAgeMs)` runs `ZRANGEBYSCORE agentgate:paid 0 <cutoff>` to find PAID records older than `minAgeMs`, filtering for state=PAID, `fromAddress` set, and `accessGrant` NOT set (records with `accessGrant` were successfully issued but the DELIVERED transition failed — they should not be refunded). Ghost entries (sorted set member but expired hash) are cleaned up via `ZREM`. Records without `fromAddress` trigger a warning log for manual intervention.
+2. **Batch limit**: Only `batchSize` records (default 50, configurable via `RefundConfig.batchSize`) are processed per cron run to avoid long-running jobs.
+3. **Claim**: For each record, atomically transition PAID → REFUND_PENDING (prevents double-refund from concurrent cron workers)
+4. **Send**: Call `sendUsdc()` to transfer USDC back to `record.fromAddress`
+5. **Success**: Transition REFUND_PENDING → REFUNDED with `refundTxHash` and `refundedAt`
+6. **Failure**: Transition REFUND_PENDING → REFUND_FAILED with `refundError` — the transition itself is wrapped in try/catch so a Redis failure here won't crash the loop. Cron does NOT retry automatically.
+7. **Manual retry**: `retryFailedRefunds(store, challengeIds)` can re-queue REFUND_FAILED records back to PAID for the next cron run. Intended for operator use (admin API, manual scripts).
 
 ### Refund Settlement (`sendUsdc()`)
 
@@ -843,7 +853,9 @@ agentgate:challenge:{challengeId}
 2. **Double-spend is impossible** — `SET NX` on `agentgate:seentx:{txHash}` ensures one txHash maps to exactly one challenge; if `markUsed` fails, the PAID state is rolled back to PENDING
 3. **JWT security** — minimum 32-char secret, supports HS256/RS256, fallback secrets for rotation
 4. **Refunds cannot double-fire** — atomic PAID→REFUND_PENDING transition ensures only one cron worker processes each record
-5. **Nonce serialization for gas wallet** — Redis distributed lock or in-process queue prevents nonce conflicts during settlement
+5. **Nonce serialization for gas wallet** — Redis distributed lock (with 30s max-wait timeout) or in-process queue prevents nonce conflicts during settlement
+6. **Resource verified before settlement** — transports call `engine.verifyResource()` before `settlePayment()` to prevent charging for nonexistent resources
+7. **Outbox pattern for grant delivery** — `accessGrant` is persisted to the PAID record before returning to the client, so a failure in the DELIVERED transition doesn't lose the grant; refund cron skips records with `accessGrant` set
 
 ---
 

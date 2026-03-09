@@ -78,6 +78,10 @@ export type SellerConfig = {
 	 * The implementation is fully up to you — generate a JWT, call another service, return an API key, etc.
 	 */
 	readonly onIssueToken: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+	/** Timeout for onIssueToken callback in ms. Default: 15000. */
+	readonly tokenIssueTimeoutMs?: number;
+	/** Max retries for onIssueToken on failure. Default: 2. */
+	readonly tokenIssueRetries?: number;
 
 	// Lifecycle hooks (optional)
 	readonly onPaymentReceived?: (grant: AccessGrant) => Promise<void>;

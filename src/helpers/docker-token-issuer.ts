@@ -35,11 +35,19 @@ export function buildDockerTokenIssuer(
 			headers["Authorization"] = `Bearer ${apiSecret}`;
 		}
 
-		const res = await fetch(issueTokenApiUrl, {
-			method: "POST",
-			headers,
-			body: JSON.stringify(body),
-		});
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 10_000);
+		let res: Response;
+		try {
+			res = await fetch(issueTokenApiUrl, {
+				method: "POST",
+				headers,
+				body: JSON.stringify(body),
+				signal: controller.signal,
+			});
+		} finally {
+			clearTimeout(timeout);
+		}
 
 		if (!res.ok) {
 			throw new Error(`ISSUE_TOKEN_API returned ${res.status}: ${await res.text()}`);
