@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Request, Response, Router } from "express";
@@ -62,9 +63,31 @@ function buildPaymentRequiredResult(
 	};
 }
 
+/** Minimal Zod schema for X402PaymentPayload — validates required fields at the boundary. */
+const x402PaymentPayloadSchema = z.object({
+	x402Version: z.number(),
+	network: z.string(),
+	payload: z.object({
+		signature: z.string().optional(),
+		authorization: z
+			.object({
+				from: z.string().optional(),
+				to: z.string().optional(),
+				value: z.string().optional(),
+				validAfter: z.string().optional(),
+				validBefore: z.string().optional(),
+				nonce: z.string().optional(),
+			})
+			.optional(),
+		txHash: z.string().optional(),
+	}),
+	accepted: z.record(z.unknown()).optional(),
+});
+
 /**
- * Extract the x402 payment payload from the MCP tool call's `_meta` field.
+ * Extract and validate the x402 payment payload from the MCP tool call's `_meta` field.
  * Returns undefined if no payment is present.
+ * Throws AgentGateError if the payload is present but malformed.
  */
 function extractPaymentFromMeta(
 	extra: { _meta?: Record<string, unknown> } | undefined,
@@ -73,7 +96,30 @@ function extractPaymentFromMeta(
 	if (!meta) return undefined;
 	const payment = meta["x402/payment"];
 	if (!payment || typeof payment !== "object") return undefined;
+
+	const result = x402PaymentPayloadSchema.safeParse(payment);
+	if (!result.success) {
+		throw new AgentGateError(
+			"INVALID_REQUEST",
+			`Invalid x402 payment payload in _meta: ${result.error.issues.map((i) => i.message).join(", ")}`,
+			400,
+		);
+	}
 	return payment as X402PaymentPayload;
+}
+
+/**
+ * Derive a stable, deterministic requestId from the payment payload.
+ * Uses the EIP-3009 signature (unique per authorization) so retries with the
+ * same payment produce the same requestId, enabling idempotent recovery.
+ */
+function deriveRequestId(paymentPayload: X402PaymentPayload): string {
+	const key =
+		paymentPayload.payload?.signature ||
+		paymentPayload.payload?.txHash ||
+		JSON.stringify(paymentPayload.payload);
+	const hash = createHash("sha256").update(key).digest("hex").slice(0, 32);
+	return `mcp-${hash}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,14 +207,17 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 					return buildPaymentRequiredResult(tierId, resourceId, config, networkConfig);
 				}
 
-				// Has payment — settle and issue access token
+				// Has payment — verify resource before settlement to avoid money-at-risk (S2)
+				await engine.verifyResource(resourceId, tierId);
+
 				const { txHash, settleResponse, payer } = await settlePayment(
 					paymentPayload,
 					config,
 					networkConfig,
 				);
 
-				const requestId = `mcp-${crypto.randomUUID()}`;
+				// Derive stable requestId from payment signature for idempotent retry recovery
+				const requestId = deriveRequestId(paymentPayload);
 				const grant = await engine.processHttpPayment(
 					requestId,
 					tierId,
