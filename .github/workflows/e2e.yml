@@ -13,7 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  e2e:
+  e2e-redis:
+    name: E2E (Redis)
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -50,7 +51,51 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: e2e-logs-${{ github.run_id }}
+          name: e2e-redis-logs-${{ github.run_id }}
+          path: |
+            e2e/logs/
+          retention-days: 7
+
+  e2e-postgres:
+    name: E2E (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install e2e dependencies
+        run: bun install --frozen-lockfile
+        working-directory: e2e
+
+      - name: Build Docker image
+        run: docker build -t agentgate-e2e .
+
+      - name: Run e2e tests (Postgres)
+        working-directory: e2e
+        run: bun test --preload ./global-setup.ts --timeout 120000
+        env:
+          E2E_STORAGE_BACKEND: postgres
+          CLIENT_WALLET_ADDRESS: ${{ secrets.CLIENT_WALLET_ADDRESS }}
+          CLIENT_WALLET_PRIVATE_KEY: ${{ secrets.CLIENT_WALLET_PRIVATE_KEY }}
+          GAS_WALLET_ADDRESS: ${{ secrets.GAS_WALLET_ADDRESS }}
+          GAS_WALLET_PRIVATE_KEY: ${{ secrets.GAS_WALLET_PRIVATE_KEY }}
+          AGENTGATE_WALLET_ADDRESS: ${{ secrets.AGENTGATE_WALLET_ADDRESS }}
+          AGENTGATE_WALLET_KEY: ${{ secrets.AGENTGATE_WALLET_KEY }}
+          ALCHEMY_BASE_SEPOLIA_RPC_URL: ${{ secrets.ALCHEMY_BASE_SEPOLIA_RPC_URL }}
+
+      - name: Upload logs on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-postgres-logs-${{ github.run_id }}
           path: |
             e2e/logs/
           retention-days: 7
