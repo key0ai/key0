@@ -182,63 +182,62 @@ export class PostgresChallengeStore implements IChallengeStore {
 
 	async create(record: ChallengeRecord): Promise<void> {
 		await this.ready;
-		// Check if already exists
-		const existing = await this.sql<{ count: string }>`
-			SELECT COUNT(*) as count FROM ${this.sql(this.tableName)}
-			WHERE challenge_id = ${record.challengeId}
-		`;
 
-		if (Number(existing[0]!.count) > 0) {
-			throw new Error(`Challenge ${record.challengeId} already exists`);
+		try {
+			await this.sql`
+				INSERT INTO ${this.sql(this.tableName)} (
+					challenge_id,
+					request_id,
+					client_agent_id,
+					resource_id,
+					tier_id,
+					amount,
+					amount_raw,
+					asset,
+					chain_id,
+					destination,
+					state,
+					expires_at,
+					created_at,
+					paid_at,
+					tx_hash,
+					access_grant,
+					from_address,
+					delivered_at,
+					refund_tx_hash,
+					refunded_at,
+					refund_error
+				) VALUES (
+					${record.challengeId},
+					${record.requestId},
+					${record.clientAgentId},
+					${record.resourceId},
+					${record.tierId},
+					${record.amount},
+					${record.amountRaw.toString()},
+					${record.asset},
+					${record.chainId},
+					${record.destination},
+					${record.state},
+					${record.expiresAt},
+					${record.createdAt},
+					${record.paidAt ?? null},
+					${record.txHash ?? null},
+					${record.accessGrant ? this.sql.json(record.accessGrant) : null},
+					${record.fromAddress ?? null},
+					${record.deliveredAt ?? null},
+					${record.refundTxHash ?? null},
+					${record.refundedAt ?? null},
+					${record.refundError ?? null}
+				)
+			`;
+		} catch (err: unknown) {
+			const pgError = err as { code?: string };
+			if (pgError?.code === "23505") {
+				throw new Error(`Challenge ${record.challengeId} already exists`);
+			}
+			throw err;
 		}
-
-		await this.sql`
-			INSERT INTO ${this.sql(this.tableName)} (
-				challenge_id,
-				request_id,
-				client_agent_id,
-				resource_id,
-				tier_id,
-				amount,
-				amount_raw,
-				asset,
-				chain_id,
-				destination,
-				state,
-				expires_at,
-				created_at,
-				paid_at,
-				tx_hash,
-				access_grant,
-				from_address,
-				delivered_at,
-				refund_tx_hash,
-				refunded_at,
-				refund_error
-			) VALUES (
-				${record.challengeId},
-				${record.requestId},
-				${record.clientAgentId},
-				${record.resourceId},
-				${record.tierId},
-				${record.amount},
-				${record.amountRaw.toString()},
-				${record.asset},
-				${record.chainId},
-				${record.destination},
-				${record.state},
-				${record.expiresAt},
-				${record.createdAt},
-				${record.paidAt ?? null},
-				${record.txHash ?? null},
-				${record.accessGrant ? this.sql.json(record.accessGrant) : null},
-				${record.fromAddress ?? null},
-				${record.deliveredAt ?? null},
-				${record.refundTxHash ?? null},
-				${record.refundedAt ?? null},
-				${record.refundError ?? null}
-			)
-		`;
 	}
 
 	async transition(

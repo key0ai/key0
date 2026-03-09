@@ -72,16 +72,8 @@ function createMockSql() {
 			result = [];
 			count = 0;
 		}
-		// SELECT COUNT
-		else if (query.includes("select count(*)")) {
-			const tableName = values[0];
-			const challengeId = values[1];
-			const rows = findRows(tableName, (r) => r.challenge_id === challengeId);
-			result = [{ count: rows.length.toString() }];
-			count = 0;
-		}
 		// SELECT * WHERE challenge_id
-		else if (query.includes("select * from") && query.includes("where challenge_id")) {
+		if (query.includes("select * from") && query.includes("where challenge_id")) {
 			const tableName = values[0];
 			const challengeId = values[1];
 			result = findRows(tableName, (r) => r.challenge_id === challengeId);
@@ -107,6 +99,17 @@ function createMockSql() {
 		else if (query.includes("insert into") && !query.includes("on conflict")) {
 			const tableName = values[0];
 			const rows = tables.get(tableName) || [];
+
+			// Enforce primary key uniqueness on challenge_id to mimic Postgres behavior.
+			const existing = rows.find((r) => r.challenge_id === values[1]);
+			if (existing) {
+				const error = new Error(
+					'duplicate key value violates unique constraint "challenges_pkey"',
+				) as Error & { code?: string };
+				error.code = "23505";
+				throw error;
+			}
+
 			const newRow: Row = {
 				challenge_id: values[1],
 				request_id: values[2],
