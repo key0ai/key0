@@ -47,6 +47,7 @@ export function OutputPanel({ config }: OutputPanelProps) {
 			<div className="flex items-center gap-1 border-b border-neutral-800 px-3 pt-3">
 				{(Object.entries(outputs) as [Tab, typeof active][]).map(([key, val]) => (
 					<button
+						type="button"
 						key={key}
 						onClick={() => {
 							setActiveTab(key);
@@ -64,6 +65,7 @@ export function OutputPanel({ config }: OutputPanelProps) {
 
 				<div className="ml-auto flex items-center gap-2 pb-1">
 					<button
+						type="button"
 						onClick={copy}
 						className="rounded-md px-2.5 py-1 text-xs text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
 					>
@@ -71,6 +73,7 @@ export function OutputPanel({ config }: OutputPanelProps) {
 					</button>
 					{active.filename && (
 						<button
+							type="button"
 							onClick={download}
 							className="rounded-md px-2.5 py-1 text-xs text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
 						>

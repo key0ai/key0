@@ -123,6 +123,7 @@ export default function App() {
 								viewBox="0 0 24 24"
 								stroke="currentColor"
 								strokeWidth={2}
+								aria-hidden="true"
 							>
 								<path
 									strokeLinecap="round"
@@ -393,6 +394,7 @@ export default function App() {
 									</div>
 								) : (
 									<button
+										type="button"
 										onClick={handleSaveAndLaunch}
 										disabled={!isValid || saving}
 										className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-all ${

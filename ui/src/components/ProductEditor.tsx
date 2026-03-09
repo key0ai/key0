@@ -34,7 +34,7 @@ export function ProductEditor({ products, onChange }: ProductEditorProps) {
 		<div className="space-y-4">
 			{products.map((p, i) => (
 				<div
-					key={i}
+					key={p.tierId || i}
 					className="relative rounded-lg border border-neutral-800 bg-neutral-900/50 p-4 space-y-3"
 				>
 					{products.length > 1 && (
@@ -50,6 +50,7 @@ export function ProductEditor({ products, onChange }: ProductEditorProps) {
 								viewBox="0 0 24 24"
 								stroke="currentColor"
 								strokeWidth={2}
+								aria-hidden="true"
 							>
 								<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
 							</svg>
@@ -122,6 +123,7 @@ export function ProductEditor({ products, onChange }: ProductEditorProps) {
 					viewBox="0 0 24 24"
 					stroke="currentColor"
 					strokeWidth={2}
+					aria-hidden="true"
 				>
 					<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
 				</svg>

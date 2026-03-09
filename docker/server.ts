@@ -285,8 +285,7 @@ if (!isConfigured) {
 	// Redis is required for BullMQ refund cron queue, even when using Postgres storage
 	let store: IChallengeStore;
 	let seenTxStore: ISeenTxStore;
-	// biome-ignore lint/suspicious/noExplicitAny: Redis client for BullMQ and gas wallet lock (if needed)
-	let redis: any = null;
+	let redis: import("ioredis").default | null = null;
 
 	if (STORAGE_BACKEND === "postgres") {
 		if (!DATABASE_URL) {
@@ -294,8 +293,7 @@ if (!isConfigured) {
 			process.exit(1);
 		}
 
-		// biome-ignore lint/suspicious/noExplicitAny: postgres is an optional peer dependency
-		const postgres = (await import("postgres" as any)).default;
+		const postgres = (await import(/* @vite-ignore */ "postgres")).default;
 		const sql = postgres(DATABASE_URL);
 
 		store = new PostgresChallengeStore({ sql });
@@ -445,8 +443,11 @@ if (!isConfigured) {
 		}
 
 		try {
-			// biome-ignore lint/suspicious/noExplicitAny: test endpoint accepts any state string
-			const success = await store.transition(challengeId, fromState as any, toState as any);
+			const success = await store.transition(
+				challengeId,
+				fromState as Parameters<IChallengeStore["transition"]>[1],
+				toState as Parameters<IChallengeStore["transition"]>[2],
+			);
 			if (success) {
 				res.json({ success: true, challengeId, fromState, toState });
 			} else {
