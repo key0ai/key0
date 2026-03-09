@@ -561,7 +561,7 @@ This adds:
 
 **Two tools are exposed:**
 - `discover_products` — returns the product catalog (tiers, pricing, wallet, chainId)
-- `request_access` — x402 payment-gated tool: call to get payment requirements, then use `payments-mcp` to complete payment via the HTTPS x402 endpoint
+- `request_access` — x402 payment-gated tool: call to get payment requirements, then use `payments-mcp` to complete payment via the HTTPS x402 endpoint. Includes pre-settlement resource verification, Zod payload validation, and deterministic request IDs for idempotent retry recovery
 
 **Connect from Claude Code** (`.mcp.json`):
 ```json
