@@ -48,22 +48,7 @@ export default function AgentGateScene() {
       return sprite;
     }
 
-    function updateLabel(sprite: THREE.Sprite, text: string) {
-      const CW = 512, CH = 80;
-      const canvas = document.createElement("canvas");
-      canvas.width = CW; canvas.height = CH;
-      const ctx = canvas.getContext("2d")!;
-      ctx.font = "bold 44px monospace";
-      ctx.fillStyle = "#555555";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(text, CW / 2, CH);
-      const tex = new THREE.CanvasTexture(canvas);
-      (sprite.material as THREE.SpriteMaterial).map = tex;
-      (sprite.material as THREE.SpriteMaterial).needsUpdate = true;
-    }
-
-    function makeAgentNode() {
+    function makeAgentNode(labelText: string) {
       const group = new THREE.Group();
       const C = 0x3a3a3a;
       const wireMat = new THREE.MeshBasicMaterial({ color: C, wireframe: true, transparent: true, opacity: 0 });
@@ -76,7 +61,7 @@ export default function AgentGateScene() {
       );
       group.add(core);
 
-      const label = makeLabel("Agent-01");
+      const label = makeLabel(labelText);
       label.position.set(0, 1.96, 0);
       group.add(label);
 
@@ -279,12 +264,18 @@ export default function AgentGateScene() {
       return { sprite, mat };
     }
 
-    const agent = makeAgentNode();
+    const agent = makeAgentNode("Agent-01");
+    const agent2 = makeAgentNode("Agent-02");
+    agent2.group.visible = false;
+    const agent3 = makeAgentNode("Agent-03");
+    agent3.group.visible = false;
     const logo = makeLogoGroup();
     const server = makeServerNode();
     const coin = makeCoin();
     const verifiedText = makeVerifiedText();
     const payServerText = makePayServerText();
+
+    let activeAgent = agent;
 
     const payServerState = {
       active: false,
@@ -375,17 +366,114 @@ export default function AgentGateScene() {
       phase: "pause" as "pause" | "travel" | "done",
     };
 
-    let agentNumber = 1;
-    const AGENT_LABELS = ["Agent-01", "Agent-02", "Agent-03", "Agent-04"];
+    const AGENT_FINAL_X = -9.5, AGENT_FINAL_Y = 4.5;
+    const AGENT_FINAL_SCALE = 0.5;
 
-    const cycleState = {
+    const postKeyState = {
       active: false,
       timer: 0,
-      phase: "idle" as "idle" | "fadeOut" | "pause" | "popIn" | "settle",
-      fadeOutDur: 0.5,
-      pauseDur: 0.2,
+      phase: "idle" as "idle" | "fadeLines" | "moveAgent" | "drawLine" | "pingPong",
+      fadeLinesDur: 0.5,
+      moveAgentDur: 1.0,
+    };
+
+    const directSEGMENTS = 60;
+    const directPts = new Float32Array((directSEGMENTS + 1) * 3);
+    const directGeo = new THREE.BufferGeometry();
+    directGeo.setAttribute("position", new THREE.BufferAttribute(directPts, 3));
+    directGeo.setDrawRange(0, 0);
+    const directMat = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0 });
+    const directLine = new THREE.Line(directGeo, directMat);
+    scene.add(directLine);
+
+    const directLineDrawState = { timer: 0, drawDur: 0.9, done: false };
+
+    const pingBall = new THREE.Mesh(
+      new THREE.SphereGeometry(0.075, 12, 8),
+      new THREE.MeshBasicMaterial({ color: 0x3a3a3a, transparent: true, opacity: 0 })
+    );
+    pingBall.visible = false;
+    scene.add(pingBall);
+    const pingState = { timer: 0, speed: 3.0, forward: true };
+
+    function getDirectCurvePoint(t: number) {
+      const fromX = AGENT_FINAL_X, fromY = AGENT_FINAL_Y;
+      const toX = 10.32, toY = server.group.position.y;
+      const cpX = (fromX + toX) / 2;
+      const cpY = Math.max(fromY, toY) + 2.5;
+      const mt = 1 - t;
+      return {
+        x: mt * mt * fromX + 2 * mt * t * cpX + t * t * toX,
+        y: mt * mt * fromY + 2 * mt * t * cpY + t * t * toY,
+      };
+    }
+
+    // --- Agent-02 post-key infrastructure ---
+    const AGENT2_FINAL_X = -4.7, AGENT2_FINAL_Y = 4.5;
+    const AGENT2_FINAL_SCALE = 0.5;
+
+    const agent2PostKeyState = {
+      active: false,
+      timer: 0,
+      phase: "idle" as "idle" | "fadeLines" | "moveAgent" | "drawLine" | "pingPong",
+      fadeLinesDur: 0.5,
+      moveAgentDur: 1.0,
+    };
+
+    const a2DirectSEGMENTS = 60;
+    const a2DirectPts = new Float32Array((a2DirectSEGMENTS + 1) * 3);
+    const a2DirectGeo = new THREE.BufferGeometry();
+    a2DirectGeo.setAttribute("position", new THREE.BufferAttribute(a2DirectPts, 3));
+    a2DirectGeo.setDrawRange(0, 0);
+    const a2DirectMat = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0 });
+    const a2DirectLine = new THREE.Line(a2DirectGeo, a2DirectMat);
+    scene.add(a2DirectLine);
+
+    const a2DirectLineDrawState = { timer: 0, drawDur: 0.9, done: false };
+
+    const a2PingBall = new THREE.Mesh(
+      new THREE.SphereGeometry(0.075, 12, 8),
+      new THREE.MeshBasicMaterial({ color: 0x3a3a3a, transparent: true, opacity: 0 })
+    );
+    a2PingBall.visible = false;
+    scene.add(a2PingBall);
+    const a2PingState = { timer: 0, speed: 3.0 };
+
+    function getAgent2DirectCurvePoint(t: number) {
+      const fromX = AGENT2_FINAL_X, fromY = AGENT2_FINAL_Y;
+      const toX = 10.32, toY = server.group.position.y;
+      const cpX = (fromX + toX) / 2;
+      const cpY = Math.max(fromY, toY) + 2.5;
+      const mt = 1 - t;
+      return {
+        x: mt * mt * fromX + 2 * mt * t * cpX + t * t * toX,
+        y: mt * mt * fromY + 2 * mt * t * cpY + t * t * toY,
+      };
+    }
+
+    const agent2SpawnState = {
+      active: false,
+      timer: 0,
+      phase: "idle" as "idle" | "delay" | "popIn" | "done",
+      delayDur: 0.2,
       popInDur: 0.55,
-      settleDur: 0.3,
+    };
+
+    const agent3SpawnState = {
+      active: false,
+      timer: 0,
+      phase: "idle" as "idle" | "delay" | "popIn" | "done",
+      delayDur: 0.2,
+      popInDur: 0.55,
+    };
+
+    const fullResetState = {
+      active: false,
+      timer: 0,
+      phase: "idle" as "idle" | "wait" | "fadeAll" | "pause" | "restart",
+      waitDur: 3.0,
+      fadeAllDur: 1.0,
+      pauseDur: 0.5,
     };
 
     function getReturnCurvePoint(t: number, fromX: number, fromY: number, toX: number, toY: number) {
@@ -588,6 +676,7 @@ export default function AgentGateScene() {
 
       nodes.forEach((node, i) => {
         if (node.t < node.delay) return;
+        if (node.type === "agent" && postKeyState.phase !== "idle") return;
         const f = floats[i];
         const y = Math.sin(clock * f.speed + f.phase) * f.amp;
         const mesh = getNodeMesh(node);
@@ -599,6 +688,14 @@ export default function AgentGateScene() {
       if (agent.wire) {
         agent.wire.rotation.y += dt * 0.3;
         agent.wire.rotation.x += dt * 0.1;
+      }
+      if (agent2.wire && agent2.group.visible) {
+        agent2.wire.rotation.y += dt * 0.3;
+        agent2.wire.rotation.x += dt * 0.1;
+      }
+      if (agent3.wire && agent3.group.visible) {
+        agent3.wire.rotation.y += dt * 0.3;
+        agent3.wire.rotation.x += dt * 0.1;
       }
 
       if (logo.loaded() && logo.group.scale.x > 0.05) {
@@ -626,9 +723,9 @@ export default function AgentGateScene() {
             ? 1
             : Math.min(lineState.timer / lineState.drawDur, 1);
 
-        const agentY = agent.group.position.y;
+        const agentY = activeAgent.group.position.y;
         const logoY = logo.group.position.y;
-        const fromX = LINE_FROM_X;
+        const fromX = activeAgent.group.position.x;
         const fromY = agentY;
         const toX = logo.loaded() ? logo.getHitX() : LINE_TO_X;
         const toY = logoY;
@@ -873,10 +970,10 @@ export default function AgentGateScene() {
           const t = Math.min(keyForwardState.timer / keyForwardState.travelDur, 1);
 
           const logoY = logo.group.position.y;
-          const agentY = agent.group.position.y;
+          const agentY = activeAgent.group.position.y;
           const fromX = logo.loaded() ? logo.getHitX() : 0;
           const fromY = logoY;
-          const toX = LINE_FROM_X;
+          const toX = activeAgent.group.position.x;
           const toY = agentY;
 
           const pt = getAgentCurvePoint(t, fromX, fromY, toX, toY);
@@ -890,74 +987,124 @@ export default function AgentGateScene() {
             keyForwardState.active = false;
             keySprite.sprite.visible = false;
             keySprite.mat.opacity = 0;
-            if (!cycleState.active) {
-              cycleState.active = true;
-              cycleState.timer = 0;
-              cycleState.phase = "fadeOut";
+            if (activeAgent === agent && postKeyState.phase === "idle") {
+              postKeyState.active = true;
+              postKeyState.timer = 0;
+              postKeyState.phase = "fadeLines";
+            } else if (activeAgent === agent2 && agent2PostKeyState.phase === "idle") {
+              agent2PostKeyState.active = true;
+              agent2PostKeyState.timer = 0;
+              agent2PostKeyState.phase = "fadeLines";
+            } else if (activeAgent === agent3) {
+              fullResetState.active = true;
+              fullResetState.timer = 0;
+              fullResetState.phase = "wait";
             }
           }
         }
       }
 
-      // --- Cycle: fade out lines+agent, swap label, pop in new agent, restart loop ---
-      if (cycleState.active && cycleState.phase !== "idle") {
-        cycleState.timer += dt;
+      // --- Post-key: fade lines, move agent to top-left, direct curve, ping-pong ---
+      if (postKeyState.active && postKeyState.phase !== "idle") {
+        postKeyState.timer += dt;
 
-        if (cycleState.phase === "fadeOut") {
-          const p = Math.min(cycleState.timer / cycleState.fadeOutDur, 1);
-          const op = 1 - p;
-          lineMat.opacity = op;
-          returnMat.opacity = op;
-          const agentNode = nodes[0];
-          setNodeOpacity(agentNode, op);
+        if (postKeyState.phase === "fadeLines") {
+          const p = Math.min(postKeyState.timer / postKeyState.fadeLinesDur, 1);
+          lineMat.opacity = 1 - p;
+          returnMat.opacity = 1 - p;
 
           if (p >= 1) {
             lineMat.opacity = 0;
             returnMat.opacity = 0;
             lineGeo.setDrawRange(0, 0);
             returnGeo.setDrawRange(0, 0);
-            setNodeOpacity(nodes[0], 0);
-            setNodeScale(nodes[0], 0);
-            agent.group.scale.setScalar(0);
-
-            agentNumber = (agentNumber % 4) + 1;
-            updateLabel(agent.label, AGENT_LABELS[agentNumber - 1]);
-
-            cycleState.phase = "pause";
-            cycleState.timer = 0;
+            postKeyState.phase = "moveAgent";
+            postKeyState.timer = 0;
           }
         }
 
-        if (cycleState.phase === "pause") {
-          if (cycleState.timer >= cycleState.pauseDur) {
-            cycleState.phase = "popIn";
-            cycleState.timer = 0;
+        if (postKeyState.phase === "moveAgent") {
+          const p = Math.min(postKeyState.timer / postKeyState.moveAgentDur, 1);
+          const ep = easeInOut(p);
+          const startX = -10.32, startY = -2.5, startScale = 1;
+          const curX = startX + (AGENT_FINAL_X - startX) * ep;
+          const curY = startY + (AGENT_FINAL_Y - startY) * ep;
+          const curScale = startScale + (AGENT_FINAL_SCALE - startScale) * ep;
+          const curOp = 1 + (0.5 - 1) * ep;
+          agent.group.position.set(curX, curY, 0);
+          agent.group.scale.setScalar(curScale);
+          setNodeOpacity(nodes[0], curOp);
+
+          if (p >= 1) {
+            agent.group.position.set(AGENT_FINAL_X, AGENT_FINAL_Y, 0);
+            agent.group.scale.setScalar(AGENT_FINAL_SCALE);
+            setNodeOpacity(nodes[0], 0.5);
+            agent.wireMat.opacity = 0.4;
+            postKeyState.phase = "drawLine";
+            postKeyState.timer = 0;
+            directLineDrawState.timer = 0;
+            directLineDrawState.done = false;
+            directMat.opacity = 0.5;
           }
         }
 
-        if (cycleState.phase === "popIn") {
-          const raw = Math.min(cycleState.timer / cycleState.popInDur, 1);
-          const scale = easeOutBack(raw);
-          const op = Math.min(cycleState.timer / (cycleState.popInDur * 0.4), 1);
-          agent.group.scale.setScalar(scale);
-          setNodeOpacity(nodes[0], op);
+        if (postKeyState.phase === "drawLine") {
+          directLineDrawState.timer += dt;
+          const raw = Math.min(directLineDrawState.timer / directLineDrawState.drawDur, 1);
+          const tipIdx = Math.floor(raw * directSEGMENTS);
+          for (let i = 0; i <= tipIdx; i++) {
+            const t2 = i / directSEGMENTS;
+            const pt = getDirectCurvePoint(t2);
+            directPts[i * 3] = pt.x;
+            directPts[i * 3 + 1] = pt.y;
+            directPts[i * 3 + 2] = 0;
+          }
+          directGeo.attributes.position.needsUpdate = true;
+          directGeo.setDrawRange(0, tipIdx + 1);
 
           if (raw >= 1) {
-            agent.group.scale.setScalar(1);
-            setNodeOpacity(nodes[0], 1);
-            cycleState.phase = "settle";
-            cycleState.timer = 0;
+            directLineDrawState.done = true;
+            postKeyState.phase = "pingPong";
+            postKeyState.timer = 0;
+            pingState.timer = 0;
+            pingState.forward = true;
+            pingBall.visible = true;
+            (pingBall.material as THREE.MeshBasicMaterial).opacity = 0.5;
+            if (agent2SpawnState.phase === "idle") {
+              agent2SpawnState.active = true;
+              agent2SpawnState.timer = 0;
+              agent2SpawnState.phase = "delay";
+            }
           }
         }
 
-        if (cycleState.phase === "settle") {
-          if (cycleState.timer >= cycleState.settleDur) {
-            cycleState.phase = "idle";
-            cycleState.active = false;
+        if (postKeyState.phase === "pingPong") {
+          pingState.timer += dt;
+          const raw = (pingState.timer / pingState.speed) % 2;
+          const t = raw <= 1 ? raw : 2 - raw;
+          const ep = easeInOut(t);
+          const pt = getDirectCurvePoint(ep);
+          pingBall.position.set(pt.x, pt.y, 0.1);
+        }
+      }
 
-            lineState.phase = "wait";
+      // --- Agent-02 spawn: delay then pop in ---
+      if (agent2SpawnState.active && agent2SpawnState.phase !== "done") {
+        agent2SpawnState.timer += dt;
+
+        if (agent2SpawnState.phase === "delay") {
+          if (agent2SpawnState.timer >= agent2SpawnState.delayDur) {
+            agent2SpawnState.phase = "popIn";
+            agent2SpawnState.timer = 0;
+            agent2.group.visible = true;
+            agent2.group.position.set(-10.32, 0, 0);
+            agent2.group.scale.setScalar(0);
+            activeAgent = agent2;
+
+            lineState.phase = "done";
             lineState.timer = 0;
             lineMat.opacity = 0;
+            lineGeo.setDrawRange(0, 0);
 
             payServerState.active = false;
             payServerState.timer = 0;
@@ -981,6 +1128,7 @@ export default function AgentGateScene() {
             returnLineState.phase = "wait";
             returnLineState.timer = 0;
             returnMat.opacity = 0;
+            returnGeo.setDrawRange(0, 0);
 
             keyState.active = false;
             keyState.timer = 0;
@@ -996,14 +1144,360 @@ export default function AgentGateScene() {
             rippleState.timer = 0;
             rippleState.triggered = false;
             ripples.forEach((r) => { r.sprite.visible = false; });
+          }
+        }
 
-            nodes[0].done = true;
-            nodes[0].t = 10;
+        if (agent2SpawnState.phase === "popIn") {
+          const raw = Math.min(agent2SpawnState.timer / agent2SpawnState.popInDur, 1);
+          const scale = easeOutBack(raw);
+          const op = Math.min(agent2SpawnState.timer / (agent2SpawnState.popInDur * 0.4), 1);
+          agent2.group.scale.setScalar(scale);
+          agent2.wireMat.opacity = op * 0.85;
+          agent2.coreMat.opacity = op;
+          (agent2.labelMat as THREE.SpriteMaterial).opacity = op;
 
+          if (raw >= 1) {
+            agent2.group.scale.setScalar(1);
+            agent2.wireMat.opacity = 0.85;
+            agent2.coreMat.opacity = 1;
+            (agent2.labelMat as THREE.SpriteMaterial).opacity = 1;
+            agent2SpawnState.phase = "done";
+
+            lineState.phase = "wait";
             lineState.timer = 0;
-            lineState.phase = "drawing";
+            lineMat.opacity = 0;
+          }
+        }
+      }
+
+      // --- Agent-02 float ---
+      if ((agent2SpawnState.phase === "popIn" || agent2SpawnState.phase === "done") && agent2PostKeyState.phase === "idle") {
+        const f = floats[0];
+        const y = Math.sin(clock * f.speed + f.phase + 1.5) * f.amp;
+        agent2.group.position.y = y;
+      }
+
+      // --- Agent-02 post-key: fade lines, move to bottom-left, direct curve, ping-pong ---
+      if (agent2PostKeyState.active && agent2PostKeyState.phase !== "idle") {
+        agent2PostKeyState.timer += dt;
+
+        if (agent2PostKeyState.phase === "fadeLines") {
+          const p = Math.min(agent2PostKeyState.timer / agent2PostKeyState.fadeLinesDur, 1);
+          lineMat.opacity = 1 - p;
+          returnMat.opacity = 1 - p;
+
+          if (p >= 1) {
+            lineMat.opacity = 0;
+            returnMat.opacity = 0;
+            lineGeo.setDrawRange(0, 0);
+            returnGeo.setDrawRange(0, 0);
+            agent2PostKeyState.phase = "moveAgent";
+            agent2PostKeyState.timer = 0;
+          }
+        }
+
+        if (agent2PostKeyState.phase === "moveAgent") {
+          const p = Math.min(agent2PostKeyState.timer / agent2PostKeyState.moveAgentDur, 1);
+          const ep = easeInOut(p);
+          const startX = -10.32, startY = -2.5, startScale = 1;
+          const curX = startX + (AGENT2_FINAL_X - startX) * ep;
+          const curY = startY + (AGENT2_FINAL_Y - startY) * ep;
+          const curScale = startScale + (AGENT2_FINAL_SCALE - startScale) * ep;
+          const curOp = 1 + (0.5 - 1) * ep;
+          agent2.group.position.set(curX, curY, 0);
+          agent2.group.scale.setScalar(curScale);
+          agent2.wireMat.opacity = curOp * 0.85;
+          agent2.coreMat.opacity = curOp;
+          (agent2.labelMat as THREE.SpriteMaterial).opacity = curOp;
+
+          if (p >= 1) {
+            agent2.group.position.set(AGENT2_FINAL_X, AGENT2_FINAL_Y, 0);
+            agent2.group.scale.setScalar(AGENT2_FINAL_SCALE);
+            agent2.wireMat.opacity = 0.4;
+            agent2.coreMat.opacity = 0.5;
+            (agent2.labelMat as THREE.SpriteMaterial).opacity = 0.5;
+            agent2PostKeyState.phase = "drawLine";
+            agent2PostKeyState.timer = 0;
+            a2DirectLineDrawState.timer = 0;
+            a2DirectLineDrawState.done = false;
+            a2DirectMat.opacity = 0.5;
+          }
+        }
+
+        if (agent2PostKeyState.phase === "drawLine") {
+          a2DirectLineDrawState.timer += dt;
+          const raw = Math.min(a2DirectLineDrawState.timer / a2DirectLineDrawState.drawDur, 1);
+          const tipIdx = Math.floor(raw * a2DirectSEGMENTS);
+          for (let i = 0; i <= tipIdx; i++) {
+            const t2 = i / a2DirectSEGMENTS;
+            const pt = getAgent2DirectCurvePoint(t2);
+            a2DirectPts[i * 3] = pt.x;
+            a2DirectPts[i * 3 + 1] = pt.y;
+            a2DirectPts[i * 3 + 2] = 0;
+          }
+          a2DirectGeo.attributes.position.needsUpdate = true;
+          a2DirectGeo.setDrawRange(0, tipIdx + 1);
+
+          if (raw >= 1) {
+            a2DirectLineDrawState.done = true;
+            agent2PostKeyState.phase = "pingPong";
+            agent2PostKeyState.timer = 0;
+            a2PingState.timer = 0;
+            a2PingBall.visible = true;
+            (a2PingBall.material as THREE.MeshBasicMaterial).opacity = 0.5;
+            if (agent3SpawnState.phase === "idle") {
+              agent3SpawnState.active = true;
+              agent3SpawnState.timer = 0;
+              agent3SpawnState.phase = "delay";
+            }
+          }
+        }
+
+        if (agent2PostKeyState.phase === "pingPong") {
+          a2PingState.timer += dt;
+          const raw = (a2PingState.timer / a2PingState.speed) % 2;
+          const t = raw <= 1 ? raw : 2 - raw;
+          const ep = easeInOut(t);
+          const pt = getAgent2DirectCurvePoint(ep);
+          a2PingBall.position.set(pt.x, pt.y, 0.1);
+        }
+      }
+
+      // --- Agent-03 spawn: delay then pop in ---
+      if (agent3SpawnState.active && agent3SpawnState.phase !== "done") {
+        agent3SpawnState.timer += dt;
+
+        if (agent3SpawnState.phase === "delay") {
+          if (agent3SpawnState.timer >= agent3SpawnState.delayDur) {
+            agent3SpawnState.phase = "popIn";
+            agent3SpawnState.timer = 0;
+            agent3.group.visible = true;
+            agent3.group.position.set(-10.32, 0, 0);
+            agent3.group.scale.setScalar(0);
+            activeAgent = agent3;
+
+            lineState.phase = "done";
             lineState.timer = 0;
-            lineMat.opacity = 1;
+            lineMat.opacity = 0;
+            lineGeo.setDrawRange(0, 0);
+
+            payServerState.active = false;
+            payServerState.timer = 0;
+            payServerState.done = false;
+            payServerText.sprite.visible = false;
+            payServerText.mat.opacity = 0;
+
+            coinState.active = false;
+            coinState.timer = 0;
+            coinState.done = false;
+            coin.group.visible = false;
+            coin.group.scale.setScalar(0);
+
+            textState.active = false;
+            textState.timer = 0;
+            textState.done = false;
+            verifiedText.sprite.visible = false;
+            verifiedText.mat.opacity = 0;
+
+            returnLineState.triggered = false;
+            returnLineState.phase = "wait";
+            returnLineState.timer = 0;
+            returnMat.opacity = 0;
+            returnGeo.setDrawRange(0, 0);
+
+            keyState.active = false;
+            keyState.timer = 0;
+            keyState.done = false;
+            keySprite.sprite.visible = false;
+            keySprite.mat.opacity = 0;
+
+            keyForwardState.active = false;
+            keyForwardState.timer = 0;
+            keyForwardState.phase = "pause";
+
+            rippleState.active = false;
+            rippleState.timer = 0;
+            rippleState.triggered = false;
+            ripples.forEach((r) => { r.sprite.visible = false; });
+          }
+        }
+
+        if (agent3SpawnState.phase === "popIn") {
+          const raw = Math.min(agent3SpawnState.timer / agent3SpawnState.popInDur, 1);
+          const scale = easeOutBack(raw);
+          const op = Math.min(agent3SpawnState.timer / (agent3SpawnState.popInDur * 0.4), 1);
+          agent3.group.scale.setScalar(scale);
+          agent3.wireMat.opacity = op * 0.85;
+          agent3.coreMat.opacity = op;
+          (agent3.labelMat as THREE.SpriteMaterial).opacity = op;
+
+          if (raw >= 1) {
+            agent3.group.scale.setScalar(1);
+            agent3.wireMat.opacity = 0.85;
+            agent3.coreMat.opacity = 1;
+            (agent3.labelMat as THREE.SpriteMaterial).opacity = 1;
+            agent3SpawnState.phase = "done";
+
+            lineState.phase = "wait";
+            lineState.timer = 0;
+            lineMat.opacity = 0;
+          }
+        }
+      }
+
+      // --- Agent-03 float ---
+      if ((agent3SpawnState.phase === "popIn" || agent3SpawnState.phase === "done") && fullResetState.phase === "idle") {
+        const f = floats[0];
+        const y = Math.sin(clock * f.speed + f.phase + 3.0) * f.amp;
+        agent3.group.position.y = y;
+      }
+
+      // --- Full reset: fade everything out and restart ---
+      if (fullResetState.active && fullResetState.phase !== "idle") {
+        fullResetState.timer += dt;
+
+        if (fullResetState.phase === "wait") {
+          if (fullResetState.timer >= fullResetState.waitDur) {
+            fullResetState.phase = "fadeAll";
+            fullResetState.timer = 0;
+          }
+        }
+
+        if (fullResetState.phase === "fadeAll") {
+          const p = Math.min(fullResetState.timer / fullResetState.fadeAllDur, 1);
+          const op = 1 - p;
+
+          setNodeOpacity(nodes[0], op * 0.5);
+          agent.group.scale.setScalar(AGENT_FINAL_SCALE * op);
+          directMat.opacity = 0.5 * op;
+          (pingBall.material as THREE.MeshBasicMaterial).opacity = 0.5 * op;
+
+          agent2.wireMat.opacity = op * 0.4;
+          agent2.coreMat.opacity = op * 0.5;
+          (agent2.labelMat as THREE.SpriteMaterial).opacity = op * 0.5;
+          agent2.group.scale.setScalar(AGENT2_FINAL_SCALE * op);
+          a2DirectMat.opacity = 0.5 * op;
+          (a2PingBall.material as THREE.MeshBasicMaterial).opacity = 0.5 * op;
+
+          agent3.wireMat.opacity = op * 0.85;
+          agent3.coreMat.opacity = op;
+          (agent3.labelMat as THREE.SpriteMaterial).opacity = op;
+          agent3.group.scale.setScalar(op);
+
+          setNodeOpacity(nodes[1], op);
+          nodes[1].obj.group.scale.setScalar(op);
+
+          logo.allMats.forEach((m) => {
+            if ("opacity" in m) {
+              (m as THREE.MeshBasicMaterial).transparent = true;
+              (m as THREE.MeshBasicMaterial).opacity = op;
+            }
+          });
+          logo.group.scale.setScalar(op);
+
+          lineMat.opacity = op;
+          returnMat.opacity = op;
+
+          if (p >= 1) {
+            fullResetState.phase = "pause";
+            fullResetState.timer = 0;
+          }
+        }
+
+        if (fullResetState.phase === "pause") {
+          if (fullResetState.timer >= fullResetState.pauseDur) {
+            fullResetState.phase = "restart";
+            fullResetState.timer = 0;
+
+            agent.group.visible = true;
+            agent.group.position.set(-10.32, -2.5, 0);
+            agent.group.scale.setScalar(0);
+            agent.wireMat.opacity = 0;
+            agent.coreMat.opacity = 0;
+            (agent.labelMat as THREE.SpriteMaterial).opacity = 0;
+
+            agent2.group.visible = false;
+            agent2.group.position.set(-10.32, -2.5, 0);
+            agent2.group.scale.setScalar(0);
+            agent2.wireMat.opacity = 0;
+            agent2.coreMat.opacity = 0;
+            (agent2.labelMat as THREE.SpriteMaterial).opacity = 0;
+
+            agent3.group.visible = false;
+            agent3.group.position.set(-10.32, -2.5, 0);
+            agent3.group.scale.setScalar(0);
+            agent3.wireMat.opacity = 0;
+            agent3.coreMat.opacity = 0;
+            (agent3.labelMat as THREE.SpriteMaterial).opacity = 0;
+
+            server.group.position.set(10.32, -2.5, 0);
+            server.group.scale.setScalar(0);
+            server.mats.forEach((m) => { m.opacity = 0; });
+            (server.labelMat as THREE.SpriteMaterial).opacity = 0;
+
+            logo.group.position.set(0, -2.5, 0);
+            logo.group.scale.setScalar(0);
+            logo.allMats.forEach((m) => {
+              if ("opacity" in m) {
+                (m as THREE.MeshBasicMaterial).opacity = 0;
+              }
+            });
+
+            lineMat.opacity = 0;
+            lineGeo.setDrawRange(0, 0);
+            returnMat.opacity = 0;
+            returnGeo.setDrawRange(0, 0);
+
+            directMat.opacity = 0;
+            directGeo.setDrawRange(0, 0);
+            pingBall.visible = false;
+            (pingBall.material as THREE.MeshBasicMaterial).opacity = 0;
+
+            a2DirectMat.opacity = 0;
+            a2DirectGeo.setDrawRange(0, 0);
+            a2PingBall.visible = false;
+            (a2PingBall.material as THREE.MeshBasicMaterial).opacity = 0;
+
+            coin.group.visible = false;
+            coin.group.scale.setScalar(0);
+            verifiedText.sprite.visible = false;
+            verifiedText.mat.opacity = 0;
+            payServerText.sprite.visible = false;
+            payServerText.mat.opacity = 0;
+            keySprite.sprite.visible = false;
+            keySprite.mat.opacity = 0;
+            ripples.forEach((r) => { r.sprite.visible = false; });
+
+            activeAgent = agent;
+
+            nodes[0].t = 0; nodes[0].done = false;
+            nodes[1].t = 0; nodes[1].done = false;
+            nodes[2].t = 0; nodes[2].done = false;
+
+            lineState.phase = "wait";
+            lineState.timer = 0;
+            payServerState.active = false; payServerState.timer = 0; payServerState.done = false;
+            coinState.active = false; coinState.timer = 0; coinState.done = false;
+            textState.active = false; textState.timer = 0; textState.done = false;
+            returnLineState.triggered = false; returnLineState.phase = "wait"; returnLineState.timer = 0;
+            keyState.active = false; keyState.timer = 0; keyState.done = false;
+            keyForwardState.active = false; keyForwardState.timer = 0; keyForwardState.phase = "pause";
+            rippleState.active = false; rippleState.timer = 0; rippleState.triggered = false;
+
+            postKeyState.active = false; postKeyState.timer = 0; postKeyState.phase = "idle";
+            directLineDrawState.timer = 0; directLineDrawState.done = false;
+            pingState.timer = 0; pingState.forward = true;
+
+            agent2PostKeyState.active = false; agent2PostKeyState.timer = 0; agent2PostKeyState.phase = "idle";
+            a2DirectLineDrawState.timer = 0; a2DirectLineDrawState.done = false;
+            a2PingState.timer = 0;
+
+            agent2SpawnState.active = false; agent2SpawnState.timer = 0; agent2SpawnState.phase = "idle";
+            agent3SpawnState.active = false; agent3SpawnState.timer = 0; agent3SpawnState.phase = "idle";
+
+            fullResetState.active = false;
+            fullResetState.timer = 0;
+            fullResetState.phase = "idle";
           }
         }
       }

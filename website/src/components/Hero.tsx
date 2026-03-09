@@ -22,7 +22,7 @@ export default function Hero() {
         className="mt-12"
         style={{
           backgroundImage:
-            "linear-gradient(to bottom, rgba(232,232,232,1) 0%, rgba(232,232,232,0.6) 100%), url('/grid.png')",
+            "linear-gradient(to bottom, rgba(232,232,232,1) 0%, rgba(232,232,232,0.5) 100%), url('/grid.png')",
           backgroundSize: "cover, cover",
           backgroundRepeat: "no-repeat, no-repeat",
           backgroundPosition: "center bottom, center bottom",
