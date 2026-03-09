@@ -65,7 +65,7 @@ export default function AgentGateScene() {
 
     function makeAgentNode() {
       const group = new THREE.Group();
-      const C = 0x555555;
+      const C = 0x3a3a3a;
       const wireMat = new THREE.MeshBasicMaterial({ color: C, wireframe: true, transparent: true, opacity: 0 });
       const wire = new THREE.Mesh(new THREE.SphereGeometry(1.26, 10, 7), wireMat);
       group.add(wire);
@@ -89,7 +89,7 @@ export default function AgentGateScene() {
 
     function makeServerNode() {
       const group = new THREE.Group();
-      const C = 0x555555;
+      const C = 0x3a3a3a;
 
       const cylCount = 4;
       const cylR = 0.91, cylH = 0.28;
@@ -100,7 +100,7 @@ export default function AgentGateScene() {
       const mats: THREE.MeshBasicMaterial[] = [];
 
       for (let i = 0; i < cylCount; i++) {
-        const sideMat = new THREE.MeshBasicMaterial({ color: 0x555555, transparent: true, opacity: 0 });
+        const sideMat = new THREE.MeshBasicMaterial({ color: 0x3a3a3a, transparent: true, opacity: 0 });
         const capMat = new THREE.MeshBasicMaterial({ color: 0x888888, transparent: true, opacity: 0 });
         const mesh = new THREE.Mesh(
           new THREE.CylinderGeometry(cylR, cylR, cylH, 28, 1, false),
@@ -136,9 +136,9 @@ export default function AgentGateScene() {
       group.position.set(0, -2.5, 0);
       scene.add(group);
 
-      const monoMat = new THREE.MeshBasicMaterial({ color: 0x555555 });
+      const monoMat = new THREE.MeshBasicMaterial({ color: 0x3a3a3a });
       const wireMat = new THREE.MeshBasicMaterial({
-        color: 0x555555,
+        color: 0x3a3a3a,
         wireframe: true,
         transparent: true,
         opacity: 0.2,
@@ -207,7 +207,7 @@ export default function AgentGateScene() {
         const c = document.createElement("canvas");
         c.width = S; c.height = S;
         const ctx = c.getContext("2d")!;
-        ctx.fillStyle = "#222222";
+        ctx.fillStyle = "#1a1a1a";
         ctx.beginPath();
         ctx.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2);
         ctx.fill();
@@ -346,6 +346,9 @@ export default function AgentGateScene() {
         c.height = img.naturalHeight;
         const ctx = c.getContext("2d")!;
         ctx.drawImage(img, 0, 0);
+        ctx.globalCompositeOperation = "source-in";
+        ctx.fillStyle = "#1a1a1a";
+        ctx.fillRect(0, 0, c.width, c.height);
         const tex = new THREE.CanvasTexture(c);
         mat.map = tex;
         mat.needsUpdate = true;

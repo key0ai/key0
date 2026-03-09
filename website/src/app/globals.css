@@ -5,7 +5,7 @@
 @theme {
   --color-surface: #E8E8E8;
   --color-surface-raised: #EFEFEF;
-  --color-foreground: #1a1a1a;
+  --color-foreground: #3a3a3a;
   --color-muted: #737373;
   --color-accent: #1a1a1a;
   --color-accent-light: #404040;
@@ -63,7 +63,7 @@ html {
 
 body {
   background: #E8E8E8;
-  color: #1a1a1a;
+  color: #3a3a3a;
   font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   width: 100%;
   margin: 0;
