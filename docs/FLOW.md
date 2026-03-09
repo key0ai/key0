@@ -44,20 +44,22 @@ Three transports share the same `ChallengeEngine`, Redis stores, state machine, 
 
 ### Key Files
 
-| Component | File |
-|-----------|------|
-| Challenge Engine | `src/core/challenge-engine.ts` |
-| Types & State | `src/types/challenge.ts`, `src/types/errors.ts` |
-| Redis Storage | `src/core/storage/redis.ts` |
-| Access Token | `src/core/access-token.ts` |
-| Settlement | `src/integrations/settlement.ts` |
-| x402 HTTP Middleware | `src/integrations/x402-http-middleware.ts` |
-| Express Integration | `src/integrations/express.ts` |
-| A2A Executor | `src/executor.ts` |
-| Factory | `src/factory.ts` |
-| Auth Helpers | `src/helpers/auth.ts`, `src/helpers/remote.ts` |
-| Token Validation Middleware | `src/middleware.ts` |
-| USDC Send (Refunds) | `src/adapter/send-usdc.ts` |
+
+| Component                   | File                                            |
+| --------------------------- | ----------------------------------------------- |
+| Challenge Engine            | `src/core/challenge-engine.ts`                  |
+| Types & State               | `src/types/challenge.ts`, `src/types/errors.ts` |
+| Redis Storage               | `src/core/storage/redis.ts`                     |
+| Access Token                | `src/core/access-token.ts`                      |
+| Settlement                  | `src/integrations/settlement.ts`                |
+| x402 HTTP Middleware        | `src/integrations/x402-http-middleware.ts`      |
+| Express Integration         | `src/integrations/express.ts`                   |
+| A2A Executor                | `src/executor.ts`                               |
+| Factory                     | `src/factory.ts`                                |
+| Auth Helpers                | `src/helpers/auth.ts`, `src/helpers/remote.ts`  |
+| Token Validation Middleware | `src/middleware.ts`                             |
+| USDC Send (Refunds)         | `src/adapter/send-usdc.ts`                      |
+
 
 ---
 
@@ -98,31 +100,33 @@ Three transports share the same `ChallengeEngine`, Redis stores, state machine, 
 
 ### States
 
-| State | Meaning |
-|-------|---------|
-| `PENDING` | Awaiting payment |
-| `PAID` | Payment verified, token issued, awaiting delivery confirmation |
-| `DELIVERED` | Final success state — resource served |
-| `EXPIRED` | Challenge timed out |
-| `CANCELLED` | Manually cancelled |
-| `REFUND_PENDING` | Cron claimed record, refund tx being broadcast |
-| `REFUNDED` | Refund sent on-chain — final state |
-| `REFUND_FAILED` | Refund tx threw — needs operator attention |
+
+| State            | Meaning                                                        |
+| ---------------- | -------------------------------------------------------------- |
+| `PENDING`        | Awaiting payment                                               |
+| `PAID`           | Payment verified on-chain, awaiting token issuance and delivery |
+| `DELIVERED`      | Final success state — resource served                          |
+| `EXPIRED`        | Challenge timed out                                            |
+| `CANCELLED`      | Manually cancelled                                             |
+| `REFUND_PENDING` | Cron claimed record, refund tx being broadcast                 |
+| `REFUNDED`       | Refund sent on-chain — final state                             |
+| `REFUND_FAILED`  | Refund tx threw — needs operator attention                     |
+
 
 ### Allowed Transitions
 
-| From | To | Trigger | Fields Written |
-|------|----|---------|----------------|
-| *(new)* | PENDING | `create()` | All base fields |
-| PENDING | PAID | `processHttpPayment()` | `txHash`, `paidAt`, `fromAddress` |
-| PENDING | EXPIRED | Expiry check on access | — |
-| PENDING | CANCELLED | `cancelChallenge()` | — |
-| PAID | PAID | Grant persisted (outbox) | `accessGrant` (full JSON) |
-| PAID | DELIVERED | Token issued successfully | `deliveredAt` |
-| PAID | PENDING | `markUsed()` race rollback (extremely rare) | — |
-| PAID | REFUND_PENDING | Refund cron claims record | — |
-| REFUND_PENDING | REFUNDED | Refund tx confirmed | `refundTxHash`, `refundedAt` |
-| REFUND_PENDING | REFUND_FAILED | Refund tx failed | `refundError` |
+| From           | To             | Trigger                                     | Fields Written                           |
+| -------------- | -------------- | ------------------------------------------- | ---------------------------------------- |
+| *(new)*        | PENDING        | `create()`                                  | All base fields                          |
+| PENDING        | PAID           | `processHttpPayment()`                      | `txHash`, `paidAt`, `fromAddress`        |
+| PENDING        | EXPIRED        | Expiry check on access                      | —                                        |
+| PENDING        | CANCELLED      | `cancelChallenge()`                         | —                                        |
+| PAID           | PAID           | Grant persisted (outbox)                    | `accessGrant` (full JSON)                |
+| PAID           | DELIVERED      | Token issued successfully                   | `accessGrant` (full JSON), `deliveredAt` |
+| PAID           | PENDING        | `markUsed()` race rollback (extremely rare) | —                                        |
+| PAID           | REFUND_PENDING | Refund cron claims record                   | —                                        |
+| REFUND_PENDING | REFUNDED       | Refund tx confirmed                         | `refundTxHash`, `refundedAt`             |
+| REFUND_PENDING | REFUND_FAILED  | Refund tx failed                            | `refundError`                            |
 
 All transitions use **atomic Lua scripts** — if `currentState != expectedFromState`, the transition returns `false` and no fields are written.
 
@@ -138,29 +142,31 @@ All keys use the prefix `agentgate` (configurable via `keyPrefix`).
 
 Stored as a Redis Hash (`HSET`/`HGETALL`). Each field is a string.
 
-| Hash Field | Type | Set When | Example |
-|-----------|------|----------|---------|
-| `challengeId` | string | CREATE | `"http-a1b2c3d4-..."` or UUID |
-| `requestId` | string | CREATE | `"550e8400-e29b-..."` (client-generated UUID) |
-| `clientAgentId` | string | CREATE | `"did:web:agent.example"` or `"x402-http"` |
-| `resourceId` | string | CREATE | `"photo-123"` or `"default"` |
-| `tierId` | string | CREATE | `"basic"` |
-| `amount` | string | CREATE | `"$0.10"` |
-| `amountRaw` | string (bigint) | CREATE | `"100000"` (USDC 6-decimal micro-units) |
-| `asset` | string | CREATE | `"USDC"` |
-| `chainId` | string (number) | CREATE | `"84532"` (Base Sepolia) or `"8453"` (Base) |
-| `destination` | string (0x) | CREATE | `"0xAbCd..."` (seller wallet) |
-| `state` | string | CREATE, updated on transitions | `"PENDING"` / `"PAID"` / `"DELIVERED"` / etc. |
-| `expiresAt` | ISO-8601 string | CREATE | `"2025-03-05T12:30:00.000Z"` |
-| `createdAt` | ISO-8601 string | CREATE | `"2025-03-05T12:15:00.000Z"` |
-| `txHash` | string (0x) | PENDING→PAID | `"0x1234..."` |
-| `paidAt` | ISO-8601 string | PENDING→PAID | `"2025-03-05T12:16:00.000Z"` |
-| `fromAddress` | string (0x) | PENDING→PAID | `"0xBuyer..."` (payer wallet) |
-| `accessGrant` | JSON string | PAID→DELIVERED | Full `AccessGrant` object |
-| `deliveredAt` | ISO-8601 string | PAID→DELIVERED | `"2025-03-05T12:16:05.000Z"` |
-| `refundTxHash` | string (0x) | REFUND_PENDING→REFUNDED | `"0xRefund..."` |
-| `refundedAt` | ISO-8601 string | REFUND_PENDING→REFUNDED | `"2025-03-05T12:21:00.000Z"` |
-| `refundError` | string | REFUND_PENDING→REFUND_FAILED | `"insufficient gas"` |
+
+| Hash Field      | Type            | Set When                       | Example                                       |
+| --------------- | --------------- | ------------------------------ | --------------------------------------------- |
+| `challengeId`   | string          | CREATE                         | `"http-a1b2c3d4-..."` or UUID                 |
+| `requestId`     | string          | CREATE                         | `"550e8400-e29b-..."` (client-generated UUID) |
+| `clientAgentId` | string          | CREATE                         | `"did:web:agent.example"` or `"x402-http"`    |
+| `resourceId`    | string          | CREATE                         | `"photo-123"` or `"default"`                  |
+| `tierId`        | string          | CREATE                         | `"basic"`                                     |
+| `amount`        | string          | CREATE                         | `"$0.10"`                                     |
+| `amountRaw`     | string (bigint) | CREATE                         | `"100000"` (USDC 6-decimal micro-units)       |
+| `asset`         | string          | CREATE                         | `"USDC"`                                      |
+| `chainId`       | string (number) | CREATE                         | `"84532"` (Base Sepolia) or `"8453"` (Base)   |
+| `destination`   | string (0x)     | CREATE                         | `"0xAbCd..."` (seller wallet)                 |
+| `state`         | string          | CREATE, updated on transitions | `"PENDING"` / `"PAID"` / `"DELIVERED"` / etc. |
+| `expiresAt`     | ISO-8601 string | CREATE                         | `"2025-03-05T12:30:00.000Z"`                  |
+| `createdAt`     | ISO-8601 string | CREATE                         | `"2025-03-05T12:15:00.000Z"`                  |
+| `txHash`        | string (0x)     | PENDING→PAID                   | `"0x1234..."`                                 |
+| `paidAt`        | ISO-8601 string | PENDING→PAID                   | `"2025-03-05T12:16:00.000Z"`                  |
+| `fromAddress`   | string (0x)     | PENDING→PAID                   | `"0xBuyer..."` (payer wallet)                 |
+| `accessGrant`   | JSON string     | PAID→DELIVERED                 | Full `AccessGrant` object                     |
+| `deliveredAt`   | ISO-8601 string | PAID→DELIVERED                 | `"2025-03-05T12:16:05.000Z"`                  |
+| `refundTxHash`  | string (0x)     | REFUND_PENDING→REFUNDED        | `"0xRefund..."`                               |
+| `refundedAt`    | ISO-8601 string | REFUND_PENDING→REFUNDED        | `"2025-03-05T12:21:00.000Z"`                  |
+| `refundError`   | string          | REFUND_PENDING→REFUND_FAILED   | `"insufficient gas"`                          |
+
 
 **TTL**: 7 days (`recordTTLSeconds`, default 604,800s). Shortened to 12 hours (`deliveredTTLSeconds`, default 43,200s) when state reaches DELIVERED.
 
@@ -192,23 +198,25 @@ A Redis Sorted Set tracking PAID records for the refund cron.
 ZADD agentgate:paid <paidAt_epoch_ms> <challengeId>
 ```
 
-| Operation | When |
-|-----------|------|
-| `ZADD` | State transitions to PAID (score = `paidAt` epoch ms) |
-| `ZREM` | State transitions FROM PAID (to DELIVERED, REFUND_PENDING, etc.) |
-| `ZRANGEBYSCORE 0 <cutoff>` | Refund cron queries records older than `minAgeMs` |
+
+| Operation                  | When                                                             |
+| -------------------------- | ---------------------------------------------------------------- |
+| `ZADD`                     | State transitions to PAID (score = `paidAt` epoch ms)            |
+| `ZREM`                     | State transitions FROM PAID (to DELIVERED, REFUND_PENDING, etc.) |
+| `ZRANGEBYSCORE 0 <cutoff>` | Refund cron queries records older than `minAgeMs`                |
+
 
 ### Redis Commands Per Operation
 
-| Operation | Redis Commands |
-|-----------|---------------|
-| **create** | Pipeline: `EXISTS` (guard) + `HSET` (challenge hash) + `EXPIRE` (7d) + `SET EX` (request index, 900s) |
-| **get** | `HGETALL` |
-| **findActiveByRequestId** | `GET` (request index) → `HGETALL` (challenge hash) |
-| **transition** | `EVAL` (Lua: check state + `HSET` + conditional `ZADD`/`ZREM`) + conditional `EXPIRE` (if DELIVERED) |
-| **markUsed** | `SET NX EX` (7d) |
-| **findPendingForRefund** | `ZRANGEBYSCORE` → N x (`HGETALL` + conditional `ZREM` for ghost entries) |
-| **healthCheck** | `PING` |
+| Operation                 | Redis Commands                                                                                                    |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **create**                | Pipeline: `EXISTS` (guard) + `HSET` (challenge hash) + `EXPIRE` (7d) + `SET EX` (request index, 900s)            |
+| **get**                   | `HGETALL`                                                                                                         |
+| **findActiveByRequestId** | `GET` (request index) → `HGETALL` (challenge hash)                                                                |
+| **transition**            | `EVAL` (Lua: check state + `HSET` + conditional `ZADD`/`ZREM`) + conditional `EXPIRE` (if DELIVERED)              |
+| **markUsed**              | `SET NX EX` (7d)                                                                                                  |
+| **findPendingForRefund**  | `ZRANGEBYSCORE` → N x (`HGETALL` + conditional `ZREM` for ghost entries)                                          |
+| **healthCheck**           | `PING`                                                                                                            |
 
 ### Lua Script (Atomic Transition)
 
@@ -253,12 +261,12 @@ Engine method: `requestAccess()` or `requestHttpAccess()`
 2. Extract/default `resourceId` (`"default"`) and `clientAgentId` (`"anonymous"` or `"x402-http"`)
 3. Look up `tierId` in `SellerConfig.products` — throw `TIER_NOT_FOUND` (400) if missing
 4. Call `onVerifyResource(resourceId, tierId)` with timeout (default 5s, configurable via `resourceVerifyTimeoutMs`)
-   - Timeout → `RESOURCE_VERIFY_TIMEOUT` (504)
-   - Returns false → `RESOURCE_NOT_FOUND` (404)
+  - Timeout → `RESOURCE_VERIFY_TIMEOUT` (504)
+  - Returns false → `RESOURCE_NOT_FOUND` (404)
 5. **Idempotency check**: `store.findActiveByRequestId(requestId)`
-   - If PENDING and not expired → return existing challenge
-   - If DELIVERED with grant → throw `PROOF_ALREADY_REDEEMED` (200, includes grant in details)
-   - If EXPIRED/CANCELLED → fall through to create new
+  - If PENDING and not expired → return existing challenge
+  - If DELIVERED with grant → throw `PROOF_ALREADY_REDEEMED` (200, includes grant in details)
+  - If EXPIRED/CANCELLED → fall through to create new
 6. Generate `challengeId` (UUID via adapter for A2A, `http-{uuid}` for HTTP)
 7. Create PENDING `ChallengeRecord`, store via `store.create()`
 8. Return `X402Challenge` (A2A) or `{ challengeId }` (HTTP)
@@ -277,7 +285,7 @@ Engine method: `processHttpPayment(requestId, tierId, resourceId, txHash, fromAd
 4. **Atomic transition**: PENDING → PAID (with `txHash`, `paidAt`, `fromAddress`)
 5. **Mark txHash**: `seenTxStore.markUsed(txHash, challengeId)` — SET NX
    - If returns `false` → rollback PAID→PENDING, throw `TX_ALREADY_REDEEMED` (409)
-6. **Issue token**: call `config.onIssueToken(...)` with timeout (`tokenIssueTimeoutMs`, default 15s) and retry (`tokenIssueRetries`, default 2 attempts with exponential backoff)
+6. **Issue token**: call `config.onIssueToken({ requestId, challengeId, resourceId, tierId, txHash })` with timeout (`tokenIssueTimeoutMs`, default 15s) and retry (`tokenIssueRetries`, default 2 attempts with exponential backoff)
 7. Build `AccessGrant` object
 8. **Persist grant (outbox pattern)**: PAID → PAID write with `accessGrant` stored — ensures grant is durable before returning to client
 9. **Mark DELIVERED (best-effort)**: PAID → DELIVERED (with `deliveredAt`) — if this fails, the record stays PAID with `accessGrant` set; the refund cron skips records that already have `accessGrant`
@@ -519,30 +527,34 @@ Executor processes through intermediate working states:
 4. Publishes working Task: `x402.payment.status: "payment-verified"`
 5. Calls `engine.processHttpPayment()` → PENDING → PAID → DELIVERED
 6. Publishes final Task:
-   - State: `completed`
-   - Metadata: `x402.payment.status: "payment-completed"`, `x402.payment.receipts: [receipt]`
-   - Parts: confirmation text + AccessGrant data
-   - Artifacts: access-grant data part
+  - State: `completed`
+  - Metadata: `x402.payment.status: "payment-completed"`, `x402.payment.receipts: [receipt]`
+  - Parts: confirmation text + AccessGrant data
+  - Artifacts: access-grant data part
 
 **x402 Metadata Keys**
 
-| Key | Value | Direction |
-|-----|-------|-----------|
-| `x402.payment.status` | `"payment-required"` / `"payment-submitted"` / `"payment-verified"` / `"payment-completed"` / `"payment-failed"` | Server → Client |
-| `x402.payment.required` | `PaymentRequirements` object | Server → Client |
-| `x402.payment.payload` | `X402PaymentPayload` object | Client → Server |
-| `x402.payment.receipts` | Array of `X402SettleResponse` | Server → Client |
-| `x402.payment.error` | Error code string | Server → Client |
+
+| Key                     | Value                                                                                                            | Direction       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------- |
+| `x402.payment.status`   | `"payment-required"` / `"payment-submitted"` / `"payment-verified"` / `"payment-completed"` / `"payment-failed"` | Server → Client |
+| `x402.payment.required` | `PaymentRequirements` object                                                                                     | Server → Client |
+| `x402.payment.payload`  | `X402PaymentPayload` object                                                                                      | Client → Server |
+| `x402.payment.receipts` | Array of `X402SettleResponse`                                                                                    | Server → Client |
+| `x402.payment.error`    | Error code string                                                                                                | Server → Client |
+
 
 ### HTTP Headers Reference
 
-| Header | Direction | Format | Purpose |
-|--------|-----------|--------|---------|
-| `payment-required` | Server → Client (402) | base64 JSON | PaymentRequirements / Discovery |
-| `www-authenticate` | Server → Client (402) | `Payment realm=..., accept="exact"[, challenge=...]` | HTTP spec compliance |
-| `payment-signature` | Client → Server | base64 JSON | X402PaymentPayload with EIP-3009 signature |
-| `payment-response` | Server → Client (200) | base64 JSON | X402SettleResponse with txHash |
-| `x-a2a-extensions` | Client → Server | presence check | Routes to A2A handler, skips x402 middleware |
+
+| Header              | Direction             | Format                                               | Purpose                                      |
+| ------------------- | --------------------- | ---------------------------------------------------- | -------------------------------------------- |
+| `payment-required`  | Server → Client (402) | base64 JSON                                          | PaymentRequirements / Discovery              |
+| `www-authenticate`  | Server → Client (402) | `Payment realm=..., accept="exact"[, challenge=...]` | HTTP spec compliance                         |
+| `payment-signature` | Client → Server       | base64 JSON                                          | X402PaymentPayload with EIP-3009 signature   |
+| `payment-response`  | Server → Client (200) | base64 JSON                                          | X402SettleResponse with txHash               |
+| `x-a2a-extensions`  | Client → Server       | presence check                                       | Routes to A2A handler, skips x402 middleware |
+
 
 ### Message Types
 
@@ -582,7 +594,7 @@ Executor processes through intermediate working states:
 }
 ```
 
-**`payment-signature` header** (decoded X402PaymentPayload):
+`**payment-signature` header** (decoded X402PaymentPayload):
 
 ```json
 {
@@ -630,10 +642,10 @@ Self-contained settlement using `@x402/evm`:
 
 **Nonce serialization** prevents concurrent settlement from causing nonce conflicts:
 
-| Strategy | When | How |
-|----------|------|-----|
+| Strategy                   | When                    | How                                                                                                                                              |
+| -------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Redis distributed lock** | `config.redis` provided | `SET NX` with 60s TTL, Lua-script atomic release. Poll interval: 200ms. Max wait: 30s (throws 503 on timeout). Lock key uses gas wallet address. |
-| **In-process queue** | No Redis | Promise-based serial queue. Single-instance only. |
+| **In-process queue**       | No Redis                | Promise-based serial queue. Single-instance only.                                                                                                |
 
 ### Facilitator Mode (default)
 
@@ -645,6 +657,7 @@ Routes to an external facilitator service:
 4. Return `{ txHash, settleResponse, payer }`
 
 Default facilitator URLs (from `CHAIN_CONFIGS`):
+
 - **Testnet**: `https://api.cdp.coinbase.com/platform/v2/x402`
 - **Mainnet**: `https://api.cdp.coinbase.com/platform/v2/x402`
 
@@ -683,20 +696,23 @@ And must return:
 Supports HS256 (shared secret, min 32 chars) and RS256 (PEM private key) JWTs.
 
 **Constructor accepts**:
+
 - `string` — treated as HS256 shared secret (legacy)
 - `{ secret?, privateKey?, algorithm? }` — full config
 
 **JWT Claims**:
 
-| Claim | Value |
-|-------|-------|
-| `sub` | requestId |
-| `jti` | challengeId |
-| `resourceId` | Resource identifier |
-| `tierId` | Product tier |
-| `txHash` | On-chain transaction hash |
-| `iat` | Issued-at timestamp (unix seconds) |
-| `exp` | Expiration timestamp (unix seconds) |
+
+| Claim        | Value                               |
+| ------------ | ----------------------------------- |
+| `sub`        | requestId                           |
+| `jti`        | challengeId                         |
+| `resourceId` | Resource identifier                 |
+| `tierId`     | Product tier                        |
+| `txHash`     | On-chain transaction hash           |
+| `iat`        | Issued-at timestamp (unix seconds)  |
+| `exp`        | Expiration timestamp (unix seconds) |
+
 
 **Methods**:
 
@@ -715,6 +731,7 @@ Supports HS256 (shared secret, min 32 chars) and RS256 (PEM private key) JWTs.
 5. Return decoded payload
 
 Framework-specific wrappers attach decoded token to the request:
+
 - **Express**: `req.agentGateToken`
 - **Hono**: `c.set("agentGateToken", payload)`
 - **Fastify**: `request.agentGateToken`
@@ -737,10 +754,12 @@ The refund cron handles PAID records that were never DELIVERED (e.g., `onIssueTo
 
 ### Refund Settlement (`sendUsdc()`)
 
-| Strategy | How | Gas Payer |
-|----------|-----|-----------|
-| **With gasWalletPrivateKey** | USDC owner signs EIP-3009 off-chain. Gas wallet calls `transferWithAuthorization` on-chain. | Gas wallet |
-| **Without gasWalletPrivateKey** | Direct ERC-20 `transfer()` call. | USDC owner |
+
+| Strategy                        | How                                                                                         | Gas Payer  |
+| ------------------------------- | ------------------------------------------------------------------------------------------- | ---------- |
+| **With gasWalletPrivateKey**    | USDC owner signs EIP-3009 off-chain. Gas wallet calls `transferWithAuthorization` on-chain. | Gas wallet |
+| **Without gasWalletPrivateKey** | Direct ERC-20 `transfer()` call.                                                            | USDC owner |
+
 
 Both wait for `waitForTransactionReceipt` before returning.
 
@@ -767,21 +786,27 @@ agentgate:challenge:{challengeId}
 
 ### AgentGateErrorCode (thrown by ChallengeEngine)
 
-| Code | HTTP | When |
-|------|------|------|
-| `RESOURCE_NOT_FOUND` | 404 | `onVerifyResource()` returns false |
-| `TIER_NOT_FOUND` | 400 | `tierId` not in `SellerConfig.products` |
-| `CHALLENGE_NOT_FOUND` | 404 | `store.get(challengeId)` returns null |
-| `CHALLENGE_EXPIRED` | 410 | Challenge `expiresAt <= now` or state not PENDING |
-| `TX_ALREADY_REDEEMED` | 409 | `txHash` already in `seenTxStore` |
-| `PROOF_ALREADY_REDEEMED` | 200 | Challenge already DELIVERED (returns grant in details) |
-| `INVALID_REQUEST` | 400/401 | Malformed input or invalid JWT |
-| `PAYMENT_FAILED` | 400 | Settlement failed |
-| `ADAPTER_ERROR` | 500 | Payment adapter threw |
-| `RESOURCE_VERIFY_TIMEOUT` | 504 | `onVerifyResource()` timed out |
-| `TOKEN_ISSUE_FAILED` | 500 | `onIssueToken()` threw |
-| `TOKEN_ISSUE_TIMEOUT` | 504 | `onIssueToken()` timed out |
-| `INTERNAL_ERROR` | 500 | Unexpected failure |
+
+| Code                      | HTTP    | When                                                   |
+| ------------------------- | ------- | ------------------------------------------------------ |
+| `RESOURCE_NOT_FOUND`      | 404     | `onVerifyResource()` returns false                     |
+| `TIER_NOT_FOUND`          | 400     | `tierId` not in `SellerConfig.products`                |
+| `CHALLENGE_NOT_FOUND`     | 404     | `store.get(challengeId)` returns null                  |
+| `CHALLENGE_EXPIRED`       | 410     | Challenge `expiresAt <= now` or state not PENDING      |
+| `CHAIN_MISMATCH`          | 400     | Proof `chainId` doesn't match challenge `chainId`      |
+| `AMOUNT_MISMATCH`         | 400     | Proof `amount` doesn't match challenge `amount`        |
+| `TX_UNCONFIRMED`          | 202     | Transaction not found on-chain (may still be pending)  |
+| `INVALID_PROOF`           | 400     | On-chain verification failed (wrong recipient, amount, etc.) |
+| `TX_ALREADY_REDEEMED`     | 409     | `txHash` already in `seenTxStore`                      |
+| `PROOF_ALREADY_REDEEMED`  | 200     | Challenge already DELIVERED (returns grant in details) |
+| `INVALID_REQUEST`         | 400/401 | Malformed input or invalid JWT                         |
+| `PAYMENT_FAILED`          | 400     | Settlement failed                                      |
+| `ADAPTER_ERROR`           | 500     | Payment adapter threw                                  |
+| `RESOURCE_VERIFY_TIMEOUT` | 504     | `onVerifyResource()` timed out                         |
+| `TOKEN_ISSUE_FAILED`      | 500     | `onIssueToken()` threw                                 |
+| `TOKEN_ISSUE_TIMEOUT`     | 504     | `onIssueToken()` timed out                             |
+| `INTERNAL_ERROR`          | 500     | Unexpected failure                                     |
+
 
 ### Error Shape
 
@@ -800,16 +825,18 @@ agentgate:challenge:{challengeId}
 
 ### Per-Request Checks (in order of execution)
 
-| # | Check | Where | Prevents |
-|---|-------|-------|----------|
-| 1 | UUID format validation | `validateUUID()` | Malformed requestId |
-| 2 | Tier exists in product catalog | `findTier()` | Invalid tier requests |
-| 3 | Resource verification | `onVerifyResource()` with timeout | Access to nonexistent resources |
-| 4 | Idempotency (requestId lookup) | `store.findActiveByRequestId()` | Duplicate challenge creation |
-| 5 | State check (PENDING required) | `challenge.state` check | Acting on expired/cancelled challenges |
-| 6 | Double-spend pre-check | `seenTxStore.get(txHash)` | Reusing a txHash |
-| 7 | Atomic state transition | Lua `HGET + HSET` | Concurrent double-redemption |
-| 8 | Atomic txHash claim | `SET NX` | Race condition double-spend |
+
+| #   | Check                          | Where                             | Prevents                               |
+| --- | ------------------------------ | --------------------------------- | -------------------------------------- |
+| 1   | UUID format validation         | `validateUUID()`                  | Malformed requestId                    |
+| 2   | Tier exists in product catalog | `findTier()`                      | Invalid tier requests                  |
+| 3   | Resource verification          | `onVerifyResource()` with timeout | Access to nonexistent resources        |
+| 4   | Idempotency (requestId lookup) | `store.findActiveByRequestId()`   | Duplicate challenge creation           |
+| 5   | State check (PENDING required) | `challenge.state` check           | Acting on expired/cancelled challenges |
+| 6   | Double-spend pre-check         | `seenTxStore.get(txHash)`         | Reusing a txHash                       |
+| 7   | Atomic state transition        | Lua `HGET + HSET`                 | Concurrent double-redemption           |
+| 8   | Atomic txHash claim            | `SET NX`                          | Race condition double-spend            |
+
 
 ### Invariants
 
@@ -825,23 +852,28 @@ agentgate:challenge:{challengeId}
 
 ## Network Configuration
 
-| Field | Testnet (Base Sepolia) | Mainnet (Base) |
-|-------|----------------------|----------------|
-| Chain ID | 84532 | 8453 |
-| RPC URL | `https://sepolia.base.org` | `https://mainnet.base.org` |
-| USDC Address | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+
+| Field           | Testnet (Base Sepolia)                          | Mainnet (Base)                                  |
+| --------------- | ----------------------------------------------- | ----------------------------------------------- |
+| Chain ID        | 84532                                           | 8453                                            |
+| RPC URL         | `https://sepolia.base.org`                      | `https://mainnet.base.org`                      |
+| USDC Address    | `0x036CbD53842c5426634e7929541eC2318f3dCF7e`    | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`    |
 | Facilitator URL | `https://api.cdp.coinbase.com/platform/v2/x402` | `https://api.cdp.coinbase.com/platform/v2/x402` |
-| Explorer | `https://sepolia.basescan.org` | `https://basescan.org` |
-| USDC Domain | `{ name: "USDC", version: "2" }` | `{ name: "USDC", version: "2" }` |
-| USDC Decimals | 6 | 6 |
+| Explorer        | `https://sepolia.basescan.org`                  | `https://basescan.org`                          |
+| USDC Domain     | `{ name: "USDC", version: "2" }`                | `{ name: "USDC", version: "2" }`                |
+| USDC Decimals   | 6                                               | 6                                               |
+
 
 ---
 
 ## Validation Patterns
 
-| Pattern | Regex | Used For |
-|---------|-------|----------|
-| UUID | `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` (case-insensitive) | `requestId` |
-| Tx Hash | `^0x[0-9a-fA-F]{64}$` | `txHash` |
-| Address | `^0x[0-9a-fA-F]{40}$` | Wallet addresses |
-| Dollar Amount | `^\$\d+(\.\d{1,6})?$` | Product tier `amount` |
+
+| Pattern       | Regex                                                                               | Used For              |
+| ------------- | ----------------------------------------------------------------------------------- | --------------------- |
+| UUID          | `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` (case-insensitive) | `requestId`           |
+| Tx Hash       | `^0x[0-9a-fA-F]{64}$`                                                               | `txHash`              |
+| Address       | `^0x[0-9a-fA-F]{40}$`                                                               | Wallet addresses      |
+| Dollar Amount | `^\$\d+(\.\d{1,6})?$`                                                               | Product tier `amount` |
+
+
