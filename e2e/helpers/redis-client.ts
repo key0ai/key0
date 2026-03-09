@@ -13,6 +13,9 @@ let client: Redis | null = null;
 export function connectRedis(url = REDIS_URL): Redis {
 	if (client) return client;
 	client = new Redis(url, { lazyConnect: true });
+	client.on("error", (err) => {
+		console.error("[e2e redis] connection error:", err.message);
+	});
 	return client;
 }
 

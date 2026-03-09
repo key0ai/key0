@@ -17,6 +17,8 @@ export const BACKEND_JWT_SECRET = "e2e-backend-jwt-secret-for-testing-1234567890
 const secretBytes = new TextEncoder().encode(BACKEND_JWT_SECRET);
 
 let mode: "success" | "fail" = "success";
+/** Per-challengeId failure set — avoids poisoning the global mode for concurrent tests. */
+const failForChallengeIds: Set<string> = new Set();
 
 export function startBackend(): Promise<Server> {
 	const app = express();
@@ -24,15 +26,21 @@ export function startBackend(): Promise<Server> {
 
 	// ── Token issuance ──────────────────────────────────────────────────────
 	app.post("/internal/issue-token", async (req, res) => {
-		if (mode === "fail") {
-			res.status(500).json({ error: "Backend down" });
-			return;
-		}
-
 		const { challengeId, requestId, resourceId, tierId, txHash } = req.body as Record<
 			string,
 			string
 		>;
+
+		// Per-challenge failure takes precedence (persistent: fails all retries)
+		if (challengeId && failForChallengeIds.has(challengeId)) {
+			res.status(500).json({ error: "Backend down (per-challenge)" });
+			return;
+		}
+
+		if (mode === "fail") {
+			res.status(500).json({ error: "Backend down" });
+			return;
+		}
 
 		const token = await new SignJWT({ challengeId, requestId, resourceId, tierId, txHash })
 			.setProtectedHeader({ alg: "HS256" })
@@ -42,6 +50,17 @@ export function startBackend(): Promise<Server> {
 
 		const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
 		res.json({ token, expiresAt, tokenType: "Bearer" });
+	});
+
+	// ── Per-challenge failure control ────────────────────────────────────────
+	app.post("/test/fail-for-challenge", (req, res) => {
+		const { challengeId } = req.body as { challengeId: string };
+		if (!challengeId) {
+			res.status(400).json({ error: "challengeId required" });
+			return;
+		}
+		failForChallengeIds.add(challengeId);
+		res.status(204).send();
 	});
 
 	// ── Mode control ────────────────────────────────────────────────────────
