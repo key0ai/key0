@@ -10,12 +10,15 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
-import { connectRedis, readChallengeState } from "../helpers/redis-client.ts";
+import {
+	expireRequestIdIndex,
+	readChallengeState,
+	transitionChallengeState,
+} from "../helpers/storage-client.ts";
 
 describe("Expired Challenge Proof Submission", () => {
 	test("submitting proof for an expired challenge returns error (not 200)", async () => {
 		const client = makeClientE2eClient();
-		const redis = connectRedis();
 		const requestId = crypto.randomUUID();
 
 		// Step 1: Request access → get challenge
@@ -24,10 +27,8 @@ describe("Expired Challenge Proof Submission", () => {
 			requestId,
 		});
 
-		// Step 2: Simulate challenge expiry by setting state to EXPIRED in Redis
-		const challengeKey = `agentgate:challenge:${challengeId}`;
-		await redis.hset(challengeKey, "expiresAt", new Date(Date.now() - 60_000).toISOString());
-		await redis.hset(challengeKey, "state", "EXPIRED");
+		// Step 2: Simulate challenge expiry by transitioning to EXPIRED
+		await transitionChallengeState(challengeId, "PENDING", "EXPIRED");
 
 		// Step 3: Sign a valid EIP-3009 authorization
 		const requirements = paymentRequired.accepts[0]!;
@@ -55,7 +56,6 @@ describe("Expired Challenge Proof Submission", () => {
 
 	test("requesting access with same requestId after expiry creates a new challenge", async () => {
 		const client = makeClientE2eClient();
-		const redis = connectRedis();
 		const requestId = crypto.randomUUID();
 
 		// Step 1: Create initial challenge
@@ -65,11 +65,9 @@ describe("Expired Challenge Proof Submission", () => {
 		});
 
 		// Step 2: Simulate expiry
-		const challengeKey = `agentgate:challenge:${firstId}`;
-		await redis.hset(challengeKey, "expiresAt", new Date(Date.now() - 60_000).toISOString());
-		await redis.hset(challengeKey, "state", "EXPIRED");
-		// Delete the requestId index so a new challenge can be created
-		await redis.del(`agentgate:request:${requestId}`);
+		await transitionChallengeState(firstId, "PENDING", "EXPIRED");
+		// Expire the requestId index so a new challenge can be created
+		await expireRequestIdIndex(requestId);
 
 		// Step 3: Re-request with same requestId → new challenge
 		const { challengeId: secondId } = await client.requestAccess({

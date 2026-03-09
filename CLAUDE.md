@@ -51,7 +51,7 @@ Client → Protected API with Bearer JWT
 
 3. **Adapter** (`src/adapter/`) — `X402Adapter`: verifies ERC-20 Transfer events on Base via viem. Supports `mainnet` (chainId 8453) and `testnet`/Base Sepolia (chainId 84532).
 
-4. **Integrations** (`src/integrations/`) — Framework adapters mount the challenge/proof endpoints and export `validateAccessToken` middleware for protecting routes. Available for Express, Hono, and Fastify.
+4. **Integrations** (`src/integrations/`) — Framework adapters mount the challenge/proof endpoints and export `validateAccessToken` middleware for protecting routes. Available for Express, Hono, Fastify, and MCP (Streamable HTTP transport via `@modelcontextprotocol/sdk`).
 
 5. **Executor** (`src/executor.ts`) — `AgentGateExecutor` implements `@a2a-js/sdk`'s `AgentExecutor` for the A2A protocol flow.
 
@@ -60,7 +60,7 @@ Client → Protected API with Bearer JWT
 ### Entry Points
 
 - Main: `src/index.ts` — exports all types, core, adapter, helpers, middleware, executor, factory.
-- Framework subpaths: `./express`, `./hono`, `./fastify` (see `package.json` exports).
+- Framework subpaths: `./express`, `./hono`, `./fastify`, `./mcp` (see `package.json` exports).
 
 ### Storage Abstraction
 
@@ -75,6 +75,8 @@ Client → Protected API with Bearer JWT
 `SellerConfig` drives everything: `walletAddress`, `network`, `accessTokenSecret`, `products` (array of tiers with `tierId`, `amount`, `accessDurationSeconds`).
 
 Optional callbacks: `onPaymentReceived`, `onIssueToken` (override default JWT generation), `resourceVerifier` (custom access control per request).
+
+When `mcp: true` is set, the Express router also mounts MCP routes (`/.well-known/mcp.json` discovery + `POST /mcp` Streamable HTTP endpoint) exposing `discover_products` and `request_access` tools. Payment follows the x402 MCP transport spec (`isError` + `structuredContent` + `_meta`). See `docs/mcp-integration.md`.
 
 ## Code Style
 

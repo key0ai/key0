@@ -11,6 +11,7 @@ import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
 import type { X402PaymentRequiredResponse } from "../types/index.js";
 import { AgentGateError, CHAIN_CONFIGS } from "../types/index.js";
+import { mountMcpRoutes } from "./mcp.js";
 import {
 	buildDiscoveryResponse,
 	buildHttpPaymentRequirements,
@@ -271,6 +272,11 @@ export function agentGateRouter(opts: AgentGateConfig): Router {
 			console.log("[x402-access] ========== REQUEST COMPLETE ==========\n");
 		}
 	});
+
+	// MCP routes (when mcp: true)
+	if (opts.config.mcp) {
+		mountMcpRoutes(router, engine, opts.config);
+	}
 
 	return router;
 }

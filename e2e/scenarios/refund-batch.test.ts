@@ -10,11 +10,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID, REFUND_POLL_TIMEOUT_MS } from "../fixtures/constants.ts";
 import { agentgateWalletAddress, clientWalletAddress } from "../fixtures/wallets.ts";
-import {
-	connectRedis,
-	readChallengeState,
-	writePaidChallengeRecord,
-} from "../helpers/redis-client.ts";
+import { readChallengeState, writePaidChallengeRecord } from "../helpers/storage-client.ts";
 import { pollUntil } from "../helpers/wait.ts";
 
 const REFUND_AMOUNT_RAW = 10_000n; // $0.01 USDC
@@ -24,7 +20,6 @@ describe("Refund Batch Processing", () => {
 	test(
 		`${BATCH_SIZE} PAID records are all refunded by the cron within timeout`,
 		async () => {
-			const redis = connectRedis();
 			const clientAddr = clientWalletAddress();
 			const agentgateAddr = agentgateWalletAddress();
 
@@ -34,40 +29,37 @@ describe("Refund Batch Processing", () => {
 				const challengeId = `e2e-batch-refund-${i}-${crypto.randomUUID()}`;
 				challengeIds.push(challengeId);
 
-				await writePaidChallengeRecord(
-					{
-						challengeId,
-						requestId: crypto.randomUUID(),
-						clientAgentId: `agent://${clientAddr}`,
-						resourceId: `batch-refund-resource-${i}`,
-						tierId: DEFAULT_TIER_ID,
-						amount: "$0.01",
-						amountRaw: REFUND_AMOUNT_RAW,
-						destination: agentgateAddr,
-						fromAddress: clientAddr,
-						txHash: `0x${crypto.randomUUID().replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`,
-						paidAt: new Date(Date.now() - 10_000), // 10s ago — past REFUND_MIN_AGE_MS
-					},
-					redis,
-				);
+				await writePaidChallengeRecord({
+					challengeId,
+					requestId: crypto.randomUUID(),
+					clientAgentId: `agent://${clientAddr}`,
+					resourceId: `batch-refund-resource-${i}`,
+					tierId: DEFAULT_TIER_ID,
+					amount: "$0.01",
+					amountRaw: REFUND_AMOUNT_RAW,
+					destination: agentgateAddr,
+					fromAddress: clientAddr,
+					txHash: `0x${crypto.randomUUID().replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`,
+					paidAt: new Date(Date.now() - 10_000), // 10s ago — past REFUND_MIN_AGE_MS
+				});
 			}
 
 			// Verify all are PAID initially
 			for (const id of challengeIds) {
-				const state = await readChallengeState(id, redis);
+				const state = await readChallengeState(id);
 				expect(state).toBe("PAID");
 			}
 
 			// Poll until all have transitioned
 			await pollUntil(async () => {
-				const states = await Promise.all(challengeIds.map((id) => readChallengeState(id, redis)));
+				const states = await Promise.all(challengeIds.map((id) => readChallengeState(id)));
 				const allDone = states.every((s) => s === "REFUNDED" || s === "REFUND_FAILED");
 				return allDone ? true : null;
 			}, REFUND_POLL_TIMEOUT_MS);
 
 			// Verify final states — all should be REFUNDED
 			for (const id of challengeIds) {
-				const finalState = await readChallengeState(id, redis);
+				const finalState = await readChallengeState(id);
 				expect(finalState).toBe("REFUNDED");
 			}
 		},

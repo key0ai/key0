@@ -224,9 +224,17 @@ if (!isConfigured) {
 	const { buildDockerTokenIssuer } = await import("../src/helpers/docker-token-issuer.js");
 
 	type IChallengeStore = agentgate.IChallengeStore;
+	type ISeenTxStore = agentgate.ISeenTxStore;
 	type NetworkName = agentgate.NetworkName;
 	type ProductTier = agentgate.ProductTier;
-	const { processRefunds, RedisChallengeStore, RedisSeenTxStore, X402Adapter } = agentgate;
+	const {
+		processRefunds,
+		PostgresChallengeStore,
+		PostgresSeenTxStore,
+		RedisChallengeStore,
+		RedisSeenTxStore,
+		X402Adapter,
+	} = agentgate;
 
 	const NETWORK = (process.env.AGENTGATE_NETWORK ?? "testnet") as NetworkName;
 	const AGENT_NAME = process.env.AGENT_NAME ?? "AgentGate Server";
@@ -244,6 +252,8 @@ if (!isConfigured) {
 	const REFUND_BATCH_SIZE = Number(process.env.REFUND_BATCH_SIZE ?? 50);
 	const TOKEN_ISSUE_TIMEOUT_MS = Number(process.env.TOKEN_ISSUE_TIMEOUT_MS ?? 15_000);
 	const TOKEN_ISSUE_RETRIES = Number(process.env.TOKEN_ISSUE_RETRIES ?? 2);
+	const STORAGE_BACKEND = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
+	const DATABASE_URL = process.env.DATABASE_URL;
 
 	// Products — support both PRODUCTS (raw JSON) and PRODUCTS_B64 (base64-encoded JSON)
 	const DEFAULT_PRODUCTS: ProductTier[] = [
@@ -270,15 +280,42 @@ if (!isConfigured) {
 		process.exit(1);
 	}
 
-	// Storage
-	const Redis = (await import("ioredis")).default;
-	const redis = new Redis(REDIS_URL!);
-	const store: IChallengeStore = new RedisChallengeStore({
-		redis,
-		challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
-	});
-	const seenTxStore = new RedisSeenTxStore({ redis });
-	console.log("[agentgate] Using Redis storage:", REDIS_URL);
+	// ─── Storage ───────────────────────────────────────────────────────────
+
+	// Redis is required for BullMQ refund cron queue, even when using Postgres storage
+	let store: IChallengeStore;
+	let seenTxStore: ISeenTxStore;
+	// biome-ignore lint/suspicious/noExplicitAny: Redis client for BullMQ and gas wallet lock (if needed)
+	let redis: any = null;
+
+	if (STORAGE_BACKEND === "postgres") {
+		if (!DATABASE_URL) {
+			console.error("FATAL: DATABASE_URL is required when STORAGE_BACKEND=postgres");
+			process.exit(1);
+		}
+
+		// biome-ignore lint/suspicious/noExplicitAny: postgres is an optional peer dependency
+		const postgres = (await import("postgres" as any)).default;
+		const sql = postgres(DATABASE_URL);
+
+		store = new PostgresChallengeStore({ sql });
+		seenTxStore = new PostgresSeenTxStore({ sql });
+
+		// Still need Redis for BullMQ refund cron queue
+		const Redis = (await import("ioredis")).default;
+		redis = new Redis(REDIS_URL!);
+
+		console.log("[agentgate] Using Postgres storage:", DATABASE_URL);
+	} else {
+		const Redis = (await import("ioredis")).default;
+		redis = new Redis(REDIS_URL!);
+		store = new RedisChallengeStore({
+			redis,
+			challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
+		});
+		seenTxStore = new RedisSeenTxStore({ redis });
+		console.log("[agentgate] Using Redis storage:", REDIS_URL);
+	}
 
 	// Token issuance
 	const onIssueToken = buildDockerTokenIssuer(ISSUE_TOKEN_API!, {
@@ -290,7 +327,188 @@ if (!isConfigured) {
 	const adapter = new X402Adapter({ network: NETWORK });
 
 	app.get("/health", (_req, res) => {
-		res.json({ status: "ok", network: NETWORK, wallet: WALLET_ADDRESS });
+		res.json({ status: "ok", network: NETWORK, wallet: WALLET_ADDRESS, storage: STORAGE_BACKEND });
+	});
+
+	// ─── Test helper endpoints (for e2e tests) ───────────────────────────────
+
+	/**
+	 * GET /test/challenge/:id
+	 * Returns the full challenge record from the store (Redis or Postgres).
+	 */
+	app.get("/test/challenge/:id", async (req, res) => {
+		try {
+			const challengeId = req.params.id;
+			const record = await store.get(challengeId);
+			if (!record) {
+				return res.status(404).json({ error: "Not found" });
+			}
+
+			// JSON.stringify cannot serialize BigInt, so normalize bigint fields first
+			const { amountRaw, ...rest } = record as typeof record & { amountRaw: bigint };
+			const serializable = {
+				...rest,
+				amountRaw: amountRaw != null ? amountRaw.toString() : undefined,
+			};
+
+			res.json(serializable);
+		} catch (err) {
+			res.status(500).json({ error: String(err) });
+		}
+	});
+
+	/**
+	 * POST /test/write-paid-challenge
+	 * Writes a PAID challenge record via the store for refund tests.
+	 */
+	app.post("/test/write-paid-challenge", async (req, res) => {
+		const {
+			challengeId,
+			requestId,
+			clientAgentId,
+			resourceId,
+			tierId,
+			amount,
+			amountRaw,
+			destination,
+			fromAddress,
+			txHash,
+			paidAt,
+		} = req.body as {
+			challengeId: string;
+			requestId: string;
+			clientAgentId: string;
+			resourceId: string;
+			tierId: string;
+			amount: string;
+			amountRaw: string | number;
+			destination: `0x${string}`;
+			fromAddress: `0x${string}`;
+			txHash: `0x${string}`;
+			paidAt: string;
+		};
+
+		if (
+			!challengeId ||
+			!requestId ||
+			!clientAgentId ||
+			!resourceId ||
+			!tierId ||
+			!amount ||
+			!amountRaw ||
+			!destination ||
+			!fromAddress ||
+			!txHash ||
+			!paidAt
+		) {
+			return res.status(400).json({ error: "Missing required fields" });
+		}
+
+		try {
+			await store.create({
+				challengeId,
+				requestId,
+				clientAgentId,
+				resourceId,
+				tierId,
+				amount,
+				amountRaw: BigInt(amountRaw),
+				asset: "USDC",
+				chainId: NETWORK === "testnet" ? 84532 : 8453,
+				destination,
+				state: "PAID",
+				expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+				createdAt: new Date(Date.now() - 60 * 1000),
+				paidAt: new Date(paidAt),
+				txHash,
+				fromAddress,
+			});
+			res.json({ success: true });
+		} catch (err) {
+			res.status(500).json({ error: String(err) });
+		}
+	});
+
+	/**
+	 * POST /test/transition-challenge
+	 * Transition a challenge from one state to another (for test setup).
+	 */
+	app.post("/test/transition-challenge", async (req, res) => {
+		const { challengeId, fromState, toState } = req.body as {
+			challengeId: string;
+			fromState: string;
+			toState: string;
+		};
+
+		if (!challengeId || !fromState || !toState) {
+			return res.status(400).json({ error: "Missing challengeId, fromState, or toState" });
+		}
+
+		try {
+			// biome-ignore lint/suspicious/noExplicitAny: test endpoint accepts any state string
+			const success = await store.transition(challengeId, fromState as any, toState as any);
+			if (success) {
+				res.json({ success: true, challengeId, fromState, toState });
+			} else {
+				res.status(409).json({
+					error: "State transition failed",
+					challengeId,
+					fromState,
+					toState,
+				});
+			}
+		} catch (err) {
+			res.status(500).json({ error: String(err) });
+		}
+	});
+
+	/**
+	 * POST /test/expire-request-id
+	 * Simulate TTL expiry by finding the active challenge for a requestId
+	 * and ensuring the next requestHttpAccess call will create a NEW challenge.
+	 */
+	app.post("/test/expire-request-id", async (req, res) => {
+		const { requestId } = req.body as { requestId: string };
+
+		if (!requestId) {
+			return res.status(400).json({ error: "Missing requestId" });
+		}
+
+		try {
+			const record = await store.findActiveByRequestId(requestId);
+			if (!record) {
+				return res.status(404).json({ error: "No active challenge found for requestId" });
+			}
+
+			// If still PENDING, transition to EXPIRED so engine sees it as inactive
+			if (record.state === "PENDING") {
+				const success = await store.transition(record.challengeId, "PENDING", "EXPIRED");
+				if (!success) {
+					return res.status(409).json({
+						error: "Failed to transition challenge to EXPIRED",
+						requestId,
+						challengeId: record.challengeId,
+					});
+				}
+				return res.json({
+					success: true,
+					requestId,
+					challengeId: record.challengeId,
+					state: "EXPIRED",
+				});
+			}
+
+			// For EXPIRED/CANCELLED/DELIVERED: state is already non-PENDING, which is
+			// sufficient for the engine to create a new challenge on the next request.
+			return res.json({
+				success: true,
+				requestId,
+				challengeId: record.challengeId,
+				state: record.state,
+			});
+		} catch (err) {
+			res.status(500).json({ error: String(err) });
+		}
 	});
 
 	app.use(
@@ -310,8 +528,9 @@ if (!isConfigured) {
 				onIssueToken,
 				tokenIssueTimeoutMs: TOKEN_ISSUE_TIMEOUT_MS,
 				tokenIssueRetries: TOKEN_ISSUE_RETRIES,
-				...(GAS_WALLET_PRIVATE_KEY ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY } : {}),
-				redis,
+				...(GAS_WALLET_PRIVATE_KEY && redis
+					? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY, redis }
+					: {}),
 			},
 			adapter,
 			store,
@@ -325,7 +544,7 @@ if (!isConfigured) {
 		console.log(`  Port:       ${PORT}`);
 		console.log(`  Wallet:     ${WALLET_ADDRESS}`);
 		console.log(`  Token API:  ${ISSUE_TOKEN_API}`);
-		console.log(`  Storage:    Redis`);
+		console.log(`  Storage:    ${STORAGE_BACKEND.toUpperCase()}`);
 		console.log(`  Setup UI:   http://localhost:${PORT}/setup`);
 		console.log(`  Agent Card: ${AGENT_URL}/.well-known/agent.json`);
 		console.log(
@@ -355,7 +574,7 @@ if (!isConfigured) {
 		}
 	}
 
-	// BullMQ cron
+	// BullMQ: only one worker processes the cron across replicas (requires Redis)
 	const { Queue, Worker } = await import("bullmq");
 	const parsed = new URL(REDIS_URL!);
 	const bullConnection = {

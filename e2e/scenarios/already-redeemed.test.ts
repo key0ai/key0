@@ -12,7 +12,7 @@
 import { describe, expect, test } from "bun:test";
 import { AGENTGATE_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
-import { readChallengeState } from "../helpers/redis-client.ts";
+import { readChallengeState } from "../helpers/storage-client.ts";
 
 describe("Already Redeemed", () => {
 	test("re-submitting payment after DELIVERED returns the existing grant directly", async () => {
