@@ -31,7 +31,7 @@ export class X402Adapter implements IPaymentAdapter {
 		const chain = config.network === "mainnet" ? base : baseSepolia;
 		this.client = createPublicClient({
 			chain,
-			transport: http(this.networkConfig.rpcUrl),
+			transport: http(this.networkConfig.rpcUrl, { timeout: 10_000 }),
 		}) as PublicClient;
 	}
 

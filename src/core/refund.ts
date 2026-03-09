@@ -15,6 +15,8 @@ export type RefundConfig = {
 	readonly network: NetworkName;
 	/** Grace period before a PAID record is eligible for refund. Default: 300_000 (5 mins). */
 	readonly minAgeMs?: number;
+	/** Max records to process per cron run. Default: 50. */
+	readonly batchSize?: number;
 };
 
 export type RefundResult = {
@@ -36,13 +38,29 @@ export type RefundResult = {
  * broadcasting — concurrent cron runs will not double-refund.
  */
 export async function processRefunds(config: RefundConfig): Promise<RefundResult[]> {
-	const { store, walletPrivateKey, gasWalletPrivateKey, network, minAgeMs = 300_000 } = config;
+	const {
+		store,
+		walletPrivateKey,
+		gasWalletPrivateKey,
+		network,
+		minAgeMs = 300_000,
+		batchSize = 50,
+	} = config;
 	const networkConfig = CHAIN_CONFIGS[network];
 	const results: RefundResult[] = [];
 
-	const pending = await store.findPendingForRefund(minAgeMs);
+	let pending: Awaited<ReturnType<IChallengeStore["findPendingForRefund"]>>;
+	try {
+		pending = await store.findPendingForRefund(minAgeMs);
+	} catch (err) {
+		console.error("[Refund] Failed to fetch pending refunds:", err);
+		return results;
+	}
 
-	for (const record of pending) {
+	// Limit batch size to avoid long-running cron runs
+	const batch = pending.slice(0, batchSize);
+
+	for (const record of batch) {
 		// Destructure before the try/catch so TypeScript's narrowing is unambiguous
 		const fromAddress = record.fromAddress;
 		const txHash = record.txHash;
@@ -85,9 +103,17 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 			const error = err instanceof Error ? err.message : String(err);
 
 			// 4. Mark as failed — cron will NOT retry automatically
-			await store.transition(record.challengeId, "REFUND_PENDING", "REFUND_FAILED", {
-				refundError: error,
-			});
+			try {
+				await store.transition(record.challengeId, "REFUND_PENDING", "REFUND_FAILED", {
+					refundError: error,
+				});
+			} catch (transitionErr) {
+				console.error(
+					`[Refund] Failed to mark REFUND_FAILED for ${record.challengeId}:`,
+					transitionErr,
+				);
+				// Record stays REFUND_PENDING — needs manual operator intervention
+			}
 
 			results.push({
 				challengeId: record.challengeId,
@@ -101,4 +127,27 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 	}
 
 	return results;
+}
+
+/**
+ * Re-queue REFUND_FAILED records for retry by transitioning them back to PAID.
+ * The next `processRefunds` cron run will pick them up via the sorted set.
+ *
+ * Intended for operator use (admin API, manual intervention script).
+ * Returns the list of challengeIds that were successfully re-queued.
+ */
+export async function retryFailedRefunds(
+	store: IChallengeStore,
+	challengeIds: string[],
+): Promise<string[]> {
+	const requeued: string[] = [];
+	for (const id of challengeIds) {
+		const record = await store.get(id);
+		if (!record || record.state !== "REFUND_FAILED") continue;
+		const ok = await store.transition(id, "REFUND_FAILED", "PAID", {
+			paidAt: record.paidAt ? new Date(record.paidAt) : new Date(),
+		});
+		if (ok) requeued.push(id);
+	}
+	return requeued;
 }

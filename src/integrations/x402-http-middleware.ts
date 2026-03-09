@@ -181,6 +181,9 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 				return res.status(200).json(existingGrant);
 			}
 
+			// Verify resource BEFORE settlement to avoid money-at-risk (S2)
+			await engine.verifyResource(resourceId, tierId);
+
 			// Decode the header then settle via shared settlement layer
 			const paymentPayload = decodePaymentSignature(paymentSignatureRaw);
 			const { txHash, settleResponse, payer } = await settlePayment(

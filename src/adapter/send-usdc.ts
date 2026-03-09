@@ -99,7 +99,10 @@ export async function sendUsdc(params: SendUsdcParams): Promise<`0x${string}`> {
 			args: [usdcOwnerAccount.address, to, amountRaw, validAfter, validBefore, nonce, v, r, s],
 		});
 
-		const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+		const receipt = await publicClient.waitForTransactionReceipt({
+			hash: txHash,
+			timeout: 120_000,
+		});
 
 		if (receipt.status !== "success") {
 			throw new Error(`Refund transaction reverted: ${txHash}`);
