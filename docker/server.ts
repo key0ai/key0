@@ -57,6 +57,9 @@ const REFUND_INTERVAL_MS = Number(process.env.REFUND_INTERVAL_MS ?? 60_000);
 const REFUND_MIN_AGE_MS = Number(process.env.REFUND_MIN_AGE_MS ?? 300_000);
 const STORAGE_BACKEND = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
 const DATABASE_URL = process.env.DATABASE_URL;
+const REFUND_BATCH_SIZE = Number(process.env.REFUND_BATCH_SIZE ?? 50);
+const TOKEN_ISSUE_TIMEOUT_MS = Number(process.env.TOKEN_ISSUE_TIMEOUT_MS ?? 15_000);
+const TOKEN_ISSUE_RETRIES = Number(process.env.TOKEN_ISSUE_RETRIES ?? 2);
 
 // ─── Products ──────────────────────────────────────────────────────────────
 
@@ -334,7 +337,10 @@ app.use(
 			basePath: BASE_PATH,
 			onVerifyResource: async () => true,
 			onIssueToken,
-			...(GAS_WALLET_PRIVATE_KEY && redis ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY, redis } : {}),
+			tokenIssueTimeoutMs: TOKEN_ISSUE_TIMEOUT_MS,
+			tokenIssueRetries: TOKEN_ISSUE_RETRIES,
+			...(GAS_WALLET_PRIVATE_KEY ? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY } : {}),
+			redis,
 		},
 		adapter,
 		store,
@@ -366,6 +372,7 @@ async function runRefundCron(): Promise<void> {
 		gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY,
 		network: NETWORK,
 		minAgeMs: REFUND_MIN_AGE_MS,
+		batchSize: REFUND_BATCH_SIZE,
 	});
 
 	for (const result of results) {

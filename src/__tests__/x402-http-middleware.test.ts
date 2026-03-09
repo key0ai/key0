@@ -127,7 +127,7 @@ describe("x402-http-middleware", () => {
 			expect(requirements.accepts[0]?.asset).toBe(networkConfig.usdcAddress);
 			expect(requirements.accepts[0]?.amount).toBe("990000"); // $0.99 USDC
 			expect(requirements.accepts[0]?.payTo).toBe(WALLET);
-			expect(requirements.accepts[0]?.maxTimeoutSeconds).toBe(300); // 5 minutes
+			expect(requirements.accepts[0]?.maxTimeoutSeconds).toBe(900); // derived from challengeTTLSeconds default
 
 			// EIP-712 domain parameters in extra field
 			expect(requirements.accepts[0]?.extra).toBeDefined();
@@ -735,12 +735,10 @@ describe("x402-http-middleware", () => {
 			).rejects.toThrow('Tier "invalid-tier" not found');
 		});
 
-		test("should reject nonexistent resource", async () => {
-			const txHash = `0x${"12".repeat(32)}` as `0x${string}`;
-
-			await expect(
-				engine.processHttpPayment("req-1", "basic", "nonexistent", txHash),
-			).rejects.toThrow('Resource "nonexistent" not found');
+		test("should reject nonexistent resource via verifyResource (pre-settlement check)", async () => {
+			await expect(engine.verifyResource("nonexistent", "basic")).rejects.toThrow(
+				'Resource "nonexistent" not found',
+			);
 		});
 
 		test("should reject double-spend (same txHash twice)", async () => {

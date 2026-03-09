@@ -101,13 +101,21 @@ export function oauthClientCredentialsAuth(config: {
 				body.append("audience", config.audience);
 			}
 
-			const res = await fetch(config.tokenUrl, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded",
-				},
-				body,
-			});
+			const controller = new AbortController();
+			const timeout = setTimeout(() => controller.abort(), 10_000);
+			let res: Response;
+			try {
+				res = await fetch(config.tokenUrl, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/x-www-form-urlencoded",
+					},
+					body,
+					signal: controller.signal,
+				});
+			} finally {
+				clearTimeout(timeout);
+			}
 
 			if (!res.ok) {
 				const text = await res.text();

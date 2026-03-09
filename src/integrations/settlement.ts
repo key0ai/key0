@@ -21,6 +21,48 @@ export type SettlementResult = {
 };
 
 // ---------------------------------------------------------------------------
+// Helpers: fetch with timeout + retry with backoff
+// ---------------------------------------------------------------------------
+
+async function fetchWithTimeout(
+	url: string,
+	init: RequestInit,
+	timeoutMs: number,
+): Promise<Response> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(url, { ...init, signal: controller.signal });
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+async function retryWithBackoff<T>(
+	fn: () => Promise<T>,
+	maxRetries: number,
+	baseDelayMs: number,
+): Promise<T> {
+	let lastError: unknown;
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		try {
+			return await fn();
+		} catch (err) {
+			lastError = err;
+			// Don't retry deterministic rejections (invalid sig, insufficient funds, nonce consumed).
+			// Only transient errors (network timeouts, 5xx) are worth retrying.
+			if (err instanceof AgentGateError && err.code === "PAYMENT_FAILED") {
+				throw err;
+			}
+			if (attempt < maxRetries) {
+				await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
+			}
+		}
+	}
+	throw lastError;
+}
+
+// ---------------------------------------------------------------------------
 // Decode
 // ---------------------------------------------------------------------------
 
@@ -101,7 +143,7 @@ export function buildHttpPaymentRequirements(
 				asset: networkConfig.usdcAddress,
 				amount: amountRaw.toString(),
 				payTo: config.walletAddress,
-				maxTimeoutSeconds: 300,
+				maxTimeoutSeconds: config.challengeTTLSeconds ?? 900,
 				extra: {
 					name: networkConfig.usdcDomain.name,
 					version: networkConfig.usdcDomain.version,
@@ -137,7 +179,7 @@ export function buildDiscoveryResponse(
 			asset: networkConfig.usdcAddress,
 			amount: amountRaw.toString(),
 			payTo: config.walletAddress,
-			maxTimeoutSeconds: 300,
+			maxTimeoutSeconds: config.challengeTTLSeconds ?? 900,
 			extra: {
 				name: networkConfig.usdcDomain.name,
 				version: networkConfig.usdcDomain.version,
@@ -215,12 +257,16 @@ export async function settleViaFacilitator(
 	const paymentRequirements = paymentPayload.accepted;
 	const facilitatorRequestBody = { paymentPayload, paymentRequirements };
 
-	// STEP 1: Verify
-	const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(facilitatorRequestBody),
-	});
+	// STEP 1: Verify (30s timeout)
+	const verifyRes = await fetchWithTimeout(
+		`${facilitatorUrl}/verify`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(facilitatorRequestBody),
+		},
+		30_000,
+	);
 
 	if (!verifyRes.ok) {
 		const errorText = await verifyRes.text().catch(() => "");
@@ -246,36 +292,51 @@ export async function settleViaFacilitator(
 
 	console.log("[settleViaFacilitator] ✓ Payment verified");
 
-	// STEP 2: Settle
-	const settleRes = await fetch(`${facilitatorUrl}/settle`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(facilitatorRequestBody),
-	});
+	// STEP 2: Settle (60s timeout, 2 retries with exponential backoff)
+	const result = await retryWithBackoff(
+		async () => {
+			const settleRes = await fetchWithTimeout(
+				`${facilitatorUrl}/settle`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(facilitatorRequestBody),
+				},
+				60_000,
+			);
 
-	if (!settleRes.ok) {
-		const errorText = await settleRes.text().catch(() => "");
-		let errorMessage = "Facilitator settlement failed";
-		try {
-			const errorData = JSON.parse(errorText);
-			errorMessage = errorData.message || errorData.error || errorMessage;
-		} catch {
-			if (errorText) errorMessage = errorText;
-		}
-		throw new AgentGateError("PAYMENT_FAILED", errorMessage, 402);
-	}
+			if (!settleRes.ok) {
+				const errorText = await settleRes.text().catch(() => "");
+				let errorMessage = "Facilitator settlement failed";
+				try {
+					const errorData = JSON.parse(errorText);
+					errorMessage = errorData.message || errorData.error || errorMessage;
+				} catch {
+					if (errorText) errorMessage = errorText;
+				}
+				throw new AgentGateError("PAYMENT_FAILED", errorMessage, 402);
+			}
 
-	const result = (await settleRes.json()) as X402SettleResponse;
-	if (!result.success) {
-		throw new AgentGateError(
-			"PAYMENT_FAILED",
-			result.errorReason || "Payment settlement failed",
-			402,
-		);
-	}
-	if (!result.transaction) {
-		throw new AgentGateError("PAYMENT_FAILED", "Facilitator did not return transaction hash", 500);
-	}
+			const res = (await settleRes.json()) as X402SettleResponse;
+			if (!res.success) {
+				throw new AgentGateError(
+					"PAYMENT_FAILED",
+					res.errorReason || "Payment settlement failed",
+					402,
+				);
+			}
+			if (!res.transaction) {
+				throw new AgentGateError(
+					"PAYMENT_FAILED",
+					"Facilitator did not return transaction hash",
+					500,
+				);
+			}
+			return res;
+		},
+		2,
+		500,
+	);
 
 	console.log(`[settleViaFacilitator] ✓ Settled: ${result.transaction}`);
 	return {
@@ -316,10 +377,18 @@ export async function settleViaGasWallet(
 
 	const scheme = new ExactEvmScheme(walletClient as any, { deployERC4337WithEIP6492: true });
 
-	// STEP 1: Verify
+	// STEP 1: Verify (30s timeout)
 	let verifyResult: any;
 	try {
-		verifyResult = await scheme.verify(paymentPayload as any, requirement as any);
+		let verifyTimer: ReturnType<typeof setTimeout>;
+		verifyResult = await Promise.race([
+			scheme
+				.verify(paymentPayload as any, requirement as any)
+				.finally(() => clearTimeout(verifyTimer)),
+			new Promise<never>((_, reject) => {
+				verifyTimer = setTimeout(() => reject(new Error("Gas wallet verify timed out")), 30_000);
+			}),
+		]);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : "Unknown verification error";
 		throw new AgentGateError("PAYMENT_FAILED", `Payment verification failed: ${msg}`, 402);
@@ -336,10 +405,18 @@ export async function settleViaGasWallet(
 
 	console.log("[settleViaGasWallet] ✓ Payment verified");
 
-	// STEP 2: Settle
+	// STEP 2: Settle (90s timeout — includes on-chain tx confirmation)
 	let settlement: any;
 	try {
-		settlement = await scheme.settle(paymentPayload as any, requirement as any);
+		let settleTimer: ReturnType<typeof setTimeout>;
+		settlement = await Promise.race([
+			scheme
+				.settle(paymentPayload as any, requirement as any)
+				.finally(() => clearTimeout(settleTimer)),
+			new Promise<never>((_, reject) => {
+				settleTimer = setTimeout(() => reject(new Error("Gas wallet settle timed out")), 90_000);
+			}),
+		]);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : "Unknown settlement error";
 		throw new AgentGateError("PAYMENT_FAILED", `Settlement failed: ${msg}`, 500);
@@ -394,12 +471,15 @@ async function acquireRedisLock(
 	redis: import("../types/config.js").IRedisLockClient,
 	key: string,
 	token: string,
+	maxWaitMs = 30_000,
 ): Promise<void> {
-	while (true) {
+	const deadline = Date.now() + maxWaitMs;
+	while (Date.now() < deadline) {
 		const ok = await redis.set(key, token, "NX", "PX", LOCK_TTL_MS);
 		if (ok === "OK") return;
 		await new Promise((r) => setTimeout(r, LOCK_POLL_MS));
 	}
+	throw new AgentGateError("INTERNAL_ERROR", "Failed to acquire settlement lock", 503);
 }
 
 async function releaseRedisLock(
@@ -447,13 +527,20 @@ export async function settlePayment(
 
 		if (config.redis) {
 			// Distributed lock — safe across multiple instances
-			const lockKey = `agentgate:settle-lock:${privateKey.slice(0, 10)}`;
+			const lockKey = `agentgate:settle-lock:${privateKeyToAccount(privateKey).address}`;
 			const lockToken = crypto.randomUUID();
 			await acquireRedisLock(config.redis, lockKey, lockToken);
 			try {
 				return await settleViaGasWallet(paymentPayload, privateKey, networkConfig);
 			} finally {
-				await releaseRedisLock(config.redis, lockKey, lockToken);
+				try {
+					await releaseRedisLock(config.redis, lockKey, lockToken);
+				} catch (releaseErr) {
+					console.warn(
+						`[AgentGate] Failed to release settlement lock ${lockKey} — will expire via TTL:`,
+						releaseErr,
+					);
+				}
 			}
 		}
 

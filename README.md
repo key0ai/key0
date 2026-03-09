@@ -104,6 +104,9 @@ Build from source: `docker build -t riklr/agentgate .`
 | `AGENTGATE_WALLET_PRIVATE_KEY` | | — | Private key of `AGENTGATE_WALLET_ADDRESS` — required for the refund cron to send USDC back to payers |
 | `REFUND_INTERVAL_MS` | | `60000` | How often the refund cron runs (ms) — only active when `AGENTGATE_WALLET_PRIVATE_KEY` is set |
 | `REFUND_MIN_AGE_MS` | | `300000` | Minimum age (ms) a stuck `PAID` record must reach before the refund cron picks it up |
+| `REFUND_BATCH_SIZE` | | `50` | Max number of `PAID` records processed per refund cron tick |
+| `TOKEN_ISSUE_TIMEOUT_MS` | | `15000` | Timeout (ms) for each `ISSUE_TOKEN_API` call |
+| `TOKEN_ISSUE_RETRIES` | | `2` | Number of retries for transient `ISSUE_TOKEN_API` failures (does not retry on deterministic errors) |
 
 See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 
