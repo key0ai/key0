@@ -87,10 +87,12 @@ if (!REDIS_URL) {
 
 const Redis = (await import("ioredis")).default;
 const redis = new Redis(REDIS_URL);
-const store: IChallengeStore = new RedisChallengeStore({
+const challengeStore = new RedisChallengeStore({
 	redis,
 	challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 });
+await challengeStore.healthCheck();
+const store: IChallengeStore = challengeStore;
 const seenTxStore = new RedisSeenTxStore({ redis });
 console.log("[agentgate] Using Redis storage:", REDIS_URL);
 

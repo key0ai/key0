@@ -380,11 +380,14 @@ export async function settleViaGasWallet(
 	// STEP 1: Verify (30s timeout)
 	let verifyResult: any;
 	try {
+		let verifyTimer: ReturnType<typeof setTimeout>;
 		verifyResult = await Promise.race([
-			scheme.verify(paymentPayload as any, requirement as any),
-			new Promise<never>((_, reject) =>
-				setTimeout(() => reject(new Error("Gas wallet verify timed out")), 30_000),
-			),
+			scheme
+				.verify(paymentPayload as any, requirement as any)
+				.finally(() => clearTimeout(verifyTimer)),
+			new Promise<never>((_, reject) => {
+				verifyTimer = setTimeout(() => reject(new Error("Gas wallet verify timed out")), 30_000);
+			}),
 		]);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : "Unknown verification error";
@@ -405,11 +408,14 @@ export async function settleViaGasWallet(
 	// STEP 2: Settle (90s timeout — includes on-chain tx confirmation)
 	let settlement: any;
 	try {
+		let settleTimer: ReturnType<typeof setTimeout>;
 		settlement = await Promise.race([
-			scheme.settle(paymentPayload as any, requirement as any),
-			new Promise<never>((_, reject) =>
-				setTimeout(() => reject(new Error("Gas wallet settle timed out")), 90_000),
-			),
+			scheme
+				.settle(paymentPayload as any, requirement as any)
+				.finally(() => clearTimeout(settleTimer)),
+			new Promise<never>((_, reject) => {
+				settleTimer = setTimeout(() => reject(new Error("Gas wallet settle timed out")), 90_000);
+			}),
 		]);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : "Unknown settlement error";
