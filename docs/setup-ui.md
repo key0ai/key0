@@ -28,7 +28,7 @@ The Setup UI is a browser-based configuration wizard for Key2a's Standalone (Doc
 │    │           ├── Full Key2a server (agent card, A2A, x402, MCP)   │
 │    │           ├── GET  /setup     → still serves UI for reconfig   │
 │    │           ├── GET  /api/setup/status → { configured: true }    │
-│    │           └── POST /api/setup → requires SETUP_SECRET          │
+│    │           └── POST /api/setup → writes .env.runtime, exit(42)  │
 │    │                                                                 │
 │    └── exit code 42? → restart loop (picks up new .env.runtime)     │
 │                                                                      │
@@ -75,9 +75,7 @@ The full Key2a server starts with all endpoints:
 - `/health` — health check
 - `/setup` — Setup UI still available for reconfiguration
 
-**Security:** In Running Mode, `POST /api/setup` is protected:
-- If `SETUP_SECRET` is not set → the setup API is disabled (403)
-- If `SETUP_SECRET` is set → requests must include `Authorization: Bearer <SETUP_SECRET>`
+**Note:** In Running Mode, `POST /api/setup` is currently unprotected — anyone who can reach the server can reconfigure it. This is acceptable for Docker-internal use where the port is not exposed publicly. For production deployments, restrict access to `/api/setup` via network policy or a reverse proxy.
 
 ### 3. Standalone Mode (outside Docker)
 
@@ -153,7 +151,7 @@ Each plan supports:
 | `displayName` | Text input | Yes |
 | `description` | Text input | No |
 | `unitAmount` | Text input (e.g. `$15.00`) | Yes |
-| `resourceType` | Dropdown (`api-call`, `step`, `api`, etc.) | Yes |
+| `resourceType` | Hidden (defaults to `api-access`) | Auto |
 | `expiresIn` | Duration preset dropdown | No |
 | `features` | Textarea (one per line) | No |
 | `tags` | Pill buttons (`most-popular`, `recommended`, `new`, `best-value`) | No |
