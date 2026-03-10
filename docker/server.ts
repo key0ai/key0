@@ -381,6 +381,9 @@ async function runRefundCron(): Promise<void> {
 		network: NETWORK,
 		minAgeMs: REFUND_MIN_AGE_MS,
 		batchSize: REFUND_BATCH_SIZE,
+		// Share the same Redis client used by settlePayment so the distributed
+		// lock serialises refund and settlement transactions from the same gas wallet.
+		...(GAS_WALLET_PRIVATE_KEY && redis ? { redis } : {}),
 	});
 
 	for (const result of results) {

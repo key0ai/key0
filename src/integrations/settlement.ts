@@ -13,6 +13,7 @@ import type {
 	X402SettleResponse,
 } from "../types/index.js";
 import { Key2aError } from "../types/index.js";
+import { gasWalletLockKey, withGasWalletLock } from "../utils/gas-wallet-lock.js";
 
 export type SettlementResult = {
 	txHash: `0x${string}`;
@@ -453,53 +454,6 @@ export async function settleViaGasWallet(
 }
 
 // ---------------------------------------------------------------------------
-// Distributed lock helpers (Redis SET NX / Lua release)
-// ---------------------------------------------------------------------------
-
-const LOCK_TTL_MS = 60_000; // 60s — longer than any reasonable settlement
-const LOCK_POLL_MS = 200; // retry interval while waiting for lock
-// Lua script: delete the key only if its value matches our token (atomic)
-const RELEASE_LUA = `
-if redis.call("get", KEYS[1]) == ARGV[1] then
-  return redis.call("del", KEYS[1])
-else
-  return 0
-end
-`;
-
-async function acquireRedisLock(
-	redis: import("../types/config.js").IRedisLockClient,
-	key: string,
-	token: string,
-	maxWaitMs = 30_000,
-): Promise<void> {
-	const deadline = Date.now() + maxWaitMs;
-	while (Date.now() < deadline) {
-		const ok = await redis.set(key, token, "NX", "PX", LOCK_TTL_MS);
-		if (ok === "OK") return;
-		await new Promise((r) => setTimeout(r, LOCK_POLL_MS));
-	}
-	throw new Key2aError("INTERNAL_ERROR", "Failed to acquire settlement lock", 503);
-}
-
-async function releaseRedisLock(
-	redis: import("../types/config.js").IRedisLockClient,
-	key: string,
-	token: string,
-): Promise<void> {
-	await redis.eval(RELEASE_LUA, 1, key, token);
-}
-
-// ---------------------------------------------------------------------------
-// In-process fallback queue (single-instance only)
-// ---------------------------------------------------------------------------
-
-// Used when no Redis client is configured — serializes settlements within
-// the current process. Does NOT protect against nonce conflicts across
-// multiple instances; set config.redis for multi-instance deployments.
-let gasWalletSettleQueue: Promise<unknown> = Promise.resolve();
-
-// ---------------------------------------------------------------------------
 // Unified settlement entry point
 // ---------------------------------------------------------------------------
 
@@ -507,15 +461,14 @@ let gasWalletSettleQueue: Promise<unknown> = Promise.resolve();
  * Settle a payment using the appropriate strategy (gas wallet or facilitator),
  * determined by the seller config. Accepts an already-decoded X402PaymentPayload.
  *
- * When gasWalletPrivateKey is set:
- *   - With config.redis: uses a distributed Redis lock so concurrent settlements
- *     across multiple instances are serialized (prevents nonce conflicts).
- *   - Without config.redis: falls back to an in-process serial queue (single
- *     instance only).
+ * When gasWalletPrivateKey is set, the call is serialised via
+ * {@link withGasWalletLock} so that settlements and refund-cron sendUsdc calls
+ * from the same gas wallet never overlap (preventing nonce conflicts).
  *
- * Used by both:
+ * Used by:
  * - HTTP middleware (after decoding the PAYMENT-SIGNATURE header)
  * - A2A executor (payload already decoded from message metadata)
+ * - MCP tool handler
  */
 export async function settlePayment(
 	paymentPayload: X402PaymentPayload,
@@ -524,32 +477,13 @@ export async function settlePayment(
 ): Promise<SettlementResult> {
 	if (config.gasWalletPrivateKey) {
 		const privateKey = config.gasWalletPrivateKey;
+		const lockKey = gasWalletLockKey(privateKeyToAccount(privateKey).address);
 
-		if (config.redis) {
-			// Distributed lock — safe across multiple instances
-			const lockKey = `key2a:settle-lock:${privateKeyToAccount(privateKey).address}`;
-			const lockToken = crypto.randomUUID();
-			await acquireRedisLock(config.redis, lockKey, lockToken);
-			try {
-				return await settleViaGasWallet(paymentPayload, privateKey, networkConfig);
-			} finally {
-				try {
-					await releaseRedisLock(config.redis, lockKey, lockToken);
-				} catch (releaseErr) {
-					console.warn(
-						`[Key2a] Failed to release settlement lock ${lockKey} — will expire via TTL:`,
-						releaseErr,
-					);
-				}
-			}
-		}
-
-		// In-process fallback — single instance only
-		const result = gasWalletSettleQueue.then(() =>
-			settleViaGasWallet(paymentPayload, privateKey, networkConfig),
+		return withGasWalletLock(
+			() => settleViaGasWallet(paymentPayload, privateKey, networkConfig),
+			config.redis,
+			lockKey,
 		);
-		gasWalletSettleQueue = result.catch(() => {});
-		return result;
 	}
 
 	const facilitatorUrl = config.facilitatorUrl ?? networkConfig.facilitatorUrl;

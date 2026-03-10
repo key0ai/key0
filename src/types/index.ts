@@ -25,6 +25,7 @@ export type {
 } from "./challenge.js";
 
 export type {
+	IRedisLockClient,
 	IssueTokenParams,
 	NetworkConfig,
 	NetworkName,

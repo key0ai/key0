@@ -295,6 +295,9 @@ async function runRefundCron(): Promise<void> {
 	const results = await processRefunds({
 		store,
 		walletPrivateKey: WALLET_PRIVATE_KEY,
+		...(USE_GAS_WALLET && GAS_WALLET_PRIVATE_KEY
+			? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY as `0x${string}` }
+			: {}),
 		network: NETWORK,
 		minAgeMs: REFUND_MIN_AGE_MS,
 	});
