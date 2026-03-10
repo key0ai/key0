@@ -87,7 +87,7 @@ function createMockRedis() {
 		eval(_script: string, numKeys: number, ...args: string[]): number {
 			// Simulate the Lua transition script.
 			// KEYS[1]=challenge hash, KEYS[2]=paid sorted set, KEYS[3]=audit list
-			// ARGV: [fromState, toState, challengeId, score, now, ...field/value pairs]
+			// ARGV: [fromState, toState, challengeId, score, now, actor, reason, ...field/value pairs]
 			const key = args[0] as string;
 			const paidSetKey = args[1] as string;
 			const auditKey = args[2] as string;
@@ -96,6 +96,8 @@ function createMockRedis() {
 			const challengeId = args[numKeys + 2] as string;
 			const score = args[numKeys + 3] as string;
 			const now = args[numKeys + 4] as string;
+			const actor = args[numKeys + 5] as string;
+			const reason = args[numKeys + 6] as string;
 
 			const hash = store.get(key);
 			if (!(hash instanceof Map)) return 0;
@@ -105,19 +107,33 @@ function createMockRedis() {
 
 			hash.set("state", toState);
 			hash.set("updatedAt", now);
-			// Apply field/value pairs (start after the 5 fixed ARGV slots)
-			for (let i = numKeys + 5; i < args.length; i += 2) {
+
+			// Collect field/value updates
+			const fieldUpdates: Record<string, string> = {};
+			// Apply field/value pairs (start after the 7 fixed ARGV slots)
+			for (let i = numKeys + 7; i < args.length; i += 2) {
 				hash.set(args[i] as string, args[i + 1] as string);
+				fieldUpdates[args[i] as string] = args[i + 1] as string;
 			}
 
+			// Read requestId and clientAgentId from the hash (mirrors Lua HGET)
+			const requestId = hash.get("requestId") ?? "";
+			const clientAgentId = hash.get("clientAgentId");
+
 			// Audit: append to audit list (mirrors Lua RPUSH)
-			const auditEntry = JSON.stringify({
+			const auditEntryObj: Record<string, unknown> = {
 				challengeId,
+				requestId,
 				fromState,
 				toState,
+				actor,
 				createdAt: now,
-			});
-			mock.rpush(auditKey, auditEntry);
+			};
+			if (clientAgentId) auditEntryObj["clientAgentId"] = clientAgentId;
+			if (reason !== "") auditEntryObj["reason"] = reason;
+			if (Object.keys(fieldUpdates).length > 0) auditEntryObj["updates"] = fieldUpdates;
+
+			mock.rpush(auditKey, JSON.stringify(auditEntryObj));
 
 			// Simulate sorted set maintenance (mirrors the Lua ZADD/ZREM logic)
 			if (toState === "PAID" && score !== "") {

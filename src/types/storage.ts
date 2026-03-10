@@ -1,11 +1,24 @@
 import type { ChallengeRecord, ChallengeState } from "./challenge.js";
 
+/** Who or what triggered a state transition. */
+export type AuditActor = "engine" | "cron" | "admin" | "system";
+
+/** Metadata passed alongside create/transition to enrich audit entries. */
+export type TransitionMeta = {
+	readonly actor: AuditActor;
+	readonly reason?: string;
+};
+
 /** A single audit log entry for a challenge state transition (write-only). */
 export type AuditEntry = {
 	readonly id?: string | number; // store-assigned (BIGSERIAL for PG, index for Redis)
 	readonly challengeId: string;
+	readonly requestId: string; // survives challenge cleanup
+	readonly clientAgentId?: string; // who initiated the flow
 	readonly fromState: ChallengeState | null; // null for initial creation
 	readonly toState: ChallengeState;
+	readonly actor: AuditActor; // who/what triggered the transition
+	readonly reason?: string; // human-readable reason
 	readonly updates: Record<string, unknown> | null; // snapshot of fields changed
 	readonly createdAt: Date; // when the transition occurred
 };
@@ -43,7 +56,7 @@ export interface IChallengeStore {
 	 * Store a new challenge record.
 	 * Must reject if challengeId already exists (no overwrites).
 	 */
-	create(record: ChallengeRecord): Promise<void>;
+	create(record: ChallengeRecord, meta?: TransitionMeta): Promise<void>;
 
 	/**
 	 * Atomically update a challenge's state and optional fields.
@@ -55,6 +68,7 @@ export interface IChallengeStore {
 		fromState: ChallengeState,
 		toState: ChallengeState,
 		updates?: ChallengeTransitionUpdates,
+		meta?: TransitionMeta,
 	): Promise<boolean>;
 
 	/**

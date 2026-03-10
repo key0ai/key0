@@ -167,13 +167,17 @@ function createMockSql() {
 				rows.push(newRow);
 				tables.set(tableName, rows);
 			} else {
-				// Audit table INSERT (challenge_id, from_state, to_state, updates)
+				// Audit table INSERT (challenge_id, request_id, client_agent_id, from_state, to_state, updates, actor, reason)
 				const auditRow: Row = {
 					id: String(rows.length + 1),
 					challenge_id: values[1],
-					from_state: values[2],
-					to_state: values[3],
-					updates: values[4],
+					request_id: values[2],
+					client_agent_id: values[3],
+					from_state: values[4],
+					to_state: values[5],
+					updates: values[6],
+					actor: values[7],
+					reason: values[8],
 					created_at: new Date(),
 				};
 				rows.push(auditRow);

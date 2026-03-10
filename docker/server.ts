@@ -243,7 +243,7 @@ app.post("/test/write-paid-challenge", async (req, res) => {
 			paidAt: new Date(paidAt),
 			txHash,
 			fromAddress,
-		});
+		}, { actor: "system", reason: "test_setup" });
 		res.json({ success: true });
 	} catch (err) {
 		res.status(500).json({ error: String(err) });

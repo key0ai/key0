@@ -4,6 +4,7 @@ import type {
 	ChallengeTransitionUpdates,
 	IChallengeStore,
 	ISeenTxStore,
+	TransitionMeta,
 } from "../types/index.js";
 
 /**
@@ -24,7 +25,7 @@ export class TestChallengeStore implements IChallengeStore {
 		return this.challenges.get(challengeId) ?? null;
 	}
 
-	async create(record: ChallengeRecord): Promise<void> {
+	async create(record: ChallengeRecord, _meta?: TransitionMeta): Promise<void> {
 		if (this.challenges.has(record.challengeId)) {
 			throw new Error(`Challenge ${record.challengeId} already exists`);
 		}
@@ -37,6 +38,7 @@ export class TestChallengeStore implements IChallengeStore {
 		fromState: ChallengeState,
 		toState: ChallengeState,
 		updates?: ChallengeTransitionUpdates,
+		_meta?: TransitionMeta,
 	): Promise<boolean> {
 		const record = this.challenges.get(challengeId);
 		if (!record || record.state !== fromState) return false;

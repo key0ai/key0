@@ -7,6 +7,7 @@ import type {
 	IAuditStore,
 	IChallengeStore,
 	ISeenTxStore,
+	TransitionMeta,
 } from "../../types";
 
 // Type for postgres.js Sql instance
@@ -75,8 +76,12 @@ type ChallengeRow = {
 type AuditRow = {
 	id: string; // BIGSERIAL comes back as string
 	challenge_id: string;
+	request_id: string;
+	client_agent_id: string | null;
 	from_state: string | null;
 	to_state: string;
+	actor: string;
+	reason: string | null;
 	updates: object | null; // JSONB
 	created_at: Date;
 };
@@ -213,8 +218,12 @@ export class PostgresChallengeStore implements IChallengeStore {
 			CREATE TABLE IF NOT EXISTS ${this.auditTableName} (
 				id BIGSERIAL PRIMARY KEY,
 				challenge_id TEXT NOT NULL,
+				request_id TEXT NOT NULL,
+				client_agent_id TEXT,
 				from_state ${this.stateEnumName},
 				to_state ${this.stateEnumName} NOT NULL,
+				actor TEXT NOT NULL DEFAULT 'system',
+				reason TEXT,
 				updates JSONB,
 				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 			)
@@ -223,6 +232,11 @@ export class PostgresChallengeStore implements IChallengeStore {
 		await this.sql`
 			CREATE INDEX IF NOT EXISTS ${this.sql(`${this.auditTableName}_challenge_id_idx`)}
 			ON ${this.sql(this.auditTableName)} (challenge_id)
+		`;
+
+		await this.sql`
+			CREATE INDEX IF NOT EXISTS ${this.sql(`${this.auditTableName}_request_id_idx`)}
+			ON ${this.sql(this.auditTableName)} (request_id)
 		`;
 
 		// 5. Revoke UPDATE and DELETE on the audit table to enforce write-only
@@ -279,7 +293,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 		return rowToChallengeRecord(rows[0]!);
 	}
 
-	async create(record: ChallengeRecord): Promise<void> {
+	async create(record: ChallengeRecord, meta?: TransitionMeta): Promise<void> {
 		await this.ready;
 
 		try {
@@ -335,8 +349,18 @@ export class PostgresChallengeStore implements IChallengeStore {
 
 			// Audit: log the creation
 			await this.sql`
-				INSERT INTO ${this.sql(this.auditTableName)} (challenge_id, from_state, to_state, updates)
-				VALUES (${record.challengeId}, ${null}, ${record.state}, ${null})
+				INSERT INTO ${this.sql(this.auditTableName)}
+					(challenge_id, request_id, client_agent_id, from_state, to_state, actor, reason, updates)
+				VALUES (
+					${record.challengeId},
+					${record.requestId},
+					${record.clientAgentId},
+					${null},
+					${record.state},
+					${meta?.actor ?? "engine"},
+					${meta?.reason ?? "challenge_created"},
+					${null}
+				)
 			`;
 		} catch (err: unknown) {
 			const pgError = err as { code?: string };
@@ -352,6 +376,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 		fromState: ChallengeState,
 		toState: ChallengeState,
 		updates?: ChallengeTransitionUpdates,
+		meta?: TransitionMeta,
 	): Promise<boolean> {
 		await this.ready;
 		// Build a parameterized SET clause using an update object so postgres.js
@@ -396,15 +421,26 @@ export class PostgresChallengeStore implements IChallengeStore {
 		const affected = (result as unknown as { count: number }).count > 0;
 
 		// Audit: log the transition (only if it actually happened)
+		// Uses a CTE to pull request_id and client_agent_id from the challenge row.
 		if (affected) {
 			await this.sql`
-				INSERT INTO ${this.sql(this.auditTableName)} (challenge_id, from_state, to_state, updates)
-				VALUES (
+				WITH ctx AS (
+					SELECT request_id, client_agent_id
+					FROM ${this.sql(this.tableName)}
+					WHERE challenge_id = ${challengeId}
+				)
+				INSERT INTO ${this.sql(this.auditTableName)}
+					(challenge_id, request_id, client_agent_id, from_state, to_state, actor, reason, updates)
+				SELECT
 					${challengeId},
+					ctx.request_id,
+					ctx.client_agent_id,
 					${fromState},
 					${toState},
+					${meta?.actor ?? "system"},
+					${meta?.reason ?? null},
 					${updates ? this.sql.json(updates) : null}
-				)
+				FROM ctx
 			`;
 		}
 
@@ -498,11 +534,16 @@ export class PostgresAuditStore implements IAuditStore {
 
 	async append(entry: Omit<AuditEntry, "id">): Promise<void> {
 		await this.sql`
-			INSERT INTO ${this.sql(this.tableName)} (challenge_id, from_state, to_state, updates, created_at)
+			INSERT INTO ${this.sql(this.tableName)}
+				(challenge_id, request_id, client_agent_id, from_state, to_state, actor, reason, updates, created_at)
 			VALUES (
 				${entry.challengeId},
+				${entry.requestId},
+				${entry.clientAgentId ?? null},
 				${entry.fromState},
 				${entry.toState},
+				${entry.actor},
+				${entry.reason ?? null},
 				${entry.updates ? this.sql.json(entry.updates) : null},
 				${entry.createdAt}
 			)
@@ -518,8 +559,12 @@ export class PostgresAuditStore implements IAuditStore {
 		return rows.map((row) => ({
 			id: row.id,
 			challengeId: row.challenge_id,
+			requestId: row.request_id,
+			...(row.client_agent_id != null ? { clientAgentId: row.client_agent_id } : {}),
 			fromState: row.from_state as ChallengeState | null,
 			toState: row.to_state as ChallengeState,
+			actor: row.actor as AuditEntry["actor"],
+			...(row.reason != null ? { reason: row.reason } : {}),
 			updates: row.updates as Record<string, unknown> | null,
 			createdAt: row.created_at,
 		}));
