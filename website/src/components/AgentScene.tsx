@@ -12,17 +12,37 @@ export default function AgentGateScene() {
 
     while (el.firstChild) el.removeChild(el.firstChild);
 
-    const W = 1280, H = 550;
+    const size = { w: 1280, h: 550 };
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(W, H);
+    renderer.setSize(size.w, size.h);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
     el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 100);
-    camera.setViewOffset(W, H, 0, -100, W, H);
+    const camera = new THREE.PerspectiveCamera(45, size.w / size.h, 0.1, 100);
+    camera.setViewOffset(size.w, size.h, 0, -100, size.w, size.h);
     camera.position.set(0, 0, 16);
+
+    function onResize(entries?: ResizeObserverEntry[]) {
+      const target = entries?.[0]?.target ?? el;
+      if (!target || !(target instanceof HTMLElement)) return;
+      const rect = target.getBoundingClientRect();
+      const w = Math.floor(rect.width);
+      const h = Math.floor(rect.height);
+      if (w <= 0 || h <= 0) return;
+      size.w = w;
+      size.h = h;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      const viewY = Math.round(-100 * (h / 550));
+      camera.setViewOffset(w, h, 0, viewY, w, h);
+      camera.updateProjectionMatrix();
+    }
+
+    const ro = new ResizeObserver((entries) => onResize(entries));
+    ro.observe(el);
+    onResize();
 
     const easeOutBack = (t: number) => {
       const c1 = 1.70158, c3 = c1 + 1;
@@ -36,7 +56,7 @@ export default function AgentGateScene() {
       const canvas = document.createElement("canvas");
       canvas.width = CW; canvas.height = CH;
       const ctx = canvas.getContext("2d")!;
-      ctx.font = "bold 44px monospace";
+      ctx.font = "bold 44px 'DM Mono', monospace";
       ctx.fillStyle = "#555555";
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
@@ -192,14 +212,14 @@ export default function AgentGateScene() {
         const c = document.createElement("canvas");
         c.width = S; c.height = S;
         const ctx = c.getContext("2d")!;
-        ctx.fillStyle = "#1a1a1a";
+        ctx.fillStyle = "#101010";
         ctx.beginPath();
         ctx.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2);
         ctx.fill();
         ctx.save();
         ctx.translate(S / 2, S / 2);
         ctx.rotate(-Math.PI / 2);
-        ctx.font = "bold 130px monospace";
+        ctx.font = "bold 130px 'DM Mono', monospace";
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -231,7 +251,7 @@ export default function AgentGateScene() {
       const ctx = c.getContext("2d")!;
 
       // Use same font size, measure text to size the pill
-      ctx.font = "bold 36px monospace";
+      ctx.font = "bold 36px 'DM Mono', monospace";
       const metrics = ctx.measureText("Transaction Verified");
       const textWidth = metrics.width;
 
@@ -245,7 +265,7 @@ export default function AgentGateScene() {
       // Setting width/height resets context state; reapply font
       c.width = CW;
       c.height = CH;
-      ctx.font = "bold 36px monospace";
+      ctx.font = "bold 36px 'DM Mono', monospace";
 
       // Draw rounded rectangle background
       const radius = 16;
@@ -284,7 +304,7 @@ export default function AgentGateScene() {
       const ctx = c.getContext("2d")!;
     
       // Measure first — same pattern as makeVerifiedText
-      ctx.font = "bold 36px monospace";
+      ctx.font = "bold 36px 'DM Mono', monospace";
       const metrics = ctx.measureText("Pay Server");
       const textWidth = metrics.width;
     
@@ -298,7 +318,7 @@ export default function AgentGateScene() {
       // Reset canvas size (clears context state — reapply font)
       c.width = CW;
       c.height = CH;
-      ctx.font = "bold 36px monospace";
+      ctx.font = "bold 36px 'DM Mono', monospace";
     
       const radius = 8;
       ctx.beginPath();
@@ -421,6 +441,182 @@ export default function AgentGateScene() {
 
     const keySprite = makeKeySprite();
 
+    function makeAgent1TransSprite() {
+      const mat = new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthTest: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(4.2 * 1.5, 0.72 * 1.5, 1);
+      sprite.visible = false;
+      scene.add(sprite);
+
+      const img = new Image();
+      let texNormal: THREE.CanvasTexture | null = null;
+      let texScaled: THREE.CanvasTexture | null = null;
+
+      function applyBgColor(c: HTMLCanvasElement, ctx: CanvasRenderingContext2D, bgHex: number) {
+        const r = (bgHex >> 16) & 0xff, g = (bgHex >> 8) & 0xff, b = bgHex & 0xff;
+        const imgData = ctx.getImageData(0, 0, c.width, c.height);
+        const data = imgData.data;
+        const tol = 25;
+        for (let i = 0; i < data.length; i += 4) {
+          const dr = Math.abs(data[i] - 0xD8), dg = Math.abs(data[i + 1] - 0xD8), db = Math.abs(data[i + 2] - 0xD8);
+          if (dr < tol && dg < tol && db < tol && data[i + 3] > 200) {
+            data[i] = r; data[i + 1] = g; data[i + 2] = b;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        const ctx = c.getContext("2d")!;
+        ctx.drawImage(img, 0, 0);
+        texNormal = new THREE.CanvasTexture(c);
+        mat.map = texNormal;
+        mat.needsUpdate = true;
+
+        const c2 = document.createElement("canvas");
+        c2.width = img.naturalWidth;
+        c2.height = img.naturalHeight;
+        const ctx2 = c2.getContext("2d")!;
+        ctx2.drawImage(img, 0, 0);
+        applyBgColor(c2, ctx2, 0xbebebe);
+        texScaled = new THREE.CanvasTexture(c2);
+      };
+      img.src = "/Agent1trans.svg";
+
+      return { sprite, mat, setScaledBg: () => { if (texScaled) { mat.map = texScaled; mat.needsUpdate = true; } }, setNormalBg: () => { if (texNormal) { mat.map = texNormal; mat.needsUpdate = true; } } };
+    }
+
+    const agent1transSprite = makeAgent1TransSprite();
+
+    function makeAgent2TransSprite() {
+      const mat = new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthTest: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(4.2 * 1.5, 0.72 * 1.5, 1);
+      sprite.visible = false;
+      scene.add(sprite);
+
+      const img = new Image();
+      let texNormal: THREE.CanvasTexture | null = null;
+      let texScaled: THREE.CanvasTexture | null = null;
+
+      function applyBgColor(c: HTMLCanvasElement, ctx: CanvasRenderingContext2D, bgHex: number) {
+        const r = (bgHex >> 16) & 0xff, g = (bgHex >> 8) & 0xff, b = bgHex & 0xff;
+        const imgData = ctx.getImageData(0, 0, c.width, c.height);
+        const data = imgData.data;
+        const tol = 25;
+        for (let i = 0; i < data.length; i += 4) {
+          const dr = Math.abs(data[i] - 0xD9), dg = Math.abs(data[i + 1] - 0xD9), db = Math.abs(data[i + 2] - 0xD9);
+          if (dr < tol && dg < tol && db < tol && data[i + 3] > 200) {
+            data[i] = r; data[i + 1] = g; data[i + 2] = b;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        const ctx = c.getContext("2d")!;
+        ctx.drawImage(img, 0, 0);
+        texNormal = new THREE.CanvasTexture(c);
+        mat.map = texNormal;
+        mat.needsUpdate = true;
+
+        const c2 = document.createElement("canvas");
+        c2.width = img.naturalWidth;
+        c2.height = img.naturalHeight;
+        const ctx2 = c2.getContext("2d")!;
+        ctx2.drawImage(img, 0, 0);
+        applyBgColor(c2, ctx2, 0xbebebe);
+        texScaled = new THREE.CanvasTexture(c2);
+      };
+      img.src = "/Agent2trans.svg";
+
+      return { sprite, mat, setScaledBg: () => { if (texScaled) { mat.map = texScaled; mat.needsUpdate = true; } }, setNormalBg: () => { if (texNormal) { mat.map = texNormal; mat.needsUpdate = true; } } };
+    }
+
+    const agent2transSprite = makeAgent2TransSprite();
+
+    function makeAgent3TransSprite() {
+      const mat = new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthTest: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(4.2 * 1.5, 0.72 * 1.5, 1);
+      sprite.visible = false;
+      scene.add(sprite);
+
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        const ctx = c.getContext("2d")!;
+        ctx.drawImage(img, 0, 0);
+        const tex = new THREE.CanvasTexture(c);
+        mat.map = tex;
+        mat.needsUpdate = true;
+      };
+      img.src = "/Agent3trans.svg";
+
+      return { sprite, mat };
+    }
+
+    const agent3transSprite = makeAgent3TransSprite();
+
+    const agent3transState = {
+      active: false,
+      timer: 0,
+      fadeDur: 0.5,
+      done: false,
+    };
+
+    const AGENT3TRANS_FULL_W = 4.2 * 1.5;
+    const AGENT3TRANS_FULL_H = 0.72 * 1.5;
+
+    const agent2transState = {
+      active: false,
+      timer: 0,
+      fadeDur: 0.5,
+      done: false,
+    };
+
+    const agent2transScaleState = {
+      active: false,
+      timer: 0,
+      dur: 0.4,
+      done: false,
+    };
+
+    const AGENT2TRANS_FULL_W = 4.2 * 1.5;
+    const AGENT2TRANS_FULL_H = 0.72 * 1.5;
+
+    const agent1transState = {
+      active: false,
+      timer: 0,
+      fadeDur: 0.5,
+      done: false,
+    };
+
+    const agent1transScaleState = {
+      active: false,
+      timer: 0,
+      dur: 0.4,
+      done: false,
+    };
+
+    const agent1transScale2State = {
+      active: false,
+      timer: 0,
+      dur: 0.4,
+      done: false,
+    };
+
+    const AGENT1TRANS_FULL_W = 4.2 * 1.5;
+    const AGENT1TRANS_FULL_H = 0.72 * 1.5;
+
     const keyState = {
       active: false,
       timer: 0,
@@ -542,7 +738,7 @@ export default function AgentGateScene() {
       timer: 0,
       phase: "idle" as "idle" | "wait" | "fadeAll" | "pause" | "restart",
       waitDur: 3.0,
-      fadeAllDur: 1.0,
+      fadeAllDur: 0.4,
       pauseDur: 0.5,
     };
 
@@ -662,8 +858,8 @@ export default function AgentGateScene() {
       if (!drag.active) return;
       const cx = "clientX" in e ? e.clientX : e.touches?.[0]?.clientX ?? 0;
       const cy = "clientY" in e ? e.clientY : e.touches?.[0]?.clientY ?? 0;
-      const dx = (cx - drag.startX) / W;
-      const dy = (cy - drag.startY) / H;
+      const dx = (cx - drag.startX) / size.w;
+      const dy = (cy - drag.startY) / size.h;
       drag.targetTheta = Math.max(-MAX_DRAG, Math.min(MAX_DRAG, dx * Math.PI));
       drag.targetPhi = Math.max(-MAX_DRAG, Math.min(MAX_DRAG, dy * Math.PI * 0.6));
     }
@@ -872,10 +1068,116 @@ export default function AgentGateScene() {
             coinState.active = true;
             coinState.timer = 0;
             coin.group.visible = true;
+            if (activeAgent === agent) {
+              agent1transState.active = true;
+              agent1transState.timer = 0;
+              agent1transState.done = false;
+              agent1transSprite.sprite.visible = true;
+              agent1transSprite.mat.opacity = 0;
+            } else if (activeAgent === agent2) {
+              agent2transState.active = true;
+              agent2transState.timer = 0;
+              agent2transState.done = false;
+              agent2transSprite.sprite.visible = true;
+              agent2transSprite.mat.opacity = 0;
+              agent1transScaleState.active = true;
+              agent1transScaleState.timer = 0;
+              agent1transScaleState.done = false;
+              agent1transSprite.setScaledBg?.();
+            } else if (activeAgent === agent3) {
+              agent3transState.active = true;
+              agent3transState.timer = 0;
+              agent3transState.done = false;
+              agent3transSprite.sprite.visible = true;
+              agent3transSprite.mat.opacity = 0;
+              agent2transScaleState.active = true;
+              agent2transScaleState.timer = 0;
+              agent2transScaleState.done = false;
+              agent2transSprite.setScaledBg?.();
+              agent1transScale2State.active = true;
+              agent1transScale2State.timer = 0;
+              agent1transScale2State.done = false;
+            }
           }
         }
 
         payServerText.sprite.position.y = logo.group.position.y + 2.8;
+      }
+
+      // --- Agent1trans: drop from just below server (Agent-01 only) ---
+      if (agent1transState.active && !agent1transState.done && activeAgent === agent) {
+        agent1transState.timer += dt;
+        const t = Math.min(agent1transState.timer / agent1transState.fadeDur, 1);
+        const serverX = server.group.position.x;
+        const serverY = server.group.position.y;
+        const startY = serverY - 1.0;
+        const endY = serverY - 2.25;
+        const curY = startY + (endY - startY) * t;
+        agent1transSprite.sprite.position.set(serverX, curY, 0.2);
+        agent1transSprite.mat.opacity = t;
+        if (t >= 1) agent1transState.done = true;
+      }
+
+      // --- Agent2trans: drop from just below server (Agent-02 only), above agent1trans, lower endpoint ---
+      if (agent2transState.active && !agent2transState.done && activeAgent === agent2) {
+        agent2transState.timer += dt;
+        const t = Math.min(agent2transState.timer / agent2transState.fadeDur, 1);
+        const serverX = server.group.position.x;
+        const serverY = server.group.position.y;
+        const startY = serverY - 1.0;
+        const endY = serverY - 2.25 - 0.25;
+        const curY = startY + (endY - startY) * t;
+        agent2transSprite.sprite.position.set(serverX, curY, 0.3);
+        agent2transSprite.mat.opacity = t;
+        if (t >= 1) agent2transState.done = true;
+      }
+
+      // --- Agent3trans: drop from just below server (Agent-03 only), above agent2trans ---
+      if (agent3transState.active && !agent3transState.done && activeAgent === agent3) {
+        agent3transState.timer += dt;
+        const t = Math.min(agent3transState.timer / agent3transState.fadeDur, 1);
+        const serverX = server.group.position.x;
+        const serverY = server.group.position.y;
+        const startY = serverY - 1.0;
+        const endY = serverY - 2.25 - 0.5;
+        const curY = startY + (endY - startY) * t;
+        agent3transSprite.sprite.position.set(serverX, curY, 0.4);
+        agent3transSprite.mat.opacity = t;
+        if (t >= 1) agent3transState.done = true;
+      }
+
+      // --- Agent1trans: smooth scale down (runs when agent2trans starts) ---
+      if (agent1transScaleState.active && !agent1transScaleState.done) {
+        agent1transScaleState.timer += dt;
+        const t = Math.min(agent1transScaleState.timer / agent1transScaleState.dur, 1);
+        const ep = easeInOut(t);
+        const s = 1 - ep * 0.15;
+        agent1transSprite.sprite.scale.set(AGENT1TRANS_FULL_W * s, AGENT1TRANS_FULL_H * s, 1);
+        if (t >= 1) agent1transScaleState.done = true;
+      }
+
+      // --- Agent2trans: smooth scale down (runs when agent3trans starts), move up slightly ---
+      if (agent2transScaleState.active && !agent2transScaleState.done) {
+        agent2transScaleState.timer += dt;
+        const t = Math.min(agent2transScaleState.timer / agent2transScaleState.dur, 1);
+        const ep = easeInOut(t);
+        const s = 1 - ep * 0.15;
+        agent2transSprite.sprite.scale.set(AGENT2TRANS_FULL_W * s, AGENT2TRANS_FULL_H * s, 1);
+        const serverY = server.group.position.y;
+        const baseY = serverY - 2.25 - 0.25;
+        const moveUp = ep * 0.0625;
+        agent2transSprite.sprite.position.y = baseY + moveUp;
+        if (t >= 1) agent2transScaleState.done = true;
+      }
+
+      // --- Agent1trans: further scale down by 10% (runs when agent2trans scales down) ---
+      if (agent1transScale2State.active && !agent1transScale2State.done) {
+        agent1transScale2State.timer += dt;
+        const t = Math.min(agent1transScale2State.timer / agent1transScale2State.dur, 1);
+        const ep = easeInOut(t);
+        const s = 0.85 * (1 - ep * 0.15);
+        agent1transSprite.sprite.scale.set(AGENT1TRANS_FULL_W * s, AGENT1TRANS_FULL_H * s, 1);
+        if (t >= 1) agent1transScale2State.done = true;
       }
 
       // --- Coin Mario arc animation ---
@@ -1057,10 +1359,12 @@ export default function AgentGateScene() {
             keyForwardState.active = false;
             keySprite.sprite.visible = false;
             keySprite.mat.opacity = 0;
-            if (activeAgent === agent && postKeyState.phase === "idle") {
-              postKeyState.active = true;
-              postKeyState.timer = 0;
-              postKeyState.phase = "fadeLines";
+            if (activeAgent === agent) {
+              if (postKeyState.phase === "idle") {
+                postKeyState.active = true;
+                postKeyState.timer = 0;
+                postKeyState.phase = "fadeLines";
+              }
             } else if (activeAgent === agent2 && agent2PostKeyState.phase === "idle") {
               agent2PostKeyState.active = true;
               agent2PostKeyState.timer = 0;
@@ -1109,7 +1413,7 @@ export default function AgentGateScene() {
             agent.group.position.set(AGENT_FINAL_X, AGENT_FINAL_Y, 0);
             agent.group.scale.setScalar(AGENT_FINAL_SCALE);
             setNodeOpacity(nodes[0], 0.5);
-            agent.wireMat.opacity = 0.4;
+            agent.wireMat.opacity = 0.2;
             postKeyState.phase = "drawLine";
             postKeyState.timer = 0;
             directLineDrawState.timer = 0;
@@ -1139,7 +1443,7 @@ export default function AgentGateScene() {
             pingState.timer = 0;
             pingState.forward = true;
             pingBall.visible = true;
-            (pingBall.material as THREE.MeshBasicMaterial).opacity = 0.5;
+            (pingBall.material as THREE.MeshBasicMaterial).opacity = 0.3;
             if (agent2SpawnState.phase === "idle") {
               agent2SpawnState.active = true;
               agent2SpawnState.timer = 0;
@@ -1283,7 +1587,7 @@ export default function AgentGateScene() {
           if (p >= 1) {
             agent2.group.position.set(AGENT2_FINAL_X, AGENT2_FINAL_Y, 0);
             agent2.group.scale.setScalar(AGENT2_FINAL_SCALE);
-            agent2.wireMat.opacity = 0.4;
+            agent2.wireMat.opacity = 0.2;
             agent2.coreMat.opacity = 0.5;
             (agent2.labelMat as THREE.SpriteMaterial).opacity = 0.5;
             agent2PostKeyState.phase = "drawLine";
@@ -1314,7 +1618,7 @@ export default function AgentGateScene() {
             agent2PostKeyState.timer = 0;
             a2PingState.timer = 0;
             a2PingBall.visible = true;
-            (a2PingBall.material as THREE.MeshBasicMaterial).opacity = 0.5;
+            (a2PingBall.material as THREE.MeshBasicMaterial).opacity = 0.3;
             if (agent3SpawnState.phase === "idle") {
               agent3SpawnState.active = true;
               agent3SpawnState.timer = 0;
@@ -1440,14 +1744,14 @@ export default function AgentGateScene() {
           setNodeOpacity(nodes[0], op * 0.5);
           agent.group.scale.setScalar(AGENT_FINAL_SCALE * op);
           directMat.opacity = 0.5 * op;
-          (pingBall.material as THREE.MeshBasicMaterial).opacity = 0.5 * op;
+          (pingBall.material as THREE.MeshBasicMaterial).opacity = 0.3 * op;
 
-          agent2.wireMat.opacity = op * 0.4;
+          agent2.wireMat.opacity = op * 0.2;
           agent2.coreMat.opacity = op * 0.5;
           (agent2.labelMat as THREE.SpriteMaterial).opacity = op * 0.5;
           agent2.group.scale.setScalar(AGENT2_FINAL_SCALE * op);
           a2DirectMat.opacity = 0.5 * op;
-          (a2PingBall.material as THREE.MeshBasicMaterial).opacity = 0.5 * op;
+          (a2PingBall.material as THREE.MeshBasicMaterial).opacity = 0.3 * op;
 
           agent3.wireMat.opacity = op * 0.85;
           agent3.coreMat.opacity = op;
@@ -1464,6 +1768,10 @@ export default function AgentGateScene() {
             }
           });
           logo.group.scale.setScalar(op);
+
+          agent1transSprite.mat.opacity = op;
+          agent2transSprite.mat.opacity = op;
+          agent3transSprite.mat.opacity = op;
 
           lineMat.opacity = op;
           returnMat.opacity = op;
@@ -1548,6 +1856,19 @@ export default function AgentGateScene() {
             lineState.timer = 0;
             payServerState.active = false; payServerState.timer = 0; payServerState.done = false;
             coinState.active = false; coinState.timer = 0; coinState.done = false;
+            agent1transState.active = false; agent1transState.timer = 0; agent1transState.done = false;
+            agent1transScaleState.active = false; agent1transScaleState.timer = 0; agent1transScaleState.done = false;
+            agent1transScale2State.active = false; agent1transScale2State.timer = 0; agent1transScale2State.done = false;
+            agent1transSprite.sprite.visible = false; agent1transSprite.mat.opacity = 0;
+            agent1transSprite.sprite.scale.set(AGENT1TRANS_FULL_W, AGENT1TRANS_FULL_H, 1);
+            agent1transSprite.setNormalBg?.();
+            agent2transState.active = false; agent2transState.timer = 0; agent2transState.done = false;
+            agent2transScaleState.active = false; agent2transScaleState.timer = 0; agent2transScaleState.done = false;
+            agent2transSprite.sprite.visible = false; agent2transSprite.mat.opacity = 0;
+            agent2transSprite.sprite.scale.set(AGENT2TRANS_FULL_W, AGENT2TRANS_FULL_H, 1);
+            agent2transSprite.setNormalBg?.();
+            agent3transState.active = false; agent3transState.timer = 0; agent3transState.done = false;
+            agent3transSprite.sprite.visible = false; agent3transSprite.mat.opacity = 0;
             textState.active = false; textState.timer = 0; textState.done = false;
             returnLineState.triggered = false; returnLineState.phase = "wait"; returnLineState.timer = 0;
             keyState.active = false; keyState.timer = 0; keyState.done = false;
@@ -1596,6 +1917,7 @@ export default function AgentGateScene() {
     animate(performance.now());
 
     return () => {
+      ro.disconnect();
       cancelAnimationFrame(animId);
       canvasEl.removeEventListener("mousedown", onPointerDown);
       canvasEl.removeEventListener("mousemove", onPointerMove);
@@ -1615,8 +1937,9 @@ export default function AgentGateScene() {
     <div
       ref={mountRef}
       style={{
-        width: "1280px",
-        height: "550px",
+        width: "100%",
+        maxWidth: "1280px",
+        aspectRatio: "1280 / 550",
         background: "#E8E8E8",
         overflow: "hidden",
       }}

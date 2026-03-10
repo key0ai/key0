@@ -9,9 +9,9 @@ export default function HeroHowItWorksSeparator() {
       className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen overflow-hidden py-4 md:py-8"
       aria-hidden
     >
-      <section className="relative w-full bg-[#101010] text-white py-4 md:py-6">
+      <section className="relative w-full bg-[#1a1a1a] text-white py-4 md:py-6">
         <div className="flex items-center justify-center">
-          <p className="text-center text-[24px] md:text-[30px] font-semibold tracking-wider">
+          <p className="text-center text-[18px] md:text-[30px] font-semibold tracking-wider">
             {TEXT}
           </p>
         </div>

@@ -853,7 +853,7 @@ export default function HowItWorks() {
   const Icon = tabs[active].icon;
 
   return (
-    <section id="how-it-works" className="py-12">
+    <section id="how-it-works" className="py-12 pb-[72px]">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
         <h2 className="font-display text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight text-foreground text-center">
           How it works
@@ -938,21 +938,6 @@ export default function HowItWorks() {
                 </button>
               );
             })}
-          </div>
-        </div>
-
-        {/* Closing line + CTA */}
-        <div className="mt-14 text-center">
-          <p className="font-display text-xl md:text-2xl font-bold text-foreground">
-            Your existing API, now accessible to the entire agent web.
-          </p>
-          <div className="mt-6">
-            <a
-              href="#"
-              className="inline-flex items-center justify-center rounded-button bg-foreground px-6 py-3.5 font-body text-sm font-medium text-white shadow-neu transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-neu-hover active:translate-y-[0.5px] active:shadow-neu-inset min-h-[44px]"
-            >
-              Explore Docs
-            </a>
           </div>
         </div>
       </div>
