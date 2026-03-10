@@ -9,6 +9,8 @@ function createMockRedis() {
 	const ttls = new Map<string, number>();
 	// Sorted sets: key → Map<member, score>
 	const sortedSets = new Map<string, Map<string, number>>();
+	// Lists: key → string[] (for audit logs)
+	const lists = new Map<string, string[]>();
 
 	type PipelineOp = () => void;
 
@@ -69,16 +71,31 @@ function createMockRedis() {
 			return "OK";
 		},
 
+		rpush(key: string, value: string): number {
+			const list = lists.get(key) || [];
+			list.push(value);
+			lists.set(key, list);
+			return list.length;
+		},
+
+		lrange(key: string, start: number, stop: number): string[] {
+			const list = lists.get(key) || [];
+			if (stop === -1) return list.slice(start);
+			return list.slice(start, stop + 1);
+		},
+
 		eval(_script: string, numKeys: number, ...args: string[]): number {
 			// Simulate the Lua transition script.
-			// KEYS[1]=challenge hash, KEYS[2]=paid sorted set
-			// ARGV: [fromState, toState, challengeId, score, ...field/value pairs]
+			// KEYS[1]=challenge hash, KEYS[2]=paid sorted set, KEYS[3]=audit list
+			// ARGV: [fromState, toState, challengeId, score, now, ...field/value pairs]
 			const key = args[0] as string;
 			const paidSetKey = args[1] as string;
+			const auditKey = args[2] as string;
 			const fromState = args[numKeys] as string;
 			const toState = args[numKeys + 1] as string;
 			const challengeId = args[numKeys + 2] as string;
 			const score = args[numKeys + 3] as string;
+			const now = args[numKeys + 4] as string;
 
 			const hash = store.get(key);
 			if (!(hash instanceof Map)) return 0;
@@ -87,10 +104,20 @@ function createMockRedis() {
 			if (current !== fromState) return 0;
 
 			hash.set("state", toState);
-			// Apply field/value pairs (start after the 4 fixed ARGV slots)
-			for (let i = numKeys + 4; i < args.length; i += 2) {
+			hash.set("updatedAt", now);
+			// Apply field/value pairs (start after the 5 fixed ARGV slots)
+			for (let i = numKeys + 5; i < args.length; i += 2) {
 				hash.set(args[i] as string, args[i + 1] as string);
 			}
+
+			// Audit: append to audit list (mirrors Lua RPUSH)
+			const auditEntry = JSON.stringify({
+				challengeId,
+				fromState,
+				toState,
+				createdAt: now,
+			});
+			mock.rpush(auditKey, auditEntry);
 
 			// Simulate sorted set maintenance (mirrors the Lua ZADD/ZREM logic)
 			if (toState === "PAID" && score !== "") {
@@ -115,6 +142,10 @@ function createMockRedis() {
 				},
 				set(...setArgs: unknown[]) {
 					ops.push(() => (mock.set as (...a: unknown[]) => unknown)(...setArgs));
+					return pipe;
+				},
+				rpush(key: string, value: string) {
+					ops.push(() => mock.rpush(key, value));
 					return pipe;
 				},
 				async exec() {
@@ -158,6 +189,7 @@ function createMockRedis() {
 		_store: store,
 		_ttls: ttls,
 		_sortedSets: sortedSets,
+		_lists: lists,
 	};
 
 	return mock;
@@ -180,6 +212,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		state: "PENDING",
 		expiresAt: new Date("2025-01-01T12:00:00.000Z"),
 		createdAt: new Date("2025-01-01T11:45:00.000Z"),
+		updatedAt: new Date("2025-01-01T11:45:00.000Z"),
 		...overrides,
 	};
 }

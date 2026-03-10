@@ -256,6 +256,7 @@ export class ChallengeEngine {
 		});
 
 		// 6. Create challenge record
+		const now = new Date(this.now());
 		const record: ChallengeRecord = {
 			challengeId: payload.challengeId,
 			requestId: req.requestId,
@@ -269,7 +270,8 @@ export class ChallengeEngine {
 			destination: this.config.walletAddress,
 			state: "PENDING",
 			expiresAt,
-			createdAt: new Date(this.now()),
+			createdAt: now,
+			updatedAt: now,
 		};
 
 		await this.store.create(record);
@@ -604,6 +606,7 @@ export class ChallengeEngine {
 		// 4. Create PENDING record
 		const challengeId = `http-${crypto.randomUUID()}`;
 		const expiresAt = new Date(this.now() + this.challengeTTL);
+		const now402 = new Date(this.now());
 
 		const record: ChallengeRecord = {
 			challengeId,
@@ -618,7 +621,8 @@ export class ChallengeEngine {
 			destination: this.config.walletAddress,
 			state: "PENDING",
 			expiresAt,
-			createdAt: new Date(this.now()),
+			createdAt: now402,
+			updatedAt: now402,
 		};
 
 		await this.store.create(record);
@@ -723,6 +727,7 @@ export class ChallengeEngine {
 		if (!challenge || challenge.state !== "PENDING") {
 			const challengeId = `http-${crypto.randomUUID()}`;
 			const expiresAt = new Date(this.now() + this.challengeTTL);
+			const nowSettle = new Date(this.now());
 			const record: ChallengeRecord = {
 				challengeId,
 				requestId,
@@ -736,7 +741,8 @@ export class ChallengeEngine {
 				destination: this.config.walletAddress,
 				state: "PENDING",
 				expiresAt,
-				createdAt: new Date(this.now()),
+				createdAt: nowSettle,
+				updatedAt: nowSettle,
 			};
 			await this.store.create(record);
 			challenge = record;

@@ -7,6 +7,7 @@ const _DEFAULT_SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
  * Create a test ChallengeRecord with sensible defaults.
  */
 export function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRecord {
+	const now = new Date();
 	return {
 		challengeId: crypto.randomUUID(),
 		requestId: crypto.randomUUID(),
@@ -20,7 +21,8 @@ export function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): Chall
 		destination: DEFAULT_WALLET,
 		state: "PENDING",
 		expiresAt: new Date(Date.now() + 900_000),
-		createdAt: new Date(),
+		createdAt: now,
+		updatedAt: now,
 		...overrides,
 	};
 }

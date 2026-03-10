@@ -81,6 +81,7 @@ export async function writePaidChallengeRecord(
 		state: "PAID",
 		expiresAt: new Date(Date.now() + 3600_000).toISOString(),
 		createdAt: new Date(Date.now() - 60_000).toISOString(),
+		updatedAt: new Date().toISOString(),
 		paidAt: record.paidAt.toISOString(),
 		txHash: record.txHash,
 		fromAddress: record.fromAddress,

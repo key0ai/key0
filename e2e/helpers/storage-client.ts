@@ -88,6 +88,7 @@ export async function readChallengeRecord(
 			state: record.state,
 			expiresAt: new Date(record.expiresAt).toISOString(),
 			createdAt: new Date(record.createdAt).toISOString(),
+			updatedAt: new Date(record.updatedAt).toISOString(),
 			...(record.paidAt ? { paidAt: new Date(record.paidAt).toISOString() } : {}),
 			...(record.txHash ? { txHash: record.txHash } : {}),
 			...(record.fromAddress ? { fromAddress: record.fromAddress } : {}),
@@ -217,6 +218,30 @@ export async function expireRequestIdIndex(requestId: string): Promise<boolean> 
 	const redis = connectRedis();
 	const deleted = await redis.del(`key2a:request:${requestId}`);
 	return deleted === 1;
+}
+
+/**
+ * Read the audit history for a challenge.
+ * Uses the /test/audit/:challengeId HTTP endpoint (works for both backends).
+ */
+export async function readAuditHistory(
+	challengeId: string,
+): Promise<
+	{
+		id?: string | number;
+		challengeId: string;
+		fromState: string | null;
+		toState: string;
+		updates: Record<string, unknown> | null;
+		createdAt: string;
+	}[]
+> {
+	const res = await fetch(`${baseUrl}/test/audit/${challengeId}`);
+	if (!res.ok) {
+		throw new Error(`Failed to read audit history: ${res.status} ${await res.text()}`);
+	}
+	const body = (await res.json()) as { entries: any[] };
+	return body.entries;
 }
 
 /**

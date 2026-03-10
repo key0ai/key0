@@ -8,13 +8,16 @@
  */
 
 import {
+	type IAuditStore,
 	type IChallengeStore,
 	type ISeenTxStore,
 	type NetworkName,
+	PostgresAuditStore,
 	PostgresChallengeStore,
 	PostgresSeenTxStore,
 	type ProductTier,
 	processRefunds,
+	RedisAuditStore,
 	RedisChallengeStore,
 	RedisSeenTxStore,
 	X402Adapter,
@@ -93,6 +96,7 @@ if (!REDIS_URL) {
 
 let store: IChallengeStore;
 let seenTxStore: ISeenTxStore;
+let auditStore: IAuditStore;
 // biome-ignore lint/suspicious/noExplicitAny: Redis client for BullMQ and gas wallet lock (if needed)
 let redis: any = null;
 
@@ -108,6 +112,7 @@ if (STORAGE_BACKEND === "postgres") {
 
 	store = new PostgresChallengeStore({ sql });
 	seenTxStore = new PostgresSeenTxStore({ sql });
+	auditStore = new PostgresAuditStore({ sql });
 
 	// Still need Redis for BullMQ refund cron queue
 	const Redis = (await import("ioredis")).default;
@@ -122,6 +127,7 @@ if (STORAGE_BACKEND === "postgres") {
 		challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
 	});
 	seenTxStore = new RedisSeenTxStore({ redis });
+	auditStore = new RedisAuditStore({ redis });
 	console.log("[key2a] Using Redis storage:", REDIS_URL);
 }
 
@@ -218,6 +224,7 @@ app.post("/test/write-paid-challenge", async (req, res) => {
 	}
 
 	try {
+		const nowTs = new Date();
 		await store.create({
 			challengeId,
 			requestId,
@@ -232,6 +239,7 @@ app.post("/test/write-paid-challenge", async (req, res) => {
 			state: "PAID",
 			expiresAt: new Date(Date.now() + 60 * 60 * 1000),
 			createdAt: new Date(Date.now() - 60 * 1000),
+			updatedAt: nowTs,
 			paidAt: new Date(paidAt),
 			txHash,
 			fromAddress,
@@ -270,6 +278,19 @@ app.post("/test/transition-challenge", async (req, res) => {
 				toState,
 			});
 		}
+	} catch (err) {
+		res.status(500).json({ error: String(err) });
+	}
+});
+
+/**
+ * GET /test/audit/:challengeId
+ * Returns the full audit history for a challenge (ordered chronologically).
+ */
+app.get("/test/audit/:challengeId", async (req, res) => {
+	try {
+		const history = await auditStore.getHistory(req.params.challengeId);
+		res.json({ entries: history });
 	} catch (err) {
 		res.status(500).json({ error: String(err) });
 	}

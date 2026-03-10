@@ -30,6 +30,7 @@ const DESTINATION = `0x${"22".repeat(20)}` as `0x${string}`;
 
 /** Returns a ChallengeRecord in PAID state that is old enough to be eligible for refund. */
 function makePaidChallenge(overrides?: Partial<ChallengeRecord>): ChallengeRecord {
+	const now = new Date();
 	return {
 		challengeId: crypto.randomUUID(),
 		requestId: crypto.randomUUID(),
@@ -44,6 +45,7 @@ function makePaidChallenge(overrides?: Partial<ChallengeRecord>): ChallengeRecor
 		state: "PAID",
 		expiresAt: new Date(Date.now() + 15 * 60 * 1000),
 		createdAt: new Date(Date.now() - 10 * 60 * 1000),
+		updatedAt: now,
 		// 10 minutes ago — past the default 5-min grace period
 		paidAt: new Date(Date.now() - 10 * 60 * 1000),
 		txHash: TX_HASH,

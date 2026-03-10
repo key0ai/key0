@@ -1,5 +1,15 @@
 import type { ChallengeRecord, ChallengeState } from "./challenge.js";
 
+/** A single audit log entry for a challenge state transition (write-only). */
+export type AuditEntry = {
+	readonly id?: string | number; // store-assigned (BIGSERIAL for PG, index for Redis)
+	readonly challengeId: string;
+	readonly fromState: ChallengeState | null; // null for initial creation
+	readonly toState: ChallengeState;
+	readonly updates: Record<string, unknown> | null; // snapshot of fields changed
+	readonly createdAt: Date; // when the transition occurred
+};
+
 /** Fields that may be written alongside a state transition. */
 export type ChallengeTransitionUpdates = Partial<
 	Pick<
@@ -67,4 +77,17 @@ export interface ISeenTxStore {
 	 * Returns true if stored, false if already existed.
 	 */
 	markUsed(txHash: `0x${string}`, challengeId: string): Promise<boolean>;
+}
+
+/**
+ * Write-only audit store for challenge state transitions.
+ * Implementations MUST NOT expose update or delete operations.
+ * All transitions (create + state changes) are logged immutably.
+ */
+export interface IAuditStore {
+	/** Append an audit entry. This is the only write operation. */
+	append(entry: Omit<AuditEntry, "id">): Promise<void>;
+
+	/** Read the full transition history for a challenge (ordered chronologically). */
+	getHistory(challengeId: string): Promise<AuditEntry[]>;
 }

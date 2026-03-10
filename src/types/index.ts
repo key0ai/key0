@@ -39,7 +39,7 @@ export { CHAIN_CONFIGS, USDC_DECIMALS } from "./config-shared.js";
 export type { Key2aErrorCode } from "./errors.js";
 export { Key2aError } from "./errors.js";
 
-export type { ChallengeTransitionUpdates, IChallengeStore, ISeenTxStore } from "./storage.js";
+export type { AuditEntry, ChallengeTransitionUpdates, IAuditStore, IChallengeStore, ISeenTxStore } from "./storage.js";
 export type {
 	Key2aExtension,
 	EIP3009Authorization,

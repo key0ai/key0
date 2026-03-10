@@ -34,6 +34,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		state: "PENDING",
 		expiresAt: new Date("2025-01-01T12:00:00.000Z"),
 		createdAt: new Date("2025-01-01T11:45:00.000Z"),
+		updatedAt: new Date("2025-01-01T11:45:00.000Z"),
 		...overrides,
 	};
 }

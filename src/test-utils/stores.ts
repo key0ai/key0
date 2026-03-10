@@ -41,7 +41,7 @@ export class TestChallengeStore implements IChallengeStore {
 		const record = this.challenges.get(challengeId);
 		if (!record || record.state !== fromState) return false;
 		// Single-threaded JS — inherently atomic
-		this.challenges.set(challengeId, { ...record, state: toState, ...updates });
+		this.challenges.set(challengeId, { ...record, state: toState, updatedAt: new Date(), ...updates });
 		return true;
 	}
 
