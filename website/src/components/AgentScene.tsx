@@ -227,15 +227,49 @@ export default function AgentGateScene() {
 
     // --- "Transaction Verified" text sprite ---
     function makeVerifiedText() {
-      const CW = 512, CH = 64;
       const c = document.createElement("canvas");
-      c.width = CW; c.height = CH;
       const ctx = c.getContext("2d")!;
+
+      // Use same font size, measure text to size the pill
       ctx.font = "bold 36px monospace";
-      ctx.fillStyle = "#555555";
+      const metrics = ctx.measureText("Transaction Verified");
+      const textWidth = metrics.width;
+
+      const padX = 16;
+      const padTop = 12;
+      const padBottom = 8;
+      const textHeight = 36;
+      const CW = textWidth + padX * 2;
+      const CH = textHeight + padTop + padBottom;
+
+      // Setting width/height resets context state; reapply font
+      c.width = CW;
+      c.height = CH;
+      ctx.font = "bold 36px monospace";
+
+      // Draw rounded rectangle background
+      const radius = 16;
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(CW - radius, 0);
+      ctx.quadraticCurveTo(CW, 0, CW, radius);
+      ctx.lineTo(CW, CH - radius);
+      ctx.quadraticCurveTo(CW, CH, CW - radius, CH);
+      ctx.lineTo(radius, CH);
+      ctx.quadraticCurveTo(0, CH, 0, CH - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+
+      ctx.fillStyle = "#1a1a1a";
+      ctx.fill();
+
+      // Draw text
+      ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("Transaction Verified", CW / 2, CH / 2);
+      ctx.textBaseline = "alphabetic";
+      const textY = padTop + textHeight * 0.8;
+      ctx.fillText("Transaction Verified", CW / 2, textY);
       const tex = new THREE.CanvasTexture(c);
       const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false });
       const sprite = new THREE.Sprite(mat);
@@ -246,22 +280,58 @@ export default function AgentGateScene() {
     }
 
     function makePayServerText() {
-      const CW = 512, CH = 64;
       const c = document.createElement("canvas");
-      c.width = CW; c.height = CH;
       const ctx = c.getContext("2d")!;
+    
+      // Measure first — same pattern as makeVerifiedText
       ctx.font = "bold 36px monospace";
-      ctx.fillStyle = "#555555";
+      const metrics = ctx.measureText("Pay Server");
+      const textWidth = metrics.width;
+    
+      const padX = 16;
+      const padTop = 12;
+      const padBottom = 8;
+      const textHeight = 36;
+      const CW = textWidth + padX * 2;
+      const CH = textHeight + padTop + padBottom;
+    
+      // Reset canvas size (clears context state — reapply font)
+      c.width = CW;
+      c.height = CH;
+      ctx.font = "bold 36px monospace";
+    
+      const radius = 8;
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(CW - radius, 0);
+      ctx.quadraticCurveTo(CW, 0, CW, radius);
+      ctx.lineTo(CW, CH - radius);
+      ctx.quadraticCurveTo(CW, CH, CW - radius, CH);
+      ctx.lineTo(radius, CH);
+      ctx.quadraticCurveTo(0, CH, 0, CH - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+      ctx.fillStyle = "#1a1a1a";
+      ctx.fill();
+    
+      ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("Pay Server", CW / 2, CH / 2);
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText("Pay Server", CW / 2, padTop + textHeight * 0.8);
+    
       const tex = new THREE.CanvasTexture(c);
       const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false });
       const sprite = new THREE.Sprite(mat);
-      sprite.scale.set(5.5, 0.72, 1);
+    
+      // Derive world scale from canvas aspect — same as makeVerifiedText uses 5.5
+      const worldH = 0.72;
+      const worldW = worldH * (CW / CH);
+      sprite.scale.set(worldW, worldH, 1);
+    
       sprite.visible = false;
       scene.add(sprite);
-      return { sprite, mat };
+      return { sprite, mat, worldW, worldH }; // expose for animation
     }
 
     const agent = makeAgentNode("Agent-01");
@@ -786,14 +856,14 @@ export default function AgentGateScene() {
           const p = t / popDur;
           payServerText.mat.opacity = easeOutBack(p);
           const s = easeOutBack(p);
-          payServerText.sprite.scale.set(5.5 * s, 0.72 * s, 1);
+          payServerText.sprite.scale.set(payServerText.worldW * s, payServerText.worldH * s, 1);
         } else if (t < popDur + holdDur) {
           payServerText.mat.opacity = 1;
-          payServerText.sprite.scale.set(5.5, 0.72, 1);
+          payServerText.sprite.scale.set(payServerText.worldW, payServerText.worldH, 1);
         } else if (t < total) {
           const fadeT = (t - popDur - holdDur) / fadeDur;
           payServerText.mat.opacity = 1 - fadeT;
-        } else {
+        }else {
           payServerState.done = true;
           payServerState.active = false;
           payServerText.sprite.visible = false;

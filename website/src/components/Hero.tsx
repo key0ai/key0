@@ -11,7 +11,7 @@ const AgentScene = dynamic(() => import("@/components/AgentScene"), {
 
 export default function Hero() {
   return (
-    <section className="relative pt-0 pb-20 md:pt-0 md:pb-32 overflow-hidden">
+    <section className="relative pt-0 pb-20 md:pt-0 overflow-hidden">
       <div className="relative z-10 mx-auto max-w-7xl px-6 lg:px-8">
         <div className="flex justify-center pt-6">
           <AgentScene />

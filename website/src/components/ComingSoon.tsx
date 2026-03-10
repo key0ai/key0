@@ -19,7 +19,7 @@ export default function ComingSoon() {
           methods so every buyer can pay however they prefer.
         </p>
 
-        <div className="mt-10 flex flex-wrap justify-center gap-4 md:gap-6">
+        <div className="mt-12 flex flex-wrap justify-center gap-4 md:gap-6">
           {rails.map((rail) => (
             <div
               key={rail.label}

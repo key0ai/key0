@@ -54,6 +54,26 @@
     -4px -4px 8px rgba(255, 255, 255, 0.5);
 }
 
+/* ─── Dark Neumorphic Shadows (for #1a1a1a backgrounds) ─── */
+
+@utility shadow-neu-dark {
+  box-shadow:
+    8px 8px 16px rgba(0, 0, 0, 0.5),
+    -8px -8px 16px rgba(255, 255, 255, 0.05);
+}
+
+@utility shadow-neu-dark-hover {
+  box-shadow:
+    12px 12px 24px rgba(0, 0, 0, 0.55),
+    -12px -12px 24px rgba(255, 255, 255, 0.08);
+}
+
+@utility shadow-neu-inset-deep-dark {
+  box-shadow:
+    inset 8px 8px 16px rgba(0, 0, 0, 0.5),
+    inset -8px -8px 16px rgba(255, 255, 255, 0.03);
+}
+
 /* ─── Base ──────────────────────────────────────────────── */
 
 html {

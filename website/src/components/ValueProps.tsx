@@ -25,25 +25,25 @@ const cards = [
 
 export default function ValueProps() {
   return (
-    <section className="py-20 md:py-32">
+    <section className="py-20 md:py-32 bg-[#1a1a1a] text-white">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-12">
           {cards.map((card) => {
             const Icon = card.icon;
             return (
               <div
                 key={card.heading}
-                className="rounded-card bg-surface shadow-neu p-6 md:p-8 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-neu-hover"
+                className="rounded-card bg-[#1a1a1a] shadow-neu-dark p-6 md:p-8 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-neu-dark-hover"
               >
                 {/* Icon well */}
-                <div className="w-12 h-12 rounded-inner bg-surface shadow-neu-inset-deep flex items-center justify-center mb-5">
-                  <Icon size={20} className="text-foreground" strokeWidth={2} />
+                <div className="w-12 h-12 rounded-inner bg-[#1a1a1a] shadow-neu-inset-deep-dark flex items-center justify-center mb-5">
+                  <Icon size={20} className="text-white" strokeWidth={2} />
                 </div>
 
-                <h3 className="font-display text-lg font-bold text-foreground leading-snug">
+                <h3 className="font-display text-lg font-bold text-white leading-snug">
                   {card.heading}
                 </h3>
-                <p className="mt-2 font-body text-sm text-muted leading-relaxed">
+                <p className="mt-2 font-body text-sm text-white leading-relaxed">
                   {card.body}
                 </p>
               </div>
