@@ -610,7 +610,7 @@ The seller never needs to pre-register clients, issue API keys manually, or mana
 
 ## Storage
 
-Key2a requires Redis for storage. `store` and `seenTxStore` are mandatory fields.
+Key2a requires a storage backend for challenge state and double-spend prevention. `store` and `seenTxStore` are mandatory fields. Both Redis and Postgres backends are supported.
 
 ```typescript
 import { RedisChallengeStore, RedisSeenTxStore } from "@riklr/key2a";
@@ -632,6 +632,8 @@ Redis storage provides:
 - Atomic state transitions via Lua scripts (safe for concurrent requests)
 - Automatic TTL-based cleanup
 - Double-spend prevention with `SET NX`
+
+All state transitions are recorded in an immutable audit log (`IAuditStore`) for observability and debugging. Redis and Postgres audit store implementations are included.
 
 ## Security
 
