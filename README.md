@@ -619,6 +619,8 @@ Redis storage provides:
 - Automatic TTL-based cleanup
 - Double-spend prevention with `SET NX`
 
+Postgres storage uses the same interface with row-level locking for atomic transitions. The schema uses `plan_id` as the column name (matching the `planId` TypeScript field).
+
 All state transitions are recorded in an immutable audit log (`IAuditStore`) for observability and debugging. Redis and Postgres audit store implementations are included.
 
 ## Security
