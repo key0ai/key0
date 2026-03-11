@@ -723,8 +723,12 @@ bun run start
 bun install          # Install dependencies
 bun run typecheck    # Type-check
 bun run lint         # Lint with Biome v2
-bun test src/        # Run unit tests
+bun test src/        # Run unit + mock tests
                      # E2E tests require Docker + funded wallets — see e2e/README.md
+
+# Real Postgres integration tests are skipped by default.
+# Set KEY0_TEST_PG_URL to opt in:
+KEY0_TEST_PG_URL=postgresql://localhost:5432/key0 bun test src/
 bun run build        # Compile to ./dist
 ```
 
