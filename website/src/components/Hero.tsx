@@ -17,7 +17,7 @@ const AgentScene = dynamic(() => import("@/components/AgentScene"), {
   ),
 });
 
-const SNAP_POINTS = [0, 350, 700];
+const SNAP_POINTS = [0, 700, 1400];
 const COOLDOWN_MS = 650;
 const HERO_ZONE_END = SNAP_POINTS[SNAP_POINTS.length - 1];
 
@@ -51,7 +51,7 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="relative" style={{ height: "calc(100vh + 700px)" }}>
+    <section className="relative" style={{ height: "calc(100vh + 1400px)" }}>
       <div className="sticky top-0 h-screen w-full overflow-hidden">
 
         {/* Canvas */}
@@ -97,7 +97,13 @@ export default function Hero() {
 
               <div className="flex flex-col text-left">
                 <ul className="text-lg text-muted leading-relaxed font-normal [font-family:var(--font-inter),sans-serif] space-y-5 list-none pl-0">
-                  <li className="flex items-center gap-6">
+                  <li
+                    className="flex items-center gap-6 origin-left transition-all duration-500 ease-out"
+                    style={{
+                      transform: scenePhase === 1 ? "scale(1.2)" : "scale(1)",
+                      opacity: 1,
+                    }}
+                  >
                     <div className="mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-surface shadow-neu-sm">
                       <img src="/agent.svg" alt="Agent icon" className="h-9 w-9" />
                     </div>
@@ -106,7 +112,10 @@ export default function Hero() {
                       <span>HTTP, MCP, and A2A - out of the box</span>
                     </div>
                   </li>
-                  <li className="flex items-center gap-6">
+                  <li
+                    className="flex items-center gap-6 transition-opacity duration-500 ease-out"
+                    style={{ opacity: scenePhase === 1 ? 0.4 : 1 }}
+                  >
                     <div className="mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-surface shadow-neu-sm">
                       <img src="/opensource.svg" alt="Open source icon" className="h-9 w-9" />
                     </div>
@@ -115,7 +124,10 @@ export default function Hero() {
                       <span>Your stack, your rules, no proxies</span>
                     </div>
                   </li>
-                  <li className="flex items-center gap-6">
+                  <li
+                    className="flex items-center gap-6 transition-opacity duration-500 ease-out"
+                    style={{ opacity: scenePhase === 1 ? 0.4 : 1 }}
+                  >
                     <div className="mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-surface shadow-neu-sm">
                       <img src="/payment.svg" alt="Payment icon" className="h-9 w-9" />
                     </div>

@@ -894,6 +894,7 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
       });
     }
 
+    let s2WasActive = false;
     const s2State = {
       active: false,
       timer: 0,
@@ -1181,9 +1182,38 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
 
         if (wantPhase === 1 && !s2State.active && s2State.phase === "idle") {
           s2State.active = true;
-          s2State.phase = "entering";
           s2State.timer = 0;
           fullResetState.active = false;
+
+          if (s2WasActive) {
+            // Fast re-entry: hide scene 1, show scene 2 at full state
+            setNodeOpacity(nodes[0], 0); agent.group.visible = false;
+            setNodeOpacity(nodes[1], 0); server.group.visible = false;
+            lineMat.opacity = 0; lineGeo.setDrawRange(0, 0);
+            returnMat.opacity = 0; returnGeo.setDrawRange(0, 0);
+            directMat.opacity = 0; directGeo.setDrawRange(0, 0);
+            a2DirectMat.opacity = 0; a2DirectGeo.setDrawRange(0, 0);
+            (pingBall.material as THREE.MeshBasicMaterial).opacity = 0; pingBall.visible = false;
+            (a2PingBall.material as THREE.MeshBasicMaterial).opacity = 0; a2PingBall.visible = false;
+            coin.group.visible = false; coin.group.scale.setScalar(0);
+            verifiedText.sprite.visible = false; verifiedText.mat.opacity = 0;
+            payServerText.sprite.visible = false; payServerText.mat.opacity = 0;
+            keySprite.sprite.visible = false; keySprite.mat.opacity = 0;
+            agent1transSprite.sprite.visible = false; agent1transSprite.mat.opacity = 0;
+            agent2transSprite.sprite.visible = false; agent2transSprite.mat.opacity = 0;
+            agent3transSprite.sprite.visible = false; agent3transSprite.mat.opacity = 0;
+            ripples.forEach((r) => { r.sprite.visible = false; });
+            s2Agents.forEach(a => {
+              a.group.visible = true; a.group.scale.setScalar(1);
+              a.wireMat.opacity = 0.85; a.coreMat.opacity = 1; a.labelMat.opacity = 1;
+            });
+            s2Lines.forEach(l => { l.mat.opacity = 0.7; l.geo.setDrawRange(0, S2_LINE_SEGS + 1); });
+            s2HttpLabels.forEach(l => { l.sprite.visible = true; l.mat.opacity = 1; });
+            s2PingBalls.forEach(b => { b.visible = true; (b.material as THREE.MeshBasicMaterial).opacity = 0.4; });
+            s2State.phase = "active";
+          } else {
+            s2State.phase = "entering";
+          }
         }
 
         if (wantPhase === 0 && s2State.active && s2State.phase === "active") {
@@ -1193,14 +1223,13 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
 
         if (s2State.active) {
           s2State.timer += dt;
-          const st = s2State.timer;
 
           if (s2State.phase !== "entering" && s2State.phase !== "exiting") {
             updateS2Orbits(dt);
           }
 
           if (s2State.phase === "entering") {
-            const p = Math.min(st / s2State.enterDur, 1);
+            const p = Math.min(s2State.timer / s2State.enterDur, 1);
             setNodeOpacity(nodes[0], 1 - p);
             setNodeOpacity(nodes[1], 1 - p);
             lineMat.opacity = Math.max(0, lineMat.opacity - dt / s2State.enterDur);
@@ -1230,12 +1259,10 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
               s2State.phase = "popIn";
               s2State.timer = 0;
             }
-          }
-
-          if (s2State.phase === "popIn") {
-            const p = Math.min(st / s2State.popInDur, 1);
+          } else if (s2State.phase === "popIn") {
+            const p = Math.min(s2State.timer / s2State.popInDur, 1);
             const sc = easeOutBack(p);
-            const op = Math.min(st / (s2State.popInDur * 0.4), 1);
+            const op = Math.min(s2State.timer / (s2State.popInDur * 0.4), 1);
             s2Agents.forEach(a => {
               a.group.scale.setScalar(sc);
               a.wireMat.opacity = op * 0.85;
@@ -1249,22 +1276,18 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
               s2State.phase = "pause";
               s2State.timer = 0;
             }
-          }
-
-          if (s2State.phase === "pause") {
+          } else if (s2State.phase === "pause") {
             s2Agents.forEach(a => {
               a.wire.rotation.y += dt * 0.3;
               a.wire.rotation.x += dt * 0.1;
             });
-            if (st >= s2State.pauseDur) {
+            if (s2State.timer >= s2State.pauseDur) {
               s2Lines.forEach(l => { l.mat.opacity = 0.7; });
               s2State.phase = "drawLines";
               s2State.timer = 0;
             }
-          }
-
-          if (s2State.phase === "drawLines") {
-            const p = Math.min(st / s2State.drawLinesDur, 1);
+          } else if (s2State.phase === "drawLines") {
+            const p = Math.min(s2State.timer / s2State.drawLinesDur, 1);
             const tipIdx = Math.floor(p * S2_LINE_SEGS);
             s2Lines.forEach((line, i) => {
               for (let j = 0; j <= tipIdx; j++) {
@@ -1287,10 +1310,8 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
               s2State.phase = "labelIn";
               s2State.timer = 0;
             }
-          }
-
-          if (s2State.phase === "labelIn") {
-            const p = Math.min(st / s2State.labelInDur, 1);
+          } else if (s2State.phase === "labelIn") {
+            const p = Math.min(s2State.timer / s2State.labelInDur, 1);
             s2HttpLabels.forEach((l, i) => {
               l.mat.opacity = p;
               const mid = getS2Curve(i, 0.5);
@@ -1319,10 +1340,9 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
               s2PingStates.forEach(ps => { ps.t = 0; ps.forward = true; });
               s2State.phase = "active";
               s2State.timer = 0;
+              s2WasActive = true;
             }
-          }
-
-          if (s2State.phase === "active") {
+          } else if (s2State.phase === "active") {
             const PING_DUR = 1.95;
             s2Agents.forEach(a => {
               a.wire.rotation.y += dt * 0.3;
@@ -1359,10 +1379,8 @@ export default function AgentGateScene({ phase = 0 }: { phase?: number }) {
                 mid.z + 0.1
               );
             });
-          }
-
-          if (s2State.phase === "exiting") {
-            const p = Math.min(st / s2State.exitDur, 1);
+          } else if (s2State.phase === "exiting") {
+            const p = Math.min(s2State.timer / s2State.exitDur, 1);
             const inv = 1 - p;
             s2Agents.forEach(a => {
               a.wireMat.opacity = inv * 0.85;
