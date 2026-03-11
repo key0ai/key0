@@ -5,6 +5,10 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to build Docker image from (e.g. v0.1.0)"
+        required: true
 
 jobs:
   publish:
@@ -38,6 +42,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - uses: docker/setup-qemu-action@v4
 
@@ -53,9 +59,9 @@ jobs:
         with:
           images: riklr/key0
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=semver,pattern={{version}},value=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+            type=semver,pattern={{major}},value=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
             type=raw,value=latest
 
       - uses: docker/build-push-action@v6

@@ -108,7 +108,7 @@ Published to Docker Hub on every release: [`riklr/key0`](https://hub.docker.com/
 | Tag | When |
 |---|---|
 | `latest` | Latest stable release |
-| `0.1.0` / `0.1` / `0` | Specific version pinning |
+| `1.2.3` / `1.2` / `1` | Specific version pinning |
 | `canary` | Latest `main` branch build |
 
 Build from source: `docker build -t riklr/key0 .`
