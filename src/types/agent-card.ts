@@ -1,36 +1,16 @@
 export type PaymentProtocol = "x402" | "stripe" | "lightning";
 
-export type SkillPricing = {
-	readonly planId: string;
-	readonly unitAmount: string; // "$0.10" — human-readable USD, settled as USDC
-	readonly description?: string;
-	readonly asset: "USDC";
-	readonly chainId: number; // 8453 (Base) or 84532 (Base Sepolia)
-	readonly walletAddress: `0x${string}`;
-};
-
-export type AgentSkillInputSchema = {
-	readonly type: "object";
-	readonly properties: Record<
-		string,
-		{
-			readonly type: string;
-			readonly description?: string;
-		}
-	>;
-	readonly required?: readonly string[];
-};
-
+// A2A spec-compliant AgentSkill type
+// See: https://a2a-protocol.org/latest/specification/#44-agent-discovery-objects
 export type AgentSkill = {
-	readonly id: string; // "request-access" | "submit-proof"
+	readonly id: string;
 	readonly name: string;
 	readonly description: string;
 	readonly tags: readonly string[];
-	readonly examples?: readonly string[]; // Example usage of the skill
-	readonly inputSchema: AgentSkillInputSchema;
-	readonly outputSchema: AgentSkillInputSchema;
-	readonly pricing?: readonly SkillPricing[];
-	readonly url?: string; // Direct HTTP POST endpoint for this skill
+	readonly examples?: readonly string[];
+	readonly inputModes?: readonly string[];
+	readonly outputModes?: readonly string[];
+	readonly security?: Record<string, string[]>;
 };
 
 export type AgentInterface = {

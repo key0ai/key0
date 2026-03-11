@@ -51,13 +51,10 @@ export class Key0Executor implements AgentExecutor {
 				return;
 			}
 
-			// ----- Route by type -----
-			if (payload["type"] === "AccessRequest" || this.isAccessRequest(payload)) {
-				// Discovery case: AccessRequest without tierId → return product catalog
-				if (!payload["tierId"]) {
-					this.handleDiscovery(taskId, contextId, eventBus);
-					return;
-				}
+			// ----- Route by tierId presence -----
+			// If tierId is present → purchase flow (handleAccessRequest)
+			// Otherwise → discovery flow (handleDiscovery)
+			if (payload["tierId"]) {
 				await this.handleAccessRequest(
 					payload as unknown as AccessRequest,
 					taskId,
@@ -65,14 +62,8 @@ export class Key0Executor implements AgentExecutor {
 					eventBus,
 				);
 			} else {
-				this.sendErrorTask(
-					eventBus,
-					taskId,
-					contextId,
-					"failed",
-					"Unknown message type",
-					`Unsupported message type: "${payload["type"]}". Expected type="AccessRequest" with planId and requestId.`,
-				);
+				// Discovery is the default — safe, free operation
+				this.handleDiscovery(taskId, contextId, eventBus);
 			}
 		} catch (err: unknown) {
 			if (err instanceof Key0Error) {
@@ -230,7 +221,7 @@ export class Key0Executor implements AgentExecutor {
 			);
 		}
 
-		// 2. Look up the challenge record to get planId, resourceId, requestId
+		// 2. Look up the challenge record to get tierId, resourceId, requestId
 		const record = await this.engine.getChallengeRecord(challengeId);
 		if (!record) {
 			throw new Key0Error(
@@ -240,7 +231,7 @@ export class Key0Executor implements AgentExecutor {
 			);
 		}
 
-		const { planId, resourceId, requestId } = record;
+		const { tierId, resourceId, requestId } = record;
 
 		// 3. Emit payment-submitted (working state)
 		this.publishWorkingTask(
@@ -283,7 +274,7 @@ export class Key0Executor implements AgentExecutor {
 		// 6. Issue access grant via the engine
 		const grant: AccessGrant = await this.engine.processHttpPayment(
 			requestId,
-			planId,
+			tierId,
 			resourceId,
 			txHash,
 			payer as `0x${string}` | undefined,
@@ -464,9 +455,5 @@ export class Key0Executor implements AgentExecutor {
 		};
 
 		eventBus.publish(task);
-	}
-
-	private isAccessRequest(data: Record<string, unknown>): boolean {
-		return typeof data["requestId"] === "string" && typeof data["planId"] === "string";
 	}
 }
