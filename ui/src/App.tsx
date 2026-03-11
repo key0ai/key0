@@ -33,14 +33,12 @@ export default function App() {
 						databaseUrl: data.config.databaseUrl ?? "",
 						port: data.config.port ?? "3000",
 						basePath: data.config.basePath ?? "/a2a",
-						agentName: data.config.agentName ?? "Key0 Server",
-						agentDescription: data.config.agentDescription ?? "Payment-gated A2A endpoint",
 						agentUrl: data.config.agentUrl ?? "",
 						providerName: data.config.providerName ?? "",
 						providerUrl: data.config.providerUrl ?? "",
 						challengeTtlSeconds: data.config.challengeTtlSeconds ?? "900",
-						mcpEnabled: data.config.mcpEnabled ?? false,
-						backendAuthStrategy: data.config.backendAuthStrategy ?? "shared-secret",
+						mcpEnabled: data.config.mcpEnabled ?? true,
+						backendAuthStrategy: data.config.backendAuthStrategy ?? "none",
 						issueTokenApiSecret: data.config.issueTokenApiSecret ?? "",
 						gasWalletPrivateKey: data.config.gasWalletPrivateKey ?? "",
 						walletPrivateKey: data.config.walletPrivateKey ?? "",
@@ -59,6 +57,7 @@ export default function App() {
 		setConfig((prev) => ({ ...prev, [key]: value }));
 
 	const isValid =
+		config.providerName.length > 0 &&
 		config.walletAddress.startsWith("0x") &&
 		config.walletAddress.length === 42 &&
 		config.issueTokenApi.length > 0 &&
@@ -115,14 +114,14 @@ export default function App() {
 	};
 
 	return (
-		<div className="min-h-screen">
+		<div className="min-h-screen bg-surface">
 			{/* Header */}
-			<header className="border-b border-neutral-800 bg-neutral-950/80 backdrop-blur-sm sticky top-0 z-10">
+			<header className="sticky top-0 z-10 bg-surface">
 				<div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
 					<div className="flex items-center gap-3">
-						<div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+						<div className="h-10 w-10 rounded-inner bg-surface shadow-neu-inset-deep flex items-center justify-center">
 							<svg
-								className="h-4 w-4 text-emerald-400"
+								className="h-5 w-5 text-foreground"
 								fill="none"
 								viewBox="0 0 24 24"
 								stroke="currentColor"
@@ -137,23 +136,23 @@ export default function App() {
 							</svg>
 						</div>
 						<div>
-							<h1 className="text-base font-semibold text-neutral-100">Key0</h1>
-							<p className="text-xs text-neutral-500">Standalone Setup</p>
+							<h1 className="font-display text-base font-bold text-foreground">Key0</h1>
+							<p className="text-xs text-muted">Setup</p>
 						</div>
 					</div>
 					<div className="flex items-center gap-3">
 						{serverStatus === "running" && (
-							<span className="rounded-full px-3 py-1 text-xs font-medium bg-emerald-500/10 text-emerald-400">
+							<span className="rounded-button px-3 py-1.5 text-xs font-medium bg-surface shadow-neu-sm text-accent-secondary">
 								Running
 							</span>
 						)}
 						{serverStatus === "setup" && (
-							<span className="rounded-full px-3 py-1 text-xs font-medium bg-amber-500/10 text-amber-400">
+							<span className="rounded-button px-3 py-1.5 text-xs font-medium bg-surface shadow-neu-sm text-muted">
 								Not Configured
 							</span>
 						)}
 						<span
-							className={`rounded-full px-3 py-1 text-xs font-medium ${isValid ? "bg-emerald-500/10 text-emerald-400" : "bg-neutral-800 text-neutral-500"}`}
+							className={`rounded-button px-3 py-1.5 text-xs font-medium transition-all duration-300 ${isValid ? "bg-surface shadow-neu-sm text-accent-secondary" : "bg-surface shadow-neu-inset text-muted"}`}
 						>
 							{isValid ? "Ready" : "Incomplete"}
 						</span>
@@ -165,35 +164,42 @@ export default function App() {
 				<div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
 					{/* Left: Config Form */}
 					<div className="space-y-6">
+						{/* 1. Company */}
 						<Section
-							icon="W"
-							title="Wallet & Network"
-							description="Configure your payment destination"
+							icon="C"
+							title="Company"
+							description="Your company identity for agent discovery"
 						>
-							<Field label="Wallet Address" required hint="Your USDC-receiving wallet (0x...)">
-								<Input
-									value={config.walletAddress}
-									onChange={(e) => set("walletAddress", e.target.value)}
-									placeholder="0x..."
-									spellCheck={false}
-								/>
-							</Field>
-
-							<Field label="Network" required>
-								<Select
-									value={config.network}
-									onChange={(e) => set("network", e.target.value as "testnet" | "mainnet")}
-								>
-									<option value="testnet">Base Sepolia (Testnet)</option>
-									<option value="mainnet">Base (Mainnet)</option>
-								</Select>
-							</Field>
+							<div className="grid grid-cols-2 gap-3">
+								<Field label="Company Name" required>
+									<Input
+										value={config.providerName}
+										onChange={(e) => set("providerName", e.target.value)}
+										placeholder="Acme Inc."
+									/>
+								</Field>
+								<Field label="Company URL">
+									<Input
+										value={config.providerUrl}
+										onChange={(e) => set("providerUrl", e.target.value)}
+										placeholder="https://acme.com"
+									/>
+								</Field>
+							</div>
 						</Section>
 
-						<div className="border-t border-neutral-800/50" />
+						<div className="border-t border-foreground/10" />
 
+						{/* 2. Pricing Plans */}
+						<Section icon="$" title="Pricing Plans" description="Define pricing plans for your API">
+							<PlanEditor plans={config.plans} onChange={(p) => set("plans", p)} />
+						</Section>
+
+						<div className="border-t border-foreground/10" />
+
+						{/* 3. Token Issuance */}
 						<Section
-							icon="$"
+							icon="T"
 							title="Token Issuance"
 							description="Your backend endpoint for issuing access tokens"
 						>
@@ -213,121 +219,119 @@ export default function App() {
 								<Select
 									value={config.backendAuthStrategy}
 									onChange={(e) =>
-										set("backendAuthStrategy", e.target.value as "shared-secret" | "jwt")
+										set("backendAuthStrategy", e.target.value as "none" | "shared-secret" | "jwt")
 									}
 								>
+									<option value="none">None (no auth)</option>
 									<option value="shared-secret">Shared Secret (Bearer token)</option>
 									<option value="jwt">JWT (signed token)</option>
 								</Select>
 							</Field>
 
+							{config.backendAuthStrategy !== "none" && (
+								<Field
+									label="API Secret"
+									hint={
+										config.backendAuthStrategy === "jwt"
+											? "Secret used to sign JWT tokens sent to your API"
+											: "Sent as Authorization: Bearer header to your API"
+									}
+								>
+									<Input
+										type="password"
+										value={config.issueTokenApiSecret}
+										onChange={(e) => set("issueTokenApiSecret", e.target.value)}
+										placeholder={
+											config.backendAuthStrategy === "jwt"
+												? "JWT signing secret (min 32 chars)"
+												: "Optional shared secret"
+										}
+									/>
+								</Field>
+							)}
+						</Section>
+
+						<div className="border-t border-foreground/10" />
+
+						{/* 4. Wallet & Network (includes gas wallet) */}
+						<Section
+							icon="W"
+							title="Wallet & Network"
+							description="Configure your payment destination and settlement"
+						>
+							<Field label="Wallet Address" required hint="Your USDC-receiving wallet (0x...)">
+								<Input
+									value={config.walletAddress}
+									onChange={(e) => set("walletAddress", e.target.value)}
+									placeholder="0x..."
+									spellCheck={false}
+								/>
+							</Field>
+
+							<Field label="Network" required>
+								<Select
+									value={config.network}
+									onChange={(e) => set("network", e.target.value as "testnet" | "mainnet")}
+								>
+									<option value="testnet">Base Sepolia (Testnet)</option>
+									<option value="mainnet">Base (Mainnet)</option>
+								</Select>
+							</Field>
+
 							<Field
-								label="API Secret"
-								hint={
-									config.backendAuthStrategy === "jwt"
-										? "Secret used to sign JWT tokens sent to your API"
-										: "Sent as Authorization: Bearer header to your API"
-								}
+								label="Gas Wallet Private Key"
+								hint="Wallet holding ETH on Base for transaction fees. Leave blank for facilitator mode."
 							>
 								<Input
 									type="password"
-									value={config.issueTokenApiSecret}
-									onChange={(e) => set("issueTokenApiSecret", e.target.value)}
-									placeholder={
-										config.backendAuthStrategy === "jwt"
-											? "JWT signing secret (min 32 chars)"
-											: "Optional shared secret"
-									}
+									value={config.gasWalletPrivateKey}
+									onChange={(e) => set("gasWalletPrivateKey", e.target.value)}
+									placeholder="0x..."
+									spellCheck={false}
 								/>
 							</Field>
 						</Section>
 
-						<div className="border-t border-neutral-800/50" />
-
-						<Section icon="T" title="Pricing Plans" description="Define pricing plans for your API">
-							<PlanEditor plans={config.plans} onChange={(p) => set("plans", p)} />
-						</Section>
-
-						<div className="border-t border-neutral-800/50" />
-
 						{/* MCP toggle */}
-						<div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/50 px-4 py-3">
+						<div className="flex items-center justify-between rounded-button bg-surface shadow-neu px-5 py-4">
 							<div>
-								<span className="text-sm font-medium text-neutral-300">Enable MCP</span>
-								<p className="text-xs text-neutral-500">
+								<span className="text-sm font-medium text-foreground">Enable MCP</span>
+								<p className="text-xs text-muted">
 									Expose discover_plans and request_access as MCP tools
 								</p>
 							</div>
 							<button
 								type="button"
 								onClick={() => set("mcpEnabled", !config.mcpEnabled)}
-								className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-									config.mcpEnabled ? "bg-emerald-500" : "bg-neutral-700"
+								className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-all duration-300 ${
+									config.mcpEnabled ? "shadow-neu-inset bg-accent" : "shadow-neu-inset bg-surface"
 								}`}
 							>
 								<span
-									className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
-										config.mcpEnabled ? "translate-x-5" : "translate-x-0"
+									className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-surface-raised shadow-neu-sm transition-all duration-300 mt-1 ${
+										config.mcpEnabled ? "translate-x-6" : "translate-x-1"
 									}`}
 								/>
 							</button>
 						</div>
 
-						<div className="border-t border-neutral-800/50" />
+						<div className="border-t border-foreground/10" />
 
-						<Section
-							icon="I"
-							title="Agent Identity"
-							description="How your agent appears in discovery"
-							defaultOpen={false}
-						>
-							<Field label="Agent Name">
-								<Input
-									value={config.agentName}
-									onChange={(e) => set("agentName", e.target.value)}
-									placeholder="Key0 Server"
-								/>
-							</Field>
-							<Field label="Agent Description">
-								<Input
-									value={config.agentDescription}
-									onChange={(e) => set("agentDescription", e.target.value)}
-									placeholder="Payment-gated A2A endpoint"
-								/>
-							</Field>
-							<Field label="Agent URL" hint="Public URL of this server">
-								<Input
-									value={config.agentUrl}
-									onChange={(e) => set("agentUrl", e.target.value)}
-									placeholder="http://localhost:3000"
-								/>
-							</Field>
-							<div className="grid grid-cols-2 gap-3">
-								<Field label="Provider Name">
-									<Input
-										value={config.providerName}
-										onChange={(e) => set("providerName", e.target.value)}
-										placeholder="Your Company"
-									/>
-								</Field>
-								<Field label="Provider URL">
-									<Input
-										value={config.providerUrl}
-										onChange={(e) => set("providerUrl", e.target.value)}
-										placeholder="https://example.com"
-									/>
-								</Field>
-							</div>
-						</Section>
-
-						<div className="border-t border-neutral-800/50" />
-
+						{/* 5. Server & Storage */}
 						<Section
 							icon="S"
 							title="Server & Storage"
 							description="Port, storage backend, and challenge settings"
 							defaultOpen={false}
 						>
+							<Field label="Public URL" hint="Where agents can reach this server">
+								<Input
+									value={config.agentUrl}
+									onChange={(e) => set("agentUrl", e.target.value)}
+									placeholder="http://localhost:3000"
+								/>
+							</Field>
+
 							<Field label="Port">
 								<Input
 									type="number"
@@ -385,30 +389,9 @@ export default function App() {
 							</Field>
 						</Section>
 
-						<div className="border-t border-neutral-800/50" />
+						<div className="border-t border-foreground/10" />
 
-						<Section
-							icon="G"
-							title="Settlement"
-							description="Gas wallet for self-contained on-chain settlement"
-							defaultOpen={false}
-						>
-							<Field
-								label="Gas Wallet Private Key"
-								hint="Wallet holding ETH on Base for transaction fees. Leave blank for facilitator mode."
-							>
-								<Input
-									type="password"
-									value={config.gasWalletPrivateKey}
-									onChange={(e) => set("gasWalletPrivateKey", e.target.value)}
-									placeholder="0x..."
-									spellCheck={false}
-								/>
-							</Field>
-						</Section>
-
-						<div className="border-t border-neutral-800/50" />
-
+						{/* 6. Refund Cron */}
 						<Section
 							icon="R"
 							title="Refund Cron"
@@ -445,15 +428,15 @@ export default function App() {
 											/>
 										</Field>
 									</div>
-									<p className="text-xs text-neutral-500">
+									<p className="text-xs text-muted">
 										Scans every{" "}
-										<span className="text-neutral-400">
+										<span className="text-foreground font-medium">
 											{Number(config.refundIntervalMs) >= 60000
 												? `${(Number(config.refundIntervalMs) / 60000).toFixed(1).replace(/\.0$/, "")} min`
 												: `${(Number(config.refundIntervalMs) / 1000).toFixed(1).replace(/\.0$/, "")}s`}
 										</span>{" "}
 										— refunds stuck payments older than{" "}
-										<span className="text-neutral-400">
+										<span className="text-foreground font-medium">
 											{Number(config.refundMinAgeMs) >= 60000
 												? `${(Number(config.refundMinAgeMs) / 60000).toFixed(1).replace(/\.0$/, "")} min`
 												: `${(Number(config.refundMinAgeMs) / 1000).toFixed(1).replace(/\.0$/, "")}s`}
@@ -468,10 +451,10 @@ export default function App() {
 							<div className="pt-4">
 								{saveMessage && (
 									<div
-										className={`mb-4 rounded-lg px-4 py-3 text-sm ${
+										className={`mb-4 rounded-button px-4 py-3 text-sm ${
 											saveMessage.type === "success"
-												? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-												: "bg-red-500/10 text-red-400 border border-red-500/20"
+												? "bg-surface shadow-neu-inset text-accent-secondary"
+												: "bg-surface shadow-neu-inset text-foreground"
 										}`}
 									>
 										{saveMessage.text}
@@ -481,10 +464,10 @@ export default function App() {
 									type="button"
 									onClick={handleSaveAndLaunch}
 									disabled={!isValid || saving}
-									className={`w-full rounded-lg px-6 py-3 text-sm font-semibold transition-all ${
+									className={`w-full rounded-button px-6 py-3.5 text-sm font-semibold font-body transition-all duration-300 ease-out min-h-[44px] ${
 										isValid && !saving
-											? "bg-emerald-500 text-white hover:bg-emerald-400 shadow-lg shadow-emerald-500/20"
-											: "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+											? "bg-accent text-white shadow-neu hover:-translate-y-px hover:shadow-neu-hover active:translate-y-[0.5px] active:shadow-neu-inset"
+											: "bg-surface shadow-neu-inset text-muted cursor-not-allowed"
 									}`}
 								>
 									{saving
@@ -498,7 +481,7 @@ export default function App() {
 					</div>
 
 					{/* Right: Output Panel */}
-					<div className="lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)]">
+					<div className="lg:sticky lg:top-20 lg:h-[calc(100vh-7rem)]">
 						<OutputPanel config={config} />
 					</div>
 				</div>

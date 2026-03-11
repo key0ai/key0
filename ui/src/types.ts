@@ -19,9 +19,7 @@ export interface Config {
 	port: string;
 	basePath: string;
 
-	// Agent Card
-	agentName: string;
-	agentDescription: string;
+	// Agent Card (agentName & agentDescription derived from providerName)
 	agentUrl: string;
 	providerName: string;
 	providerUrl: string;
@@ -36,7 +34,7 @@ export interface Config {
 	mcpEnabled: boolean;
 
 	// Token API Auth
-	backendAuthStrategy: "shared-secret" | "jwt";
+	backendAuthStrategy: "none" | "shared-secret" | "jwt";
 	issueTokenApiSecret: string;
 
 	// Settlement
@@ -60,8 +58,6 @@ export const defaultConfig: Config = {
 	port: "3000",
 	basePath: "/a2a",
 
-	agentName: "",
-	agentDescription: "",
 	agentUrl: "http://localhost:3000",
 	providerName: "",
 	providerUrl: "",
@@ -76,9 +72,9 @@ export const defaultConfig: Config = {
 
 	challengeTtlSeconds: "900",
 
-	mcpEnabled: false,
+	mcpEnabled: true,
 
-	backendAuthStrategy: "shared-secret",
+	backendAuthStrategy: "none",
 	issueTokenApiSecret: "",
 
 	gasWalletPrivateKey: "",

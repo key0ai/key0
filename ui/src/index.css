@@ -1,1 +1,81 @@
 @import "tailwindcss";
+
+/* ─── Design Tokens (matched from Key2AWebsite) ───────── */
+
+@theme {
+	--color-surface: #E8E8E8;
+	--color-surface-raised: #EFEFEF;
+	--color-foreground: #3a3a3a;
+	--color-muted: #737373;
+	--color-accent: #1a1a1a;
+	--color-accent-light: #404040;
+	--color-accent-secondary: #525252;
+	--color-white: #ffffff;
+
+	--font-display: "Plus Jakarta Sans", sans-serif;
+	--font-body: "DM Sans", sans-serif;
+
+	--radius-card: 24px;
+	--radius-button: 12px;
+	--radius-inner: 10px;
+	--radius-input: 8px;
+}
+
+/* ─── Neumorphic Shadow Utilities ──────────────────────── */
+
+@utility shadow-neu {
+	box-shadow:
+		9px 9px 16px rgba(0, 0, 0, 0.14),
+		-9px -9px 16px rgba(255, 255, 255, 0.6);
+}
+
+@utility shadow-neu-hover {
+	box-shadow:
+		12px 12px 20px rgba(0, 0, 0, 0.18),
+		-12px -12px 20px rgba(255, 255, 255, 0.65);
+}
+
+@utility shadow-neu-inset {
+	box-shadow:
+		inset 3px 3px 6px rgba(0, 0, 0, 0.1),
+		inset -3px -3px 6px rgba(255, 255, 255, 0.5);
+}
+
+@utility shadow-neu-inset-deep {
+	box-shadow:
+		inset 6px 6px 12px rgba(0, 0, 0, 0.14),
+		inset -6px -6px 12px rgba(255, 255, 255, 0.55);
+}
+
+@utility shadow-neu-sm {
+	box-shadow:
+		4px 4px 8px rgba(0, 0, 0, 0.1),
+		-4px -4px 8px rgba(255, 255, 255, 0.5);
+}
+
+/* ─── Base ─────────────────────────────────────────────── */
+
+html {
+	scroll-behavior: smooth;
+}
+
+body {
+	background: #e8e8e8;
+	color: #3a3a3a;
+	font-family: "DM Sans", sans-serif;
+}
+
+/* ─── Focus Visible ────────────────────────────────────── */
+
+*:focus-visible {
+	outline: none;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+	box-shadow:
+		inset 4px 4px 8px rgba(0, 0, 0, 0.12),
+		inset -4px -4px 8px rgba(255, 255, 255, 0.5),
+		0 0 0 2px rgba(58, 58, 58, 0.15);
+}

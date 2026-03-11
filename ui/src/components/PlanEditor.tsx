@@ -31,20 +31,17 @@ export function PlanEditor({ plans, onChange }: PlanEditorProps) {
 	return (
 		<div className="space-y-4">
 			{plans.map((p, i) => (
-				<div
-					key={p.planId || i}
-					className="relative rounded-lg border border-neutral-800 bg-neutral-900/50 p-4 space-y-3"
-				>
+				<div key={i} className="relative rounded-inner bg-surface shadow-neu-inset p-4 space-y-3">
 					{/* Header */}
 					<div className="flex items-center justify-between">
-						<span className="text-xs font-medium text-neutral-500 uppercase tracking-wider">
+						<span className="text-xs font-bold font-display text-muted uppercase tracking-wider">
 							Plan {i + 1}
 						</span>
 						{plans.length > 1 && (
 							<button
 								type="button"
 								onClick={() => remove(i)}
-								className="text-neutral-500 hover:text-red-400 transition-colors"
+								className="text-muted hover:text-accent transition-colors"
 								title="Remove plan"
 							>
 								<svg
@@ -72,14 +69,19 @@ export function PlanEditor({ plans, onChange }: PlanEditorProps) {
 						</Field>
 						<Field label="Price (USDC)" required hint="e.g. 15.00 or 0.015">
 							<div className="flex">
-								<span className="inline-flex items-center rounded-l-lg border border-r-0 border-neutral-700 bg-neutral-800 px-3 text-sm text-neutral-400">
+								<span className="inline-flex items-center rounded-l-input bg-surface px-3 text-sm font-medium text-muted shadow-neu-inset">
 									$
 								</span>
 								<input
+									inputMode="decimal"
 									value={p.unitAmount.replace(/^\$/, "")}
-									onChange={(e) => update(i, "unitAmount", `$${e.target.value.replace(/^\$/, "")}`)}
+									onChange={(e) => {
+										const raw = e.target.value.replace(/^\$/, "");
+										const sanitized = raw.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+										update(i, "unitAmount", `$${sanitized}`);
+									}}
 									placeholder="15.00"
-									className="w-full rounded-r-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+									className="w-full rounded-r-input border-none bg-surface px-3 py-2 text-sm text-foreground placeholder-muted shadow-neu-inset transition-all focus:outline-none"
 								/>
 							</div>
 						</Field>
@@ -92,7 +94,7 @@ export function PlanEditor({ plans, onChange }: PlanEditorProps) {
 							onChange={(e) => update(i, "description", e.target.value)}
 							placeholder="Best for developers running daily workflows. 1,650 requests/month, 10 concurrent agents, priority email support."
 							rows={3}
-							className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 resize-y"
+							className="w-full rounded-input border-none bg-surface px-3 py-2 text-sm text-foreground placeholder-muted shadow-neu-inset transition-all focus:outline-none resize-y"
 						/>
 					</Field>
 				</div>
@@ -101,7 +103,7 @@ export function PlanEditor({ plans, onChange }: PlanEditorProps) {
 			<button
 				type="button"
 				onClick={add}
-				className="flex items-center gap-2 rounded-lg border border-dashed border-neutral-700 px-4 py-2 text-sm text-neutral-400 transition-colors hover:border-emerald-500 hover:text-emerald-400"
+				className="flex items-center gap-2 rounded-button bg-surface px-4 py-2.5 text-sm font-medium text-muted shadow-neu transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-neu-hover hover:text-foreground active:translate-y-[0.5px] active:shadow-neu-inset"
 			>
 				<svg
 					className="h-4 w-4"

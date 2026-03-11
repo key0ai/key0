@@ -24,6 +24,7 @@ import {
 	type ISeenTxStore,
 	type IssueTokenParams,
 	type NetworkName,
+	noAuth,
 	PostgresChallengeStore,
 	PostgresSeenTxStore,
 	processRefunds,
@@ -44,7 +45,7 @@ const NETWORK = (process.env.KEY0_NETWORK ?? "testnet") as NetworkName;
 const SECRET = process.env.KEY0_ACCESS_TOKEN_SECRET!;
 const BACKEND_API_URL = process.env.BACKEND_API_URL!;
 const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
-const BACKEND_AUTH_STRATEGY = process.env.BACKEND_AUTH_STRATEGY || "shared-secret"; // "shared-secret" | "jwt"
+const BACKEND_AUTH_STRATEGY = process.env.BACKEND_AUTH_STRATEGY || "none"; // "none" | "shared-secret" | "jwt"
 const STORAGE_BACKEND = process.env.STORAGE_BACKEND || "redis"; // "redis" | "postgres"
 
 // Gas wallet configuration for facilitation
@@ -84,6 +85,10 @@ if (STORAGE_BACKEND === "postgres" && !process.env.DATABASE_URL) {
 
 if (BACKEND_AUTH_STRATEGY === "shared-secret" && !INTERNAL_AUTH_SECRET) {
 	console.error("ERROR: INTERNAL_AUTH_SECRET is required for shared-secret auth");
+	process.exit(1);
+}
+if (BACKEND_AUTH_STRATEGY === "jwt" && !SECRET) {
+	console.error("ERROR: KEY0_ACCESS_TOKEN_SECRET is required for jwt auth");
 	process.exit(1);
 }
 
@@ -127,10 +132,14 @@ if (BACKEND_AUTH_STRATEGY === "jwt") {
 	// The backend must have the corresponding public key or shared secret
 	console.log("Using Signed JWT auth strategy for backend communication");
 	authProvider = signedJwtAuth(serviceTokenIssuer, "backend-service");
-} else {
-	// Strategy 1: Shared Secret (default)
+} else if (BACKEND_AUTH_STRATEGY === "shared-secret") {
+	// Strategy 1: Shared Secret
 	console.log("Using Shared Secret auth strategy for backend communication");
 	authProvider = sharedSecretAuth("X-Internal-Auth", INTERNAL_AUTH_SECRET);
+} else {
+	// No auth
+	console.log("Using No Auth strategy for backend communication");
+	authProvider = noAuth();
 }
 
 // Determine token issuance mode

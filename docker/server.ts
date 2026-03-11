@@ -57,7 +57,7 @@ app.get("/api/setup/status", (_req, res) => {
 			providerName: process.env.PROVIDER_NAME ?? "",
 			providerUrl: process.env.PROVIDER_URL ?? "",
 			challengeTtlSeconds: process.env.CHALLENGE_TTL_SECONDS ?? "900",
-			backendAuthStrategy: process.env.BACKEND_AUTH_STRATEGY ?? "shared-secret",
+			backendAuthStrategy: process.env.BACKEND_AUTH_STRATEGY ?? "none",
 			issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ? "••••••" : "",
 			gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY ? "••••••" : "",
 			walletPrivateKey: process.env.KEY0_WALLET_PRIVATE_KEY ? "••••••" : "",
@@ -77,8 +77,8 @@ interface SetupBody {
 	databaseUrl: string;
 	port: string;
 	basePath: string;
-	agentName: string;
-	agentDescription: string;
+	agentName?: string;
+	agentDescription?: string;
 	agentUrl: string;
 	providerName: string;
 	providerUrl: string;
@@ -89,7 +89,7 @@ interface SetupBody {
 	}>;
 	challengeTtlSeconds: string;
 	mcpEnabled: boolean;
-	backendAuthStrategy: "shared-secret" | "jwt";
+	backendAuthStrategy: "none" | "shared-secret" | "jwt";
 	issueTokenApiSecret: string;
 	gasWalletPrivateKey: string;
 	walletPrivateKey: string;
@@ -114,8 +114,8 @@ app.post("/api/setup", async (req, res) => {
 		`ISSUE_TOKEN_API=${body.issueTokenApi}`,
 		`KEY0_NETWORK=${body.network || "testnet"}`,
 		`PORT=${body.port || PORT}`,
-		`AGENT_NAME=${q(body.agentName || "Key0 Server")}`,
-		`AGENT_DESCRIPTION=${q(body.agentDescription || "Payment-gated A2A endpoint")}`,
+		`AGENT_NAME=${q(body.agentName || (body.providerName ? `${body.providerName} Agent` : "Key0 Server"))}`,
+		`AGENT_DESCRIPTION=${q(body.agentDescription || (body.providerName ? `Payment-gated API by ${body.providerName}` : "Payment-gated A2A endpoint"))}`,
 		`AGENT_URL=${body.agentUrl || `http://localhost:${body.port || PORT}`}`,
 	];
 
@@ -142,10 +142,10 @@ app.post("/api/setup", async (req, res) => {
 	if (body.mcpEnabled) {
 		lines.push(`MCP_ENABLED=true`);
 	}
-	if (body.backendAuthStrategy && body.backendAuthStrategy !== "shared-secret") {
+	if (body.backendAuthStrategy && body.backendAuthStrategy !== "none") {
 		lines.push(`BACKEND_AUTH_STRATEGY=${body.backendAuthStrategy}`);
 	}
-	if (body.issueTokenApiSecret) {
+	if (body.backendAuthStrategy !== "none" && body.issueTokenApiSecret) {
 		lines.push(`ISSUE_TOKEN_API_SECRET=${body.issueTokenApiSecret}`);
 	}
 	if (body.gasWalletPrivateKey && !body.gasWalletPrivateKey.includes("•")) {

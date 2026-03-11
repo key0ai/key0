@@ -8,6 +8,19 @@ import { Key0Error } from "../types/index.js";
 export type AuthHeaderProvider = () => Promise<Record<string, string>>;
 
 /**
+ * No authentication — sends no auth headers.
+ * Useful for local development or trusted networks.
+ *
+ * @example
+ * ```typescript
+ * const auth = noAuth();
+ * ```
+ */
+export function noAuth(): AuthHeaderProvider {
+	return async () => ({});
+}
+
+/**
  * Strategy 1: Shared Secret / API Key
  * Returns a static header with a secret value.
  *
