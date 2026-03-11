@@ -15,7 +15,7 @@ export function key0App(opts: Key0Config): Hono {
 
 	app.get(`/${AGENT_CARD_PATH}`, (c) => c.json(agentCard));
 
-	const basePath = opts.config.basePath ?? "/agent";
+	const basePath = opts.config.basePath ?? "/a2a";
 	app.post(basePath, async (c) => {
 		// TODO: Use official A2A Hono handler when available
 		// For now, this is a placeholder or we need to bridge manually.

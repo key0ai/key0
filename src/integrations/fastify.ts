@@ -20,7 +20,7 @@ export async function key0Plugin(fastify: FastifyInstance, opts: Key0Config): Pr
 	});
 
 	// A2A endpoint
-	const basePath = opts.config.basePath ?? "/agent";
+	const basePath = opts.config.basePath ?? "/a2a";
 	fastify.post(basePath, async (_request: FastifyRequest, reply: FastifyReply) => {
 		// TODO: Use official A2A Fastify handler when available
 		return reply.code(501).send({ error: "Fastify support pending A2A SDK update" });

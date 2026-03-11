@@ -12,7 +12,7 @@
  * No wallet needed — pure HTTP test.
  */
 
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
 

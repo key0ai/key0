@@ -289,6 +289,8 @@ app.listen(3000);
 
 ### Hono
 
+> A2A endpoints mount at `/a2a` by default (set `config.basePath` to override).
+
 ```typescript
 import { Hono } from "hono";
 import { key0App, honoValidateAccessToken } from "@riklr/key0/hono";
@@ -316,6 +318,8 @@ export default { port: 3000, fetch: app.fetch };
 ```
 
 ### Fastify
+
+> A2A endpoints mount at `/a2a` by default (set `config.basePath` to override).
 
 ```typescript
 import Fastify from "fastify";

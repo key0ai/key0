@@ -6,10 +6,10 @@
  * and the audit trail.
  */
 
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 
-import { makeClientE2eClient } from "../fixtures/wallets.ts";
+import { key0WalletAddress, makeClientE2eClient } from "../fixtures/wallets.ts";
 import {
 	readAuditHistory,
 	readChallengeRecord,
