@@ -70,7 +70,7 @@ Client → Protected API with Bearer JWT
 
 ### Auth Helpers (`src/helpers/`)
 
-`createSharedSecretAuth`, `createJwtAuth`, `createOAuthAuth` — service-to-service auth strategies for outbound requests from client agents. `RemoteVerifier` and `RemoteTokenIssuer` wrap remote Key0 endpoints.
+`noAuth`, `createSharedSecretAuth`, `createJwtAuth`, `createOAuthAuth` — service-to-service auth strategies for outbound requests from client agents. `noAuth` sends no headers (local dev / trusted networks). `RemoteVerifier` and `RemoteTokenIssuer` wrap remote Key0 endpoints.
 
 ## Key Configuration
 
