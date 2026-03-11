@@ -38,6 +38,12 @@ if (hasUI) {
 }
 
 // ─── Setup API ────────────────────────────────────────────────────────────
+//
+// WARNING: /api/setup and /setup are unauthenticated by design — intended for
+// Docker-internal use where the port is not exposed publicly.
+// For production deployments, restrict access to /api/setup and /setup via
+// network policy or a reverse proxy (e.g. allow only localhost / VPN).
+// See docs/setup-ui.md for details.
 
 app.get("/api/setup/status", (_req, res) => {
 	let plans: Array<{ planId: string; unitAmount: string; description?: string }> | undefined;
