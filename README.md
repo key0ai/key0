@@ -1,4 +1,4 @@
-# Key0
+<img src="docs/logo.svg" alt="Key0" width="260" />
 
 Sell anything to AI agents — APIs, data, goods or services — with built-in payments, zero proxying, and no architectural changes to your existing stack.
 
