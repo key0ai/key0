@@ -559,21 +559,50 @@ export function generateDockerRun(config: Config): string {
 }
 
 export function generateDockerCompose(config: Config): string {
+	// Determine which infra is "managed" (bundled in compose) vs external
+	const managedRedis = !config.redisUrl || config.redisUrl === "redis://redis:6379";
+	const managedPostgres =
+		config.storageBackend === "postgres" &&
+		(!config.databaseUrl ||
+			config.databaseUrl === "postgresql://key0:key0@postgres:5432/key0");
+
+	// Build the KEY0_MANAGED_INFRA value
+	const managedParts: string[] = [];
+	if (managedRedis) managedParts.push("redis");
+	if (managedPostgres) managedParts.push("postgres");
+	const managedInfraValue = managedParts.join(",");
+
+	// Derive the active profile for the quickstart command
+	const profileFlag =
+		managedRedis && managedPostgres
+			? " --profile full"
+			: managedRedis
+				? " --profile redis"
+				: managedPostgres
+					? " --profile postgres"
+					: "";
+
 	const envVars: Record<string, string> = {
 		KEY0_WALLET_ADDRESS: config.walletAddress,
 		ISSUE_TOKEN_API: config.issueTokenApi,
 		KEY0_NETWORK: config.network,
 		STORAGE_BACKEND: config.storageBackend,
-		REDIS_URL: config.storageBackend === "postgres" ? config.redisUrl : "redis://redis:6379",
+		REDIS_URL: managedRedis ? "redis://redis:6379" : config.redisUrl,
 		PORT: config.port,
 		AGENT_URL: config.agentUrl,
 	};
 
+	if (managedInfraValue) {
+		envVars.KEY0_MANAGED_INFRA = managedInfraValue;
+	}
+
 	envVars.AGENT_NAME = _deriveAgentName(config.providerName);
 	envVars.AGENT_DESCRIPTION = _deriveAgentDescription(config.providerName);
 
-	if (config.storageBackend === "postgres" && config.databaseUrl) {
-		envVars.DATABASE_URL = config.databaseUrl;
+	if (config.storageBackend === "postgres") {
+		envVars.DATABASE_URL = managedPostgres
+			? "postgresql://key0:key0@postgres:5432/key0"
+			: config.databaseUrl;
 	}
 
 	if (config.basePath && config.basePath !== "/a2a") {
@@ -613,46 +642,67 @@ export function generateDockerCompose(config: Config): string {
 		.map(([k, v]) => `      ${k}: "${v}"`)
 		.join("\n");
 
-	const dependsOn = ["redis"];
-	if (config.storageBackend === "postgres") dependsOn.push("postgres");
+	// depends_on only for managed services
+	const dependsOnEntries: string[] = [];
+	if (managedRedis) dependsOnEntries.push("      redis:\n        condition: service_healthy\n        required: false");
+	if (managedPostgres) dependsOnEntries.push("      postgres:\n        condition: service_healthy\n        required: false");
 
-	let services = `services:
+	// Profile comment header
+	const profileComment = profileFlag
+		? `# Start command:\n#   ${managedInfraValue ? `KEY0_MANAGED_INFRA=${managedInfraValue} ` : ""}docker compose${profileFlag} up\n\n`
+		: `# Start command:\n#   docker compose up\n\n`;
+
+	let services = `${profileComment}services:
   key0:
     image: key0ai/key0:latest
     ports:
       - "${config.port}:${config.port}"
     environment:
 ${envLines}
-    depends_on:
-${dependsOn.map((d) => `      - ${d}`).join("\n")}
+    volumes:
+      - key0-config:/app/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"`;
 
+	if (dependsOnEntries.length > 0) {
+		services += `\n    depends_on:\n${dependsOnEntries.join("\n")}`;
+	}
+
+	if (managedRedis) {
+		services += `\n
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    profiles: [redis, full]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     volumes:
-      - redis-data:/data
-`;
+      - redis-data:/data`;
+	}
 
-	if (config.storageBackend === "postgres") {
-		services += `
+	if (managedPostgres) {
+		services += `\n
   postgres:
     image: postgres:16-alpine
-    ports:
-      - "5432:5432"
+    profiles: [postgres, full]
     environment:
       POSTGRES_USER: key0
       POSTGRES_PASSWORD: key0
       POSTGRES_DB: key0
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U key0 -d key0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
-      - pg-data:/var/lib/postgresql/data
-`;
+      - postgres-data:/var/lib/postgresql/data`;
 	}
 
-	services += `\nvolumes:\n  redis-data:\n`;
-	if (config.storageBackend === "postgres") {
-		services += `  pg-data:\n`;
-	}
+	services += `\n\nvolumes:\n  key0-config:\n`;
+	if (managedRedis) services += `  redis-data:\n`;
+	if (managedPostgres) services += `  postgres-data:\n`;
 
 	return services;
 }

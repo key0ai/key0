@@ -18,7 +18,35 @@ const WALLET_ADDRESS = process.env.KEY0_WALLET_ADDRESS;
 const ISSUE_TOKEN_API = process.env.ISSUE_TOKEN_API;
 const REDIS_URL = process.env.REDIS_URL;
 
-const isConfigured = Boolean(WALLET_ADDRESS && ISSUE_TOKEN_API && REDIS_URL);
+// Parse which infra services are managed by Docker Compose profiles
+// e.g. KEY0_MANAGED_INFRA=redis,postgres when using --profile full
+const MANAGED_INFRA = (process.env.KEY0_MANAGED_INFRA ?? "")
+	.split(",")
+	.map((s) => s.trim().toLowerCase())
+	.filter(Boolean);
+
+// A URL is "usable" only when it's a real user-supplied external URL,
+// OR the matching compose service is actually running (listed in MANAGED_INFRA).
+// Compose-default internal hostnames (redis://redis:*, *@postgres:*) are treated
+// as placeholder — they'll cause ENOTFOUND if the profile service isn't running.
+const redisUsable = Boolean(
+	REDIS_URL &&
+		(MANAGED_INFRA.includes("redis") || !REDIS_URL.startsWith("redis://redis:")),
+);
+const postgresUrlUsable = Boolean(
+	process.env.DATABASE_URL &&
+		(MANAGED_INFRA.includes("postgres") ||
+			!/postgresql:\/\/[^@]+@postgres:/.test(process.env.DATABASE_URL)),
+);
+const STORAGE_BACKEND_EARLY = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
+
+const isConfigured = Boolean(
+	WALLET_ADDRESS &&
+		ISSUE_TOKEN_API &&
+		(STORAGE_BACKEND_EARLY === "postgres"
+			? postgresUrlUsable && (redisUsable || MANAGED_INFRA.includes("redis"))
+			: redisUsable),
+);
 
 const app = express();
 app.use(express.json());
@@ -56,8 +84,16 @@ app.get("/api/setup/status", (_req, res) => {
 		// ignore — UI will fall back to its default
 	}
 
+	// Parse which infra services are managed by Docker Compose (comma-separated)
+	// e.g. KEY0_MANAGED_INFRA=redis,postgres when using --profile full
+	const managedInfra = (process.env.KEY0_MANAGED_INFRA ?? "")
+		.split(",")
+		.map((s) => s.trim().toLowerCase())
+		.filter(Boolean);
+
 	res.json({
 		configured: isConfigured,
+		managedInfra,
 		config: {
 			walletAddress: WALLET_ADDRESS ?? "",
 			issueTokenApi: ISSUE_TOKEN_API ?? "",

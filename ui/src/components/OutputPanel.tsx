@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	generateAgentCardTerminal,
 	generateDockerCompose,
@@ -117,6 +117,20 @@ export function OutputPanel({ config }: OutputPanelProps) {
 	const [deployTab, setDeployTab] = useState<DeployTab>("env");
 	const [copied, setCopied] = useState(false);
 
+	// Hide "docker run" when compose-managed infra is detected —
+	// internal hostnames only resolve inside the compose network, so
+	// docker run alone can't start the bundled Redis/Postgres services.
+	const hasManagedInfra =
+		config.redisUrl === "redis://redis:6379" ||
+		config.databaseUrl === "postgresql://key0:key0@postgres:5432/key0";
+
+	// Auto-switch away from docker-run when user selects managed infra
+	useEffect(() => {
+		if (hasManagedInfra && deployTab === "docker-run") {
+			setDeployTab("docker-compose");
+		}
+	}, [hasManagedInfra, deployTab]);
+
 	const agentCardBlocks = generateAgentCardTerminal(config);
 	const mcpBlocks = generateMcpTerminal(config);
 
@@ -125,7 +139,7 @@ export function OutputPanel({ config }: OutputPanelProps) {
 		mcp: { label: "MCP" },
 	};
 
-	const deployOutputs: Record<DeployTab, { label: string; content: string; filename?: string }> = {
+	const allDeployOutputs: Record<DeployTab, { label: string; content: string; filename?: string }> = {
 		env: { label: ".env", content: generateEnv(config), filename: ".env" },
 		"docker-run": { label: "docker run", content: generateDockerRun(config) },
 		"docker-compose": {
@@ -134,6 +148,15 @@ export function OutputPanel({ config }: OutputPanelProps) {
 			filename: "docker-compose.yml",
 		},
 	};
+
+	// Filter out docker-run tab when managed infra is in use.
+	// Cast back to Record<DeployTab,…> — safe at runtime because the useEffect
+	// above switches deployTab away from "docker-run" before it can be accessed.
+	const deployOutputs = (
+		hasManagedInfra
+			? (({ "docker-run": _omit, ...rest }) => rest)(allDeployOutputs)
+			: allDeployOutputs
+	) as Record<DeployTab, { label: string; content: string; filename?: string }>;
 
 	const getActiveContent = (): string => {
 		if (group === "deploy") return deployOutputs[deployTab].content;

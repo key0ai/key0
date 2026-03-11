@@ -10,11 +10,15 @@ type ServerStatus = "loading" | "setup" | "running" | "standalone";
 export default function App() {
 	const [config, setConfig] = useState<Config>(defaultConfig);
 	const [serverStatus, setServerStatus] = useState<ServerStatus>("loading");
+	const [managedInfra, setManagedInfra] = useState<string[]>([]);
 	const [saving, setSaving] = useState(false);
 	const [saveMessage, setSaveMessage] = useState<{
 		type: "success" | "error";
 		text: string;
 	} | null>(null);
+
+	// Returns true when the given infra service is bundled by Docker Compose profile
+	const isManaged = (svc: string) => managedInfra.includes(svc);
 
 	// Check if we're running inside Docker (API available) or standalone
 	useEffect(() => {
@@ -22,30 +26,55 @@ export default function App() {
 			.then((r) => r.json())
 			.then((data) => {
 				setServerStatus(data.configured ? "running" : "setup");
-				if (data.config) {
-					setConfig((prev) => ({
-						...prev,
-						walletAddress: data.config.walletAddress ?? "",
-						issueTokenApi: data.config.issueTokenApi ?? "",
-						network: data.config.network ?? "testnet",
-						storageBackend: data.config.storageBackend ?? "redis",
-						redisUrl: data.config.redisUrl ?? "redis://redis:6379",
-						databaseUrl: data.config.databaseUrl ?? "",
-						port: data.config.port ?? "3000",
-						basePath: data.config.basePath ?? "/a2a",
-						agentUrl: data.config.agentUrl ?? "",
-						providerName: data.config.providerName ?? "",
-						providerUrl: data.config.providerUrl ?? "",
-						...(data.config.plans?.length > 0 ? { plans: data.config.plans } : {}),
-						challengeTtlSeconds: data.config.challengeTtlSeconds ?? "900",
-						mcpEnabled: data.config.mcpEnabled ?? true,
-						backendAuthStrategy: data.config.backendAuthStrategy ?? "none",
-						issueTokenApiSecret: data.config.issueTokenApiSecret ?? "",
-						gasWalletPrivateKey: data.config.gasWalletPrivateKey ?? "",
-						walletPrivateKey: data.config.walletPrivateKey ?? "",
-						refundIntervalMs: data.config.refundIntervalMs ?? "60000",
-						refundMinAgeMs: data.config.refundMinAgeMs ?? "300000",
-					}));
+
+				// Track which infra services are managed by compose profiles
+				const managed: string[] = data.managedInfra ?? [];
+				setManagedInfra(managed);
+
+			if (data.config) {
+				// Compose-default internal hostnames are placeholders — only valid if
+				// the matching service is actually managed (profile running).
+				// If not managed, treat them as unset so the user fills real URLs.
+				const resolveUrl = (
+					url: string | undefined,
+					svc: string,
+					composePlaceholder: string,
+				): string => {
+					if (managed.includes(svc)) {
+						// Service is managed — pre-fill with the internal compose default
+						return url || composePlaceholder;
+					}
+					// Service is external — clear the compose placeholder, keep real URLs
+					return !url || url === composePlaceholder ? "" : url;
+				};
+
+				setConfig((prev) => ({
+					...prev,
+					walletAddress: data.config.walletAddress ?? "",
+					issueTokenApi: data.config.issueTokenApi ?? "",
+					network: data.config.network ?? "testnet",
+					storageBackend: data.config.storageBackend ?? "redis",
+					redisUrl: resolveUrl(data.config.redisUrl, "redis", "redis://redis:6379"),
+					databaseUrl: resolveUrl(
+						data.config.databaseUrl,
+						"postgres",
+						"postgresql://key0:key0@postgres:5432/key0",
+					),
+					port: data.config.port ?? "3000",
+					basePath: data.config.basePath ?? "/a2a",
+					agentUrl: data.config.agentUrl ?? "",
+					providerName: data.config.providerName ?? "",
+					providerUrl: data.config.providerUrl ?? "",
+					...(data.config.plans?.length > 0 ? { plans: data.config.plans } : {}),
+					challengeTtlSeconds: data.config.challengeTtlSeconds ?? "900",
+					mcpEnabled: data.config.mcpEnabled ?? true,
+					backendAuthStrategy: data.config.backendAuthStrategy ?? "none",
+					issueTokenApiSecret: data.config.issueTokenApiSecret ?? "",
+					gasWalletPrivateKey: data.config.gasWalletPrivateKey ?? "",
+					walletPrivateKey: data.config.walletPrivateKey ?? "",
+					refundIntervalMs: data.config.refundIntervalMs ?? "60000",
+					refundMinAgeMs: data.config.refundMinAgeMs ?? "300000",
+				}));
 				}
 			})
 			.catch(() => {
@@ -63,8 +92,8 @@ export default function App() {
 		config.walletAddress.length === 42 &&
 		config.issueTokenApi.length > 0 &&
 		(config.storageBackend === "redis"
-			? config.redisUrl.length > 0
-			: config.databaseUrl.length > 0) &&
+			? isManaged("redis") || config.redisUrl.length > 0
+			: isManaged("postgres") || config.databaseUrl.length > 0) &&
 		config.plans.length > 0 &&
 		config.plans.every((p) => p.planId && p.unitAmount);
 
@@ -351,35 +380,60 @@ export default function App() {
 								</Select>
 							</Field>
 
-							{config.storageBackend === "redis" && (
-								<Field label="Redis URL" required>
+						{config.storageBackend === "redis" && (
+							<Field
+								label="Redis URL"
+								required={!isManaged("redis")}
+								hint={isManaged("redis") ? "Managed by Docker Compose" : undefined}
+							>
+								<Input
+									value={config.redisUrl}
+									onChange={(e) => set("redisUrl", e.target.value)}
+									placeholder="redis://redis:6379"
+									disabled={isManaged("redis")}
+									className={isManaged("redis") ? "opacity-60 cursor-not-allowed" : ""}
+								/>
+							</Field>
+						)}
+
+						{config.storageBackend === "postgres" && (
+							<>
+								<Field
+									label="Database URL"
+									required={!isManaged("postgres")}
+									hint={
+										isManaged("postgres")
+											? "Managed by Docker Compose"
+											: "PostgreSQL connection string"
+									}
+								>
+									<Input
+										value={config.databaseUrl}
+										onChange={(e) => set("databaseUrl", e.target.value)}
+										placeholder="postgresql://user:pass@host:5432/db"
+										spellCheck={false}
+										disabled={isManaged("postgres")}
+										className={isManaged("postgres") ? "opacity-60 cursor-not-allowed" : ""}
+									/>
+								</Field>
+								<Field
+									label="Redis URL"
+									hint={
+										isManaged("redis")
+											? "Managed by Docker Compose"
+											: "Still required for BullMQ refund cron queue"
+									}
+								>
 									<Input
 										value={config.redisUrl}
 										onChange={(e) => set("redisUrl", e.target.value)}
 										placeholder="redis://redis:6379"
+										disabled={isManaged("redis")}
+										className={isManaged("redis") ? "opacity-60 cursor-not-allowed" : ""}
 									/>
 								</Field>
-							)}
-
-							{config.storageBackend === "postgres" && (
-								<>
-									<Field label="Database URL" required hint="PostgreSQL connection string">
-										<Input
-											value={config.databaseUrl}
-											onChange={(e) => set("databaseUrl", e.target.value)}
-											placeholder="postgresql://user:pass@host:5432/db"
-											spellCheck={false}
-										/>
-									</Field>
-									<Field label="Redis URL" hint="Still required for BullMQ refund cron queue">
-										<Input
-											value={config.redisUrl}
-											onChange={(e) => set("redisUrl", e.target.value)}
-											placeholder="redis://redis:6379"
-										/>
-									</Field>
-								</>
-							)}
+							</>
+						)}
 
 							<Field label="Challenge TTL (seconds)" hint="Default: 900 (15 min)">
 								<Input

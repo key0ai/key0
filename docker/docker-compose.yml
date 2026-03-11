@@ -1,10 +1,31 @@
+# Key0 Docker Compose
+#
+# Profiles
+#   (no profile)          key0 only — bring your own Redis + Postgres via env vars
+#   --profile redis       key0 + managed Redis
+#   --profile postgres    key0 + managed Postgres (still requires Redis)
+#   --profile full        key0 + managed Redis + managed Postgres (batteries included)
+#
+# Quick start (batteries included):
+#   KEY0_MANAGED_INFRA=redis,postgres docker compose --profile full up
+#
+# Managed Redis, external Postgres:
+#   KEY0_MANAGED_INFRA=redis DATABASE_URL=postgresql://... docker compose --profile redis up
+#
+# All external (e.g. docker run or your own infra):
+#   docker run -p 3000:3000 -e REDIS_URL=... -e DATABASE_URL=... key0ai/key0:latest
+
 services:
   key0:
-    build: ..
+    image: key0ai/key0:latest
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:
       - PORT=${PORT:-3000}
+      # Set by the profile launch commands above so the Setup UI knows which
+      # services are managed (comma-separated: redis,postgres)
+      - KEY0_MANAGED_INFRA=${KEY0_MANAGED_INFRA:-}
+      # Default URLs point to the compose service names; overridden by .env for external infra
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - DATABASE_URL=${DATABASE_URL:-postgresql://key0:key0@postgres:5432/key0}
     env_file:
@@ -17,11 +38,14 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+        required: false
       postgres:
         condition: service_healthy
+        required: false
 
   redis:
     image: redis:7-alpine
+    profiles: [redis, full]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -32,12 +56,13 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    profiles: [postgres, full]
     environment:
-      POSTGRES_USER: key0
-      POSTGRES_PASSWORD: key0
-      POSTGRES_DB: key0
+      POSTGRES_USER: ${POSTGRES_USER:-key0}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-key0}
+      POSTGRES_DB: ${POSTGRES_DB:-key0}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U key0 -d key0"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-key0} -d ${POSTGRES_DB:-key0}"]
       interval: 10s
       timeout: 5s
       retries: 5
