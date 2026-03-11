@@ -139,15 +139,16 @@ export function OutputPanel({ config }: OutputPanelProps) {
 		mcp: { label: "MCP" },
 	};
 
-	const allDeployOutputs: Record<DeployTab, { label: string; content: string; filename?: string }> = {
-		env: { label: ".env", content: generateEnv(config), filename: ".env" },
-		"docker-run": { label: "docker run", content: generateDockerRun(config) },
-		"docker-compose": {
-			label: "docker-compose.yml",
-			content: generateDockerCompose(config),
-			filename: "docker-compose.yml",
-		},
-	};
+	const allDeployOutputs: Record<DeployTab, { label: string; content: string; filename?: string }> =
+		{
+			env: { label: ".env", content: generateEnv(config), filename: ".env" },
+			"docker-run": { label: "docker run", content: generateDockerRun(config) },
+			"docker-compose": {
+				label: "docker-compose.yml",
+				content: generateDockerCompose(config),
+				filename: "docker-compose.yml",
+			},
+		};
 
 	// Filter out docker-run tab when managed infra is in use.
 	// Cast back to Record<DeployTab,…> — safe at runtime because the useEffect

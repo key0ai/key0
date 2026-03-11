@@ -30,8 +30,7 @@ const MANAGED_INFRA = (process.env.KEY0_MANAGED_INFRA ?? "")
 // Compose-default internal hostnames (redis://redis:*, *@postgres:*) are treated
 // as placeholder — they'll cause ENOTFOUND if the profile service isn't running.
 const redisUsable = Boolean(
-	REDIS_URL &&
-		(MANAGED_INFRA.includes("redis") || !REDIS_URL.startsWith("redis://redis:")),
+	REDIS_URL && (MANAGED_INFRA.includes("redis") || !REDIS_URL.startsWith("redis://redis:")),
 );
 const postgresUrlUsable = Boolean(
 	process.env.DATABASE_URL &&

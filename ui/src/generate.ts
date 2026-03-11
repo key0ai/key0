@@ -416,22 +416,13 @@ export function generateEnv(config: Config): string {
 		lines.push(`DATABASE_URL=${config.databaseUrl}`);
 	}
 
-	lines.push(
-		"",
-		_sec("Server"),
-		"",
-		`PORT=${config.port}`,
-	);
+	lines.push("", _sec("Server"), "", `PORT=${config.port}`);
 
 	if (config.basePath && config.basePath !== "/a2a") {
 		lines.push(`BASE_PATH=${config.basePath}`);
 	}
 
-	lines.push(
-		"",
-		_sec("Agent Card"),
-		"",
-	);
+	lines.push("", _sec("Agent Card"), "");
 	lines.push(`AGENT_NAME=${_deriveAgentName(config.providerName)}`);
 	lines.push(`AGENT_DESCRIPTION=${_deriveAgentDescription(config.providerName)}`);
 	lines.push(`AGENT_URL=${config.agentUrl}`);
@@ -446,38 +437,19 @@ export function generateEnv(config: Config): string {
 	// Plans
 	if (config.plans.length > 0) {
 		const plansJson = JSON.stringify(config.plans.map(serializePlan), null, 2);
-		lines.push(
-			"",
-			_sec("Pricing Plans"),
-			"",
-			`PLANS='${plansJson}'`,
-		);
+		lines.push("", _sec("Pricing Plans"), "", `PLANS='${plansJson}'`);
 	}
 
 	if (config.challengeTtlSeconds && config.challengeTtlSeconds !== "900") {
-		lines.push(
-			"",
-			_sec("Challenge"),
-			"",
-			`CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`,
-		);
+		lines.push("", _sec("Challenge"), "", `CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`);
 	}
 
 	if (config.mcpEnabled) {
-		lines.push(
-			"",
-			_sec("MCP"),
-			"",
-			"MCP_ENABLED=true",
-		);
+		lines.push("", _sec("MCP"), "", "MCP_ENABLED=true");
 	}
 
 	if (config.backendAuthStrategy !== "none" || config.issueTokenApiSecret) {
-		lines.push(
-			"",
-			_sec("Token API Auth"),
-			"",
-		);
+		lines.push("", _sec("Token API Auth"), "");
 		if (config.backendAuthStrategy !== "none") {
 			lines.push(`BACKEND_AUTH_STRATEGY=${config.backendAuthStrategy}`);
 		}
@@ -487,21 +459,11 @@ export function generateEnv(config: Config): string {
 	}
 
 	if (config.gasWalletPrivateKey) {
-		lines.push(
-			"",
-			_sec("Settlement"),
-			"",
-			`GAS_WALLET_PRIVATE_KEY=${config.gasWalletPrivateKey}`,
-		);
+		lines.push("", _sec("Settlement"), "", `GAS_WALLET_PRIVATE_KEY=${config.gasWalletPrivateKey}`);
 	}
 
 	if (config.walletPrivateKey) {
-		lines.push(
-			"",
-			_sec("Refund Cron"),
-			"",
-			`KEY0_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`,
-		);
+		lines.push("", _sec("Refund Cron"), "", `KEY0_WALLET_PRIVATE_KEY=${config.walletPrivateKey}`);
 		if (config.refundIntervalMs !== "60000") {
 			lines.push(`REFUND_INTERVAL_MS=${config.refundIntervalMs}`);
 		}
@@ -570,8 +532,7 @@ export function generateDockerCompose(config: Config): string {
 	const managedRedis = !config.redisUrl || config.redisUrl === "redis://redis:6379";
 	const managedPostgres =
 		config.storageBackend === "postgres" &&
-		(!config.databaseUrl ||
-			config.databaseUrl === "postgresql://key0:key0@postgres:5432/key0");
+		(!config.databaseUrl || config.databaseUrl === "postgresql://key0:key0@postgres:5432/key0");
 
 	// Build the KEY0_MANAGED_INFRA value
 	const managedParts: string[] = [];
@@ -651,8 +612,14 @@ export function generateDockerCompose(config: Config): string {
 
 	// depends_on only for managed services
 	const dependsOnEntries: string[] = [];
-	if (managedRedis) dependsOnEntries.push("      redis:\n        condition: service_healthy\n        required: false");
-	if (managedPostgres) dependsOnEntries.push("      postgres:\n        condition: service_healthy\n        required: false");
+	if (managedRedis)
+		dependsOnEntries.push(
+			"      redis:\n        condition: service_healthy\n        required: false",
+		);
+	if (managedPostgres)
+		dependsOnEntries.push(
+			"      postgres:\n        condition: service_healthy\n        required: false",
+		);
 
 	// Profile comment header
 	const profileComment = profileFlag
