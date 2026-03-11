@@ -55,7 +55,7 @@ type ChallengeRow = {
 	request_id: string;
 	client_agent_id: string;
 	resource_id: string;
-	tier_id: string;
+	plan_id: string;
 	amount: string;
 	amount_raw: string; // NUMERIC comes back as string
 	asset: string;
@@ -103,7 +103,7 @@ function rowToChallengeRecord(row: ChallengeRow): ChallengeRecord {
 		requestId: row.request_id,
 		clientAgentId: row.client_agent_id,
 		resourceId: row.resource_id,
-		planId: row.tier_id,
+		planId: row.plan_id,
 		amount: row.amount,
 		amountRaw: BigInt(row.amount_raw),
 		asset: row.asset as "USDC",
@@ -172,7 +172,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 				request_id TEXT NOT NULL,
 				client_agent_id TEXT NOT NULL,
 				resource_id TEXT NOT NULL,
-				tier_id TEXT NOT NULL,
+				plan_id TEXT NOT NULL,
 				amount TEXT NOT NULL,
 				amount_raw NUMERIC NOT NULL,
 				asset TEXT NOT NULL,
@@ -305,7 +305,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 						request_id,
 						client_agent_id,
 						resource_id,
-						tier_id,
+						plan_id,
 						amount,
 						amount_raw,
 						asset,

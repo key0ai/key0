@@ -144,7 +144,7 @@ function createMockSql() {
 					request_id: values[2],
 					client_agent_id: values[3],
 					resource_id: values[4],
-					tier_id: values[5],
+					plan_id: values[5],
 					amount: values[6],
 					amount_raw: values[7],
 					asset: values[8],
