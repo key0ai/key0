@@ -6,6 +6,7 @@ services:
     environment:
       - PORT=${PORT:-3000}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://key0:key0@postgres:5432/key0}
     env_file:
       - path: .env
         required: false
@@ -15,6 +16,8 @@ services:
       - key0-config:/app/config
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
 
   redis:
@@ -27,6 +30,21 @@ services:
     volumes:
       - redis-data:/data
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: key0
+      POSTGRES_PASSWORD: key0
+      POSTGRES_DB: key0
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U key0 -d key0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
 volumes:
   redis-data:
   key0-config:
+  postgres-data:

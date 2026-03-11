@@ -36,6 +36,7 @@ export default function App() {
 						agentUrl: data.config.agentUrl ?? "",
 						providerName: data.config.providerName ?? "",
 						providerUrl: data.config.providerUrl ?? "",
+						...(data.config.plans?.length > 0 ? { plans: data.config.plans } : {}),
 						challengeTtlSeconds: data.config.challengeTtlSeconds ?? "900",
 						mcpEnabled: data.config.mcpEnabled ?? true,
 						backendAuthStrategy: data.config.backendAuthStrategy ?? "none",

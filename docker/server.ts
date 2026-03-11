@@ -40,6 +40,17 @@ if (hasUI) {
 // ─── Setup API ────────────────────────────────────────────────────────────
 
 app.get("/api/setup/status", (_req, res) => {
+	let plans: Array<{ planId: string; unitAmount: string; description?: string }> | undefined;
+	try {
+		if (process.env.PLANS_B64) {
+			plans = JSON.parse(Buffer.from(process.env.PLANS_B64, "base64").toString("utf-8"));
+		} else if (process.env.PLANS) {
+			plans = JSON.parse(process.env.PLANS);
+		}
+	} catch {
+		// ignore — UI will fall back to its default
+	}
+
 	res.json({
 		configured: isConfigured,
 		config: {
@@ -56,6 +67,7 @@ app.get("/api/setup/status", (_req, res) => {
 			agentUrl: process.env.AGENT_URL ?? `http://localhost:${PORT}`,
 			providerName: process.env.PROVIDER_NAME ?? "",
 			providerUrl: process.env.PROVIDER_URL ?? "",
+			plans: plans ?? [],
 			challengeTtlSeconds: process.env.CHALLENGE_TTL_SECONDS ?? "900",
 			backendAuthStrategy: process.env.BACKEND_AUTH_STRATEGY ?? "none",
 			issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ? "••••••" : "",
