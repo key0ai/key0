@@ -21,19 +21,15 @@ const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 const app = express();
 app.use(express.json());
 
-// Mock database — maps resourceId to which plans can access it
-const resources = new Map<string, { allowedPlans: string[] }>([
-	["default", { allowedPlans: ["basic", "starter-monthly", "starter-yearly", "pro-monthly"] }],
-	["photo-1", { allowedPlans: ["basic", "starter-monthly", "starter-yearly", "pro-monthly"] }],
-	["photo-2", { allowedPlans: ["basic", "starter-monthly", "starter-yearly", "pro-monthly"] }],
-	["album-1", { allowedPlans: ["starter-monthly", "starter-yearly", "pro-monthly"] }],
-	["bulk-export", { allowedPlans: ["pro-monthly"] }],
+// Mock database
+const resources = new Map<string, { tierId: string }>([
+	["default", { tierId: "basic" }], // Accept general API access
+	["photo-1", { tierId: "basic" }],
+	["photo-2", { tierId: "basic" }],
+	["album-1", { tierId: "premium" }],
 ]);
 
-const apiKeys = new Map<
-	string,
-	{ expiresAt: Date; resourceId: string; planId: string; quota?: number; maxConcurrent?: number }
->();
+const apiKeys = new Map<string, { expiresAt: Date; resourceId: string; tierId: string }>();
 
 // ============================================================================
 // Internal Endpoints (called by Key0 Service)
@@ -54,37 +50,31 @@ function verifyInternalAuth(
 
 // Verify resource exists
 app.post("/internal/verify-resource", verifyInternalAuth, (req, res) => {
-	const { resourceId, planId } = req.body;
+	const { resourceId, tierId } = req.body;
 
+	// Accept "default" for any tier (general API access)
+	if (resourceId === "default") {
+		return res.json({ valid: true });
+	}
+
+	// Validate specific resources
 	const resource = resources.get(resourceId);
-	const valid = resource?.allowedPlans.includes(planId);
+	const valid = resource !== undefined && resource.tierId === tierId;
 	res.json({ valid });
 });
 
-// Plan entitlements — the seller defines what each plan grants.
-// In production this would come from your database or config.
-const planEntitlements: Record<string, { ttlMs: number; quota?: number; maxConcurrent?: number }> =
-	{
-		basic: { ttlMs: 3600 * 1000 }, // 1 hour, per-use
-		"starter-monthly": { ttlMs: 30 * 86400 * 1000, quota: 1650, maxConcurrent: 10 },
-		"starter-yearly": { ttlMs: 365 * 86400 * 1000, quota: 1650, maxConcurrent: 10 },
-		"pro-monthly": { ttlMs: 30 * 86400 * 1000, quota: 16500, maxConcurrent: 50 },
-	};
-
 // Issue token (only used if Key0 tokenMode="remote")
 app.post("/internal/issue-token", (req, res) => {
-	const { resourceId, planId } = req.body;
-
-	const entitlements = planEntitlements[planId] ?? { ttlMs: 3600 * 1000 };
+	const { requestId: _requestId, resourceId, tierId, txHash: _txHash } = req.body;
 
 	// Generate a custom API key (in production, use your actual key generation)
 	const apiKey = `ak_${crypto.randomUUID().replace(/-/g, "")}`;
-	const expiresAt = new Date(Date.now() + entitlements.ttlMs);
+	const expiresAt = new Date(Date.now() + 3600 * 1000); // 1 hour
 
-	// Store the key with entitlements — your API middleware reads these to enforce limits
-	apiKeys.set(apiKey, { expiresAt, resourceId, planId, ...entitlements });
+	// Store the key
+	apiKeys.set(apiKey, { expiresAt, resourceId, tierId });
 
-	console.log(`[Backend] Issued API key for resource ${resourceId}, plan ${planId}`);
+	console.log(`[Backend] Issued API key for resource ${resourceId}, tier ${tierId}`);
 
 	res.json({
 		token: apiKey,
@@ -96,7 +86,7 @@ app.post("/internal/issue-token", (req, res) => {
 // Payment received notification
 app.post("/internal/payment-received", verifyInternalAuth, (req, res) => {
 	const grant = req.body;
-	console.log(`[Backend] Payment received: ${grant.resourceId} (${grant.planId})`);
+	console.log(`[Backend] Payment received: ${grant.resourceId} (${grant.tierId})`);
 	console.log(`  TX: ${grant.explorerUrl}`);
 
 	// Your payment handling logic here
@@ -133,11 +123,11 @@ async function validateToken(
 				// Valid API key
 				(
 					req as express.Request & {
-						key0Token: { resourceId: string; planId: string; type: string };
+						key0Token: { resourceId: string; tierId: string; type: string };
 					}
 				).key0Token = {
 					resourceId: keyData.resourceId,
-					planId: keyData.planId,
+					tierId: keyData.tierId,
 					type: "api-key",
 				};
 				return next();
@@ -158,8 +148,8 @@ app.use("/api", validateToken);
 app.get("/api/photos/:id", (req, res) => {
 	const token = (req as unknown as { key0Token: AccessTokenPayload }).key0Token;
 
-	// Subscription tokens (resourceId "default") grant access to any resource
-	// Per-use tokens are scoped to a specific resourceId
+	// If token has "default" resourceId, it grants access to all resources (tier-scoped)
+	// Otherwise, verify specific resource ID matches
 	if (token.resourceId !== "default" && req.params.id !== token.resourceId) {
 		return res.status(403).json({ error: "Token not valid for this resource" });
 	}
@@ -169,14 +159,14 @@ app.get("/api/photos/:id", (req, res) => {
 		return res.status(404).json({ error: "Resource not found" });
 	}
 
-	// Verify plan access
-	if (!resource.allowedPlans.includes(token.planId)) {
-		return res.status(403).json({ error: "Your plan does not grant access to this resource" });
+	// Verify tier access
+	if (token.tierId !== resource.tierId) {
+		return res.status(403).json({ error: "Token tier does not grant access to this resource" });
 	}
 
 	res.json({
 		id: req.params.id,
-		planId: token.planId,
+		tierId: token.tierId,
 		url: `https://cdn.example.com/photos/${req.params.id}.jpg`,
 		title: `Photo ${req.params.id}`,
 		resolution: "4K",
@@ -190,7 +180,7 @@ app.get("/api/data/:id", (req, res) => {
 	res.json({
 		id: req.params.id,
 		data: "premium content",
-		planId: token.planId,
+		tierId: token.tierId,
 		resourceId: token.resourceId,
 	});
 });

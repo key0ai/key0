@@ -9,6 +9,7 @@ import type {
 } from "../types/index.js";
 import { Key0Error } from "../types/index.js";
 import {
+	buildDiscoveryResponse as buildDiscoveryResponseImpl,
 	buildHttpPaymentRequirements,
 	decodePaymentSignature,
 	settlePayment,
@@ -92,6 +93,7 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 			}
 
 			// 4. Extract AccessRequest from message parts
+			// Route on tierId presence, not on type field
 			const params = body.params;
 			if (!params || !params.message || !params.message.parts) {
 				console.log("[x402-http-middleware] → No valid message parts, passing through");
@@ -103,9 +105,9 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 			console.log(`[x402-http-middleware] Parsing ${params.message.parts.length} message parts...`);
 			for (const part of params.message.parts) {
 				console.log(`[x402-http-middleware] - Part kind: ${part.kind}`);
-				if (part.kind === "data" && part.data?.type === "AccessRequest") {
+				if (part.kind === "data" && part.data && part.data.type === "AccessRequest") {
 					accessRequest = part.data as AccessRequest;
-					console.log("[x402-http-middleware] ✓ Found AccessRequest in data part");
+					console.log("[x402-http-middleware] ✓ Found AccessRequest data part");
 					break;
 				}
 				if (part.kind === "text") {
@@ -123,7 +125,7 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 			}
 
 			if (!accessRequest) {
-				console.log("[x402-http-middleware] → No AccessRequest found, passing through");
+				console.log("[x402-http-middleware] → No data found in message parts, passing through");
 				return next();
 			}
 
@@ -134,7 +136,19 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 				`[x402-http-middleware] AccessRequest: planId=${planId}, resourceId=${resourceId}, requestId=${requestId}`,
 			);
 
-			// 5. Check for PAYMENT-SIGNATURE header
+			// 5a. Discovery case: no planId → return 402 with full product catalog
+			if (!planId) {
+				console.log("[x402-http-middleware] → No planId provided, returning discovery 402");
+				const discoveryResponse = buildDiscoveryResponseImpl(config, networkConfig);
+				const encoded = Buffer.from(JSON.stringify(discoveryResponse)).toString("base64");
+				res.setHeader(PAYMENT_REQUIRED_HEADER, encoded);
+				return res.status(402).json({
+					...discoveryResponse,
+					error: "Payment required",
+				});
+			}
+
+			// 5b. Check for PAYMENT-SIGNATURE header
 			const paymentSignatureRaw = req.headers[PAYMENT_SIGNATURE_HEADER] as string | undefined;
 			console.log(
 				`[x402-http-middleware] PAYMENT-SIGNATURE header present: ${!!paymentSignatureRaw}`,
@@ -183,11 +197,11 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 
 			// Decode the header then settle via shared settlement layer
 			const paymentPayload = decodePaymentSignature(paymentSignatureRaw);
-			const { txHash, settleResponse, payer } = await settlePayment(
-				paymentPayload,
-				config,
-				networkConfig,
-			);
+			const {
+				txHash,
+				settleResponse: _settleResponse,
+				payer,
+			} = await settlePayment(paymentPayload, config, networkConfig);
 
 			console.log(`[x402-http-middleware] ✓ Payment settled, txHash: ${txHash}`);
 

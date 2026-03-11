@@ -13,7 +13,6 @@ import type {
 // Type for postgres.js Sql instance
 // We avoid importing the actual package since it's an optional peer dependency
 type Sql = {
-	// biome-ignore lint/suspicious/noExplicitAny: postgres.js query signature
 	<T = any>(
 		strings: TemplateStringsArray,
 		...values: any[]
@@ -21,19 +20,14 @@ type Sql = {
 		count: number;
 	};
 	// Helper to safely insert identifiers (table/column names)
-	// biome-ignore lint/suspicious/noExplicitAny: postgres.js helper signature
 	(value: string): any;
 	// Helper to build SET clauses from an object map, e.g. sql({ col: 1 }, "col")
-	// biome-ignore lint/suspicious/noExplicitAny: postgres.js helper signature
 	(values: Record<string, unknown>, ...columns: string[]): any;
 	// Helper for unsafe raw SQL fragments
-	// biome-ignore lint/suspicious/noExplicitAny: postgres.js helper signature
 	unsafe(value: string): any;
 	// Helper for JSON values
-	// biome-ignore lint/suspicious/noExplicitAny: postgres.js helper signature
 	json(value: unknown): any;
 	// Transaction helper: begin a transaction and execute callback with transaction-scoped sql
-	// biome-ignore lint/suspicious/noExplicitAny: postgres.js transaction signature
 	begin<T>(callback: (sql: Sql) => Promise<T>): Promise<T>;
 };
 

@@ -6,7 +6,6 @@ import { createPublicClient, createWalletClient, http, type PublicClient } from 
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { E2eTestClient } from "../helpers/client.ts";
-
 import { CHAIN_ID, KEY0_URL, USDC_ADDRESS, USDC_DOMAIN } from "./constants.ts";
 
 function requireEnv(name: string): string {

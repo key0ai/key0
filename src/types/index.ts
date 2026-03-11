@@ -10,9 +10,7 @@ export type {
 	AgentCard,
 	AgentExtension,
 	AgentSkill,
-	AgentSkillInputSchema,
 	PaymentProtocol,
-	SkillPricing,
 } from "./agent-card.js";
 
 export type {

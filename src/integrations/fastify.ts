@@ -12,7 +12,7 @@ import { Key0Error } from "../types/index.js";
  *   fastify.register(key0Plugin, { config, adapter });
  */
 export async function key0Plugin(fastify: FastifyInstance, opts: Key0Config): Promise<void> {
-	const { requestHandler, agentCard } = createKey0(opts);
+	const { requestHandler: _requestHandler, agentCard } = createKey0(opts);
 
 	// Agent Card
 	fastify.get(`/${AGENT_CARD_PATH}`, async (_request: FastifyRequest, reply: FastifyReply) => {

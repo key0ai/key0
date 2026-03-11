@@ -1,11 +1,4 @@
-import type {
-	AgentCard,
-	AgentExtension,
-	AgentSkill,
-	Plan,
-	SellerConfig,
-	SkillPricing,
-} from "../types/index.js";
+import type { AgentCard, AgentExtension, AgentSkill, SellerConfig } from "../types/index.js";
 import { CHAIN_CONFIGS, CHAIN_ID_TO_NETWORK, X402_EXTENSION_URI } from "../types/index.js";
 
 export function buildAgentCard(config: SellerConfig): AgentCard {
@@ -13,82 +6,45 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	const networkName =
 		CHAIN_ID_TO_NETWORK[networkConfig.chainId] ?? `chain-${networkConfig.chainId}`;
 
-	// Build endpoint URL first (needed for skills)
-	const basePath = config.basePath ?? "/a2a";
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
-	const _endpointUrl = `${baseUrl}${basePath}`;
 
-	// Build skills - one per product tier (minimal, reference-style)
-	const skills: AgentSkill[] = config.plans.map((tier: Plan) => {
-		const pricingEntry: SkillPricing = {
-			planId: tier.planId,
-			unitAmount: tier.unitAmount,
-			...(tier.description ? { description: tier.description } : {}),
-			asset: "USDC" as const,
-			chainId: networkConfig.chainId,
-			walletAddress: config.walletAddress,
-		};
-
-		return {
-			id: tier.planId,
-			name: tier.planId,
-			description: `${tier.planId} — ${tier.unitAmount} USDC on ${networkName}. Access via JSON-RPC method 'message/send' with AccessRequest, or direct HTTP POST to the URL field with body: { planId, requestId, resourceId }. Server responds with HTTP 402 payment challenge; include PAYMENT-SIGNATURE header with x402 payment payload to complete payment.`,
-			tags: ["x402", "payment"],
-			url: `${baseUrl}/x402/access`,
+	// Two A2A spec-compliant skills (no pricing, no inputSchema, no outputSchema, no url)
+	// Skill 1: Discovery (free) — browse the product catalog
+	// Skill 2: Purchase (x402-gated) — buy an access token
+	const skills: AgentSkill[] = [
+		{
+			id: "discover-products",
+			name: "Discover Products",
+			description: [
+				`Browse available products and pricing for ${config.agentName}.`,
+				`Returns the product catalog with plan IDs, prices (USDC on ${networkName}), wallet address, and chain ID.`,
+				`POST to ${baseUrl}/x402/access with an empty body or without planId to discover products.`,
+			].join(" "),
+			tags: ["discovery", "catalog", "x402"],
 			examples: [
-				JSON.stringify({
-					messageId: "<uuid>",
-					role: "user",
-					parts: [
-						{
-							kind: "data",
-							data: {
-								type: "AccessRequest",
-								planId: tier.planId,
-								requestId: "<uuid>",
-								resourceId: "photo-1",
-							},
-						},
-					],
-				}),
-				`POST ${baseUrl}/x402/access with body: ${JSON.stringify({ planId: tier.planId, requestId: "<uuid>", resourceId: "default" })}`,
+				`POST ${baseUrl}/x402/access with empty body {}`,
+				`Or call without planId to get 402 response with product catalog`,
 			],
-			inputSchema: {
-				type: "object",
-				properties: {
-					type: {
-						type: "string",
-						const: "AccessRequest",
-						description: "Must be 'AccessRequest'",
-					},
-					planId: {
-						type: "string",
-						description: `Tier to purchase. Must be '${tier.planId}'`,
-					},
-					requestId: {
-						type: "string",
-						description: "Client-generated UUID for idempotency",
-					},
-					resourceId: {
-						type: "string",
-						description: "Optional: Specific resource identifier (defaults to 'default')",
-					},
-				},
-				required: ["type", "planId", "requestId"],
-			},
-			outputSchema: {
-				type: "object",
-				properties: {
-					accessToken: { type: "string", description: "JWT token for API access" },
-					tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
-					resourceEndpoint: { type: "string", description: "URL to access the protected resource" },
-					txHash: { type: "string", description: "On-chain transaction hash" },
-					explorerUrl: { type: "string", description: "Blockchain explorer URL" },
-				},
-			},
-			pricing: [pricingEntry],
-		};
-	});
+		},
+		{
+			id: "request-access",
+			name: "Request Access",
+			description: [
+				`Purchase access to a ${config.agentName} product plan via x402 payment on ${networkName}.`,
+				`First call discover-products to get available plans.`,
+				`Then POST to ${baseUrl}/x402/access with planId and requestId to initiate purchase.`,
+				`Server responds with x402 payment challenge.`,
+				`Complete payment on-chain and include PAYMENT-SIGNATURE header to receive access token.`,
+			].join(" "),
+			tags: ["payment", "x402", "purchase"],
+			examples: [
+				`POST ${baseUrl}/x402/access with { planId: "<plan-id>", requestId: "<uuid>", resourceId: "default" }`,
+				`Receive 402 with payment challenge`,
+				`Pay USDC on-chain, retry same request with PAYMENT-SIGNATURE header`,
+				`Receive 200 with access token`,
+			],
+		},
+	];
 
 	const x402Extension: AgentExtension = {
 		uri: X402_EXTENSION_URI,

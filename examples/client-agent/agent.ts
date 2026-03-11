@@ -97,21 +97,42 @@ async function main() {
 
 	const card: AgentCard = await cardRes.json();
 	console.log(`   Agent: ${card.name}`);
-	console.log(`   Skills: ${card.skills.map((s) => s.id).join(", ")}`);
+	console.log(`   Skills: ${card.skills.map((s) => s.id).join(", ")}\n`);
 
-	const requestSkill = card.skills.find((s) => s.id === "request-access");
-	if (!requestSkill?.pricing?.[0]) {
-		console.error("   No pricing found on request-access skill");
+	// -----------------------------------------------------------------------
+	// Step 2: Call discover-products to get available tiers
+	// -----------------------------------------------------------------------
+	console.log("2. Discovering products...");
+	const discoveryRes = await fetch(`${SELLER_URL}/x402/access`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({}),
+	});
+
+	if (discoveryRes.status !== 402) {
+		console.error(`   Expected HTTP 402 for discovery, got ${discoveryRes.status}`);
 		process.exit(1);
 	}
 
-	const tier = requestSkill.pricing[0];
-	console.log(`   Tier: ${tier.planId} — ${tier.unitAmount} USDC on chain ${tier.chainId}\n`);
+	const discoveryBody = await discoveryRes.json();
+	if (!discoveryBody.accepts || discoveryBody.accepts.length === 0) {
+		console.error("   No products found in discovery response");
+		process.exit(1);
+	}
+
+	// Pick the first tier
+	const tierInfo = discoveryBody.accepts[0];
+	const tierId = tierInfo.extra?.tierId;
+	const tierLabel = tierInfo.extra?.label || tierId;
+	const tierAmount = tierInfo.extra?.description || tierInfo.amount;
+
+	console.log(`   Available products: ${discoveryBody.accepts.length}`);
+	console.log(`   Using: ${tierLabel} — ${tierAmount}\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 2: Request access
+	// Step 3: Request access
 	// -----------------------------------------------------------------------
-	console.log("2. Requesting access...");
+	console.log("3. Requesting access...");
 	const requestId = crypto.randomUUID();
 	const basePath = "/a2a/jsonrpc";
 
@@ -130,10 +151,9 @@ async function main() {
 						{
 							type: "data",
 							data: {
-								type: "AccessRequest",
 								requestId,
 								resourceId: "photo-1",
-								planId: tier.planId,
+								tierId,
 								clientAgentId: `agent://${account.address}`,
 							},
 							mimeType: "application/json",
@@ -159,9 +179,9 @@ async function main() {
 	console.log(`   Expires: ${challenge.expiresAt}\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 3: Pay USDC on-chain
+	// Step 4: Pay USDC on-chain
 	// -----------------------------------------------------------------------
-	console.log("3. Paying USDC on-chain...");
+	console.log("4. Paying USDC on-chain...");
 	const amountRaw = parseDollarToUsdcMicro(challenge.amount);
 	console.log(
 		`   Sending ${challenge.amount} (${amountRaw} micro-units) to ${challenge.destination}`,
@@ -181,9 +201,9 @@ async function main() {
 	console.log(`   Confirmed in block ${receipt.blockNumber} (gas: ${receipt.gasUsed})\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 4: Submit payment proof
+	// Step 5: Submit payment proof
 	// -----------------------------------------------------------------------
-	console.log("4. Submitting payment proof...");
+	console.log("5. Submitting payment proof...");
 	const proofRes = await fetch(`${SELLER_URL}${basePath}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -199,7 +219,6 @@ async function main() {
 						{
 							type: "data",
 							data: {
-								type: "PaymentProof",
 								challengeId: challenge.challengeId,
 								requestId,
 								chainId: challenge.chainId,
@@ -228,13 +247,14 @@ async function main() {
 	const grant: AccessGrant = proofBody.result.status.message.parts[0].data;
 	console.log("   Access granted!");
 	console.log(`   Token type: ${grant.tokenType}`);
+	console.log(`   Expires: ${grant.expiresAt}`);
 	console.log(`   Resource: ${grant.resourceEndpoint}`);
 	console.log(`   TX: ${grant.explorerUrl}\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 5: Use the access token
+	// Step 6: Use the access token
 	// -----------------------------------------------------------------------
-	console.log("5. Calling protected API...");
+	console.log("6. Calling protected API...");
 	const apiRes = await fetch(grant.resourceEndpoint, {
 		headers: {
 			Authorization: `${grant.tokenType} ${grant.accessToken}`,

@@ -101,7 +101,6 @@ let seenTxStore: ISeenTxStore;
 
 if (STORAGE_BACKEND === "postgres") {
 	console.log("📦 Using Postgres storage backend");
-	// biome-ignore lint/suspicious/noExplicitAny: postgres is an optional peer dependency
 	const postgres = (await import("postgres" as any)).default;
 	const sql = postgres(process.env.DATABASE_URL!);
 	store = new PostgresChallengeStore({ sql });

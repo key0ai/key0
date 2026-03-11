@@ -17,7 +17,7 @@
  */
 
 import type { AccessGrant, AgentCard } from "@riklr/key0";
-import { CHAIN_CONFIGS, parseDollarToUsdcMicro, USDC_ABI } from "@riklr/key0";
+import { CHAIN_CONFIGS, USDC_ABI } from "@riklr/key0";
 import { createPublicClient, createWalletClient, formatUnits, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
@@ -79,29 +79,51 @@ async function main() {
 
 	const card: AgentCard = await cardRes.json();
 	console.log(`   Agent: ${card.name}`);
-	console.log(`   Skills: ${card.skills.map((s) => s.id).join(", ")}`);
+	console.log(`   Skills: ${card.skills.map((s) => s.id).join(", ")}\n`);
 
-	// Pick the first skill/tier
-	const skill = card.skills[0];
-	const pricing = skill.pricing?.[0];
-	if (!pricing) {
-		console.error("   No pricing found");
+	// -----------------------------------------------------------------------
+	// Step 2: Call discover-products to get available tiers
+	// -----------------------------------------------------------------------
+	console.log("2. Discovering products...");
+	const discoveryRes = await fetch(`${SELLER_URL}/x402/access`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({}),
+	});
+
+	if (discoveryRes.status !== 402) {
+		console.error(`   Expected HTTP 402 for discovery, got ${discoveryRes.status}`);
 		process.exit(1);
 	}
-	console.log(`   Using: ${pricing.planId} — ${pricing.unitAmount} USDC\n`);
+
+	const discoveryBody = await discoveryRes.json();
+	if (!discoveryBody.accepts || discoveryBody.accepts.length === 0) {
+		console.error("   No products found");
+		process.exit(1);
+	}
+
+	// Pick the first tier
+	const tierInfo = discoveryBody.accepts[0];
+	const tierId = tierInfo.extra?.tierId;
+	const tierLabel = tierInfo.extra?.label || tierId;
+	const tierAmount = tierInfo.extra?.description || tierInfo.amount;
+	const _amountUSDC = tierInfo.amount;
+
+	console.log(`   Available products: ${discoveryBody.accepts.length}`);
+	console.log(`   Using: ${tierLabel} — ${tierAmount}\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 2: Request access (initial call → HTTP 402)
+	// Step 3: Request access (initial call → HTTP 402)
 	// -----------------------------------------------------------------------
-	console.log("2. Requesting access (expecting HTTP 402)...");
+	console.log("3. Requesting access (expecting HTTP 402)...");
 	const requestId = crypto.randomUUID();
-	const accessEndpoint = `${SELLER_URL}/a2a/access`;
+	const accessEndpoint = `${SELLER_URL}/x402/access`;
 
 	const initialRes = await fetch(accessEndpoint, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
-			planId: pricing.planId,
+			tierId,
 			requestId,
 			resourceId: "photo-1",
 		}),
@@ -126,16 +148,16 @@ async function main() {
 	);
 	console.log("   Payment required:");
 	console.log(`     Asset:  ${paymentRequired.accepts[0].asset}`);
-	console.log(`     Amount: ${paymentRequired.accepts[0].amount} (${pricing.unitAmount})`);
+	console.log(`     Amount: ${paymentRequired.accepts[0].amount} (${tierAmount})`);
 	console.log(`     PayTo:  ${paymentRequired.accepts[0].payTo}\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 3: Pay USDC on-chain
+	// Step 4: Pay USDC on-chain
 	// -----------------------------------------------------------------------
-	console.log("3. Paying USDC on-chain...");
-	const amountRaw = parseDollarToUsdcMicro(pricing.unitAmount);
+	console.log("4. Paying USDC on-chain...");
+	const amountRaw = BigInt(paymentRequired.accepts[0].amount);
 	console.log(
-		`   Sending ${pricing.unitAmount} (${amountRaw} micro-units) to ${paymentRequired.accepts[0].payTo}`,
+		`   Sending ${tierAmount} (${amountRaw} micro-units) to ${paymentRequired.accepts[0].payTo}`,
 	);
 
 	const txHash = await walletClient.writeContract({
@@ -152,9 +174,9 @@ async function main() {
 	console.log(`   Confirmed in block ${receipt.blockNumber}\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 4: Retry with payment signature (HTTP 200)
+	// Step 5: Retry with payment signature (HTTP 200)
 	// -----------------------------------------------------------------------
-	console.log("4. Retrying with payment proof...");
+	console.log("5. Retrying with payment proof...");
 
 	// Build x402 payment payload
 	const paymentPayload = {
@@ -179,7 +201,7 @@ async function main() {
 			"PAYMENT-SIGNATURE": paymentSignatureHeader,
 		},
 		body: JSON.stringify({
-			planId: pricing.planId,
+			tierId,
 			requestId,
 			resourceId: "photo-1",
 		}),
@@ -195,13 +217,14 @@ async function main() {
 	const grant: AccessGrant = await finalRes.json();
 	console.log("   Access granted!");
 	console.log(`     Token:     ${grant.accessToken.substring(0, 20)}...`);
+	console.log(`     Expires:   ${grant.expiresAt}`);
 	console.log(`     Resource:  ${grant.resourceEndpoint}`);
 	console.log(`     TX:        ${grant.explorerUrl}\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 5: Use the access token
+	// Step 6: Use the access token
 	// -----------------------------------------------------------------------
-	console.log("5. Calling protected API...");
+	console.log("6. Calling protected API...");
 	const apiRes = await fetch(grant.resourceEndpoint, {
 		headers: {
 			Authorization: `${grant.tokenType} ${grant.accessToken}`,

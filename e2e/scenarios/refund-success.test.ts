@@ -13,9 +13,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID, REFUND_POLL_TIMEOUT_MS } from "../fixtures/constants.ts";
-
 import { clientWalletAddress, key0WalletAddress } from "../fixtures/wallets.ts";
-
 import { readChallengeState, writePaidChallengeRecord } from "../helpers/storage-client.ts";
 import { waitForChallengeState } from "../helpers/wait.ts";
 

@@ -10,7 +10,7 @@ import { Key0Error } from "../types/index.js";
  * Mount it as a sub-app: mainApp.route("/", key0App(opts));
  */
 export function key0App(opts: Key0Config): Hono {
-	const { requestHandler, agentCard } = createKey0(opts);
+	const { requestHandler: _requestHandler, agentCard } = createKey0(opts);
 	const app = new Hono();
 
 	app.get(`/${AGENT_CARD_PATH}`, (c) => c.json(agentCard));

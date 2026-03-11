@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
-
-import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
-
+import { KEY0_URL } from "../fixtures/constants.ts";
 import type { AgentCard } from "../helpers/client.ts";
 
 describe("Agent Card", () => {
@@ -17,15 +15,17 @@ describe("Agent Card", () => {
 		expect(typeof card.description).toBe("string");
 		expect(typeof card.url).toBe("string");
 
-		// Must have skills
+		// Must have two A2A spec-compliant skills
 		expect(Array.isArray(card.skills)).toBe(true);
-		expect(card.skills.length).toBeGreaterThan(0);
+		expect(card.skills.length).toBe(2);
 
-		// Must have a "request-access" skill
-		const requestSkill = card.skills.find((s) => s.id === DEFAULT_TIER_ID);
+		const discoverSkill = card.skills.find((s) => s.id === "discover-products");
+		expect(discoverSkill).toBeDefined();
+		expect(discoverSkill?.tags).toContain("discovery");
+
+		const requestSkill = card.skills.find((s) => s.id === "request-access");
 		expect(requestSkill).toBeDefined();
-		expect(Array.isArray(requestSkill?.pricing)).toBe(true);
-		expect(requestSkill?.pricing?.length ?? 0).toBeGreaterThan(0);
+		expect(requestSkill?.tags).toContain("payment");
 
 		// x402 extension must be declared
 		expect(Array.isArray(card.capabilities.extensions)).toBe(true);
@@ -38,12 +38,14 @@ describe("Agent Card", () => {
 		const res = await fetch(`${KEY0_URL}/.well-known/agent.json`);
 		const card = (await res.json()) as AgentCard;
 
-		const skill = card.skills.find((s) => s.id === DEFAULT_TIER_ID);
-		const plan = skill?.pricing?.[0];
-		expect(plan).toBeDefined();
-		expect(typeof plan?.unitAmount).toBe("string");
-		// unitAmount should be a dollar string
-		expect(plan?.unitAmount).toMatch(/^\$/);
-		expect(plan?.chainId).toBe(84532); // Base Sepolia
+		// Discovery must be done via the /x402/access endpoint, not from the agent card
+		// Agent card skills should NOT have pricing (A2A spec compliance)
+		const discoverSkill = card.skills.find((s) => s.id === "discover-products");
+		expect(discoverSkill).toBeDefined();
+		expect((discoverSkill as any)?.pricing).toBeUndefined();
+
+		const requestSkill = card.skills.find((s) => s.id === "request-access");
+		expect(requestSkill).toBeDefined();
+		expect((requestSkill as any)?.pricing).toBeUndefined();
 	});
 });

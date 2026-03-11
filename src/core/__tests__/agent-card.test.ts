@@ -13,9 +13,7 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		walletAddress: `0x${"ab".repeat(20)}` as `0x${string}`,
 		network: "testnet",
 		plans: [{ planId: "single", unitAmount: "$0.10" }],
-		fetchResourceCredentials: async () => ({
-			token: "test-token",
-		}),
+		fetchResourceCredentials: async () => ({ token: "test-token" }),
 		...overrides,
 	};
 }
@@ -61,53 +59,66 @@ describe("buildAgentCard", () => {
 		expect(ext.description).toContain("x402");
 	});
 
-	test("has one skill per product tier", () => {
+	test("has two A2A spec-compliant skills", () => {
 		const card = buildAgentCard(makeConfig());
-		expect(card.skills).toHaveLength(1);
-		expect(card.skills[0]!.id).toBe("single");
-		expect(card.skills[0]!.name).toBe("single");
+		expect(card.skills).toHaveLength(2);
+		expect(card.skills[0]!.id).toBe("discover-products");
+		expect(card.skills[1]!.id).toBe("request-access");
 	});
 
-	test("skill description mentions x402 payment and 402 challenge", () => {
-		const card = buildAgentCard(makeConfig());
-		expect(card.skills[0]!.description).toContain("x402 payment");
-		expect(card.skills[0]!.description).toContain("402 payment challenge");
-	});
-
-	test("skill has pricing from its product tier", () => {
+	test("discover-products skill has correct structure", () => {
 		const card = buildAgentCard(makeConfig());
 		const skill = card.skills[0]!;
-		expect(skill.pricing).toHaveLength(1);
-		expect(skill.pricing![0]!.planId).toBe("single");
-		expect(skill.pricing![0]!.unitAmount).toBe("$0.10");
-		expect(skill.pricing![0]!.asset).toBe("USDC");
-		expect(skill.pricing![0]!.chainId).toBe(84532); // testnet
+
+		expect(skill.id).toBe("discover-products");
+		expect(skill.name).toBe("Discover Products");
+		expect(skill.description).toContain("Browse available products");
+		expect(skill.description).toContain("/x402/access");
+		expect(skill.tags).toContain("discovery");
+		expect(skill.tags).toContain("catalog");
+		expect(skill.examples).toBeDefined();
+		expect(skill.examples!.length).toBeGreaterThan(0);
+
+		// A2A spec: skills should NOT have pricing, inputSchema, outputSchema, url
+		expect((skill as any).pricing).toBeUndefined();
+		expect((skill as any).inputSchema).toBeUndefined();
+		expect((skill as any).outputSchema).toBeUndefined();
+		expect((skill as any).url).toBeUndefined();
 	});
 
-	test("multiple tiers produce multiple skills with one pricing each", () => {
-		const config = makeConfig({
-			plans: [
-				{ planId: "basic", unitAmount: "$0.10" },
-				{ planId: "premium", unitAmount: "$1.00" },
-				{ planId: "bulk", unitAmount: "$5.00" },
-			],
-		});
-		const card = buildAgentCard(config);
-		expect(card.skills).toHaveLength(3);
-		expect(card.skills[0]!.id).toBe("basic");
-		expect(card.skills[0]!.pricing).toHaveLength(1);
-		expect(card.skills[0]!.pricing![0]!.planId).toBe("basic");
-		expect(card.skills[1]!.id).toBe("premium");
-		expect(card.skills[1]!.pricing![0]!.planId).toBe("premium");
-		expect(card.skills[2]!.id).toBe("bulk");
-		expect(card.skills[2]!.pricing![0]!.planId).toBe("bulk");
+	test("request-access skill has correct structure", () => {
+		const card = buildAgentCard(makeConfig());
+		const skill = card.skills[1]!;
+
+		expect(skill.id).toBe("request-access");
+		expect(skill.name).toBe("Request Access");
+		expect(skill.description).toContain("Purchase access");
+		expect(skill.description).toContain("x402 payment");
+		expect(skill.tags).toContain("payment");
+		expect(skill.tags).toContain("x402");
+		expect(skill.tags).toContain("purchase");
+		expect(skill.examples).toBeDefined();
+		expect(skill.examples!.length).toBeGreaterThan(0);
+
+		// A2A spec: skills should NOT have pricing, inputSchema, outputSchema, url
+		expect((skill as any).pricing).toBeUndefined();
+		expect((skill as any).inputSchema).toBeUndefined();
+		expect((skill as any).outputSchema).toBeUndefined();
+		expect((skill as any).url).toBeUndefined();
 	});
 
-	test("mainnet uses correct chainId", () => {
-		const config = makeConfig({ network: "mainnet" });
-		const card = buildAgentCard(config);
-		const skill = card.skills[0]!;
-		expect(skill.pricing![0]!.chainId).toBe(8453);
+	test("skills have examples", () => {
+		const card = buildAgentCard(makeConfig());
+
+		const discoverSkill = card.skills[0]!;
+		expect(discoverSkill.examples).toBeDefined();
+		expect(discoverSkill.examples!.length).toBeGreaterThan(0);
+		expect(discoverSkill.examples!.some((ex) => ex.includes("/x402/access"))).toBe(true);
+
+		const requestSkill = card.skills[1]!;
+		expect(requestSkill.examples).toBeDefined();
+		expect(requestSkill.examples!.length).toBeGreaterThan(0);
+		expect(requestSkill.examples!.some((ex) => ex.includes("planId"))).toBe(true);
 	});
 
 	test("provider info is correct", () => {
@@ -125,5 +136,30 @@ describe("buildAgentCard", () => {
 		const card = buildAgentCard(makeConfig());
 		expect(card.defaultInputModes).toContain("text");
 		expect(card.defaultOutputModes).toContain("application/json");
+	});
+
+	test("card works with multiple product tiers", () => {
+		const config = makeConfig({
+			plans: [
+				{ planId: "basic", unitAmount: "$0.10" },
+				{ planId: "premium", unitAmount: "$1.00" },
+				{ planId: "bulk", unitAmount: "$5.00" },
+			],
+		});
+		const card = buildAgentCard(config);
+
+		// Still just two skills regardless of tier count
+		expect(card.skills).toHaveLength(2);
+		expect(card.skills[0]!.id).toBe("discover-products");
+		expect(card.skills[1]!.id).toBe("request-access");
+	});
+
+	test("mainnet configuration works", () => {
+		const config = makeConfig({ network: "mainnet" });
+		const card = buildAgentCard(config);
+
+		// Verify description mentions mainnet
+		const discoverSkill = card.skills[0]!;
+		expect(discoverSkill.description).toContain("base");
 	});
 });

@@ -32,7 +32,6 @@ function createMockSql() {
 		return count;
 	};
 
-	// biome-ignore lint/suspicious/noExplicitAny: mock implementation
 	const sql = (strings: any, ...values: any[]): any => {
 		// Handle sql(identifier) — used for table/column names
 		if (typeof strings === "string") {
@@ -308,18 +307,14 @@ function createMockSql() {
 	(sql as unknown as { _tables: Map<string, Row[]> })._tables = tables;
 
 	return sql as unknown as {
-		// biome-ignore lint/suspicious/noExplicitAny: mock type
 		<T = any>(
 			strings: TemplateStringsArray,
 			...values: any[]
 		): Promise<T[]> & {
 			count: number;
 		};
-		// biome-ignore lint/suspicious/noExplicitAny: mock type
 		(value: string): any;
-		// biome-ignore lint/suspicious/noExplicitAny: mock type
 		unsafe(value: string): any;
-		// biome-ignore lint/suspicious/noExplicitAny: mock type
 		json(value: unknown): any;
 		// biome-ignore lint/suspicious/noExplicitAny: mock type
 		begin(fn: (sql: any) => Promise<any>): Promise<any>;

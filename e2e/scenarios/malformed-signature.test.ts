@@ -13,7 +13,6 @@
  */
 
 import { describe, expect, test } from "bun:test";
-
 import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
 
 describe("Malformed PAYMENT-SIGNATURE", () => {

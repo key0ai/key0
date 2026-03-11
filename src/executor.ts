@@ -50,8 +50,10 @@ export class Key0Executor implements AgentExecutor {
 				return;
 			}
 
-			// ----- Route by type -----
-			if (payload["type"] === "AccessRequest" || this.isAccessRequest(payload)) {
+			// ----- Route by planId presence -----
+			// If planId is present → purchase flow (handleAccessRequest)
+			// Otherwise → discovery flow (handleDiscovery)
+			if (payload["planId"]) {
 				await this.handleAccessRequest(
 					payload as unknown as AccessRequest,
 					taskId,
@@ -59,14 +61,8 @@ export class Key0Executor implements AgentExecutor {
 					eventBus,
 				);
 			} else {
-				this.sendErrorTask(
-					eventBus,
-					taskId,
-					contextId,
-					"failed",
-					"Unknown message type",
-					`Unsupported message type: "${payload["type"]}". Expected type="AccessRequest" with planId and requestId.`,
-				);
+				// Discovery is the default — safe, free operation
+				this.handleDiscovery(taskId, contextId, eventBus);
 			}
 		} catch (err: unknown) {
 			if (err instanceof Key0Error) {
@@ -96,6 +92,50 @@ export class Key0Executor implements AgentExecutor {
 
 	async cancelTask(_taskId: string, _eventBus: ExecutionEventBus): Promise<void> {
 		// No-op for now as tasks are synchronous
+	}
+
+	// ===================================================================
+	// Handler: Discovery — AccessRequest without planId
+	// Returns product catalog as a completed task
+	// ===================================================================
+
+	private handleDiscovery(taskId: string, contextId: string, eventBus: ExecutionEventBus): void {
+		const catalog = {
+			agent: this.config.agentName,
+			description: this.config.agentDescription,
+			network: this.config.network,
+			chainId: this.networkConfig.chainId,
+			walletAddress: this.config.walletAddress,
+			asset: "USDC",
+			plans: this.config.plans.map((plan) => ({
+				planId: plan.planId,
+				unitAmount: plan.unitAmount,
+				description: plan.description,
+			})),
+		};
+
+		const task: Task = {
+			kind: "task",
+			id: taskId,
+			contextId,
+			status: {
+				state: "completed",
+				timestamp: new Date().toISOString(),
+				message: {
+					kind: "message",
+					messageId: uuidv4(),
+					role: "agent",
+					parts: [
+						{
+							kind: "data",
+							data: catalog,
+						},
+					],
+				},
+			},
+		};
+
+		eventBus.publish(task);
 	}
 
 	// ===================================================================
@@ -408,9 +448,5 @@ export class Key0Executor implements AgentExecutor {
 		};
 
 		eventBus.publish(task);
-	}
-
-	private isAccessRequest(data: Record<string, unknown>): boolean {
-		return typeof data["requestId"] === "string" && typeof data["planId"] === "string";
 	}
 }

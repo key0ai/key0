@@ -65,12 +65,33 @@ export function key0Router(opts: Key0Config): Router {
 
 			// Parse body (allow empty for discovery)
 			const body = req.body || {};
-			const { planId, resourceId = "default" } = body;
+			let { planId, resourceId = "default" } = body;
 			let { requestId } = body;
 
 			// Check for PAYMENT-SIGNATURE header
 			const paymentSignature = req.headers["payment-signature"] as string | undefined;
 			console.log(`[x402-access] PAYMENT-SIGNATURE present: ${!!paymentSignature}`);
+
+			// ===== x402 shortcut: extract planId from PAYMENT-SIGNATURE if not in body =====
+			// Standard x402 clients replay the same request with PAYMENT-SIGNATURE header.
+			// The planId is embedded in accepted.extra.planId within the signed payload.
+			if (!planId && paymentSignature) {
+				try {
+					const decoded = decodePaymentSignature(paymentSignature);
+					const sigTierId = decoded.accepted?.extra?.["planId"] as string | undefined;
+					if (sigTierId) {
+						console.log(
+							`[x402-access] ✓ Extracted planId="${sigTierId}" from PAYMENT-SIGNATURE (x402 replay)`,
+						);
+						planId = sigTierId;
+					}
+				} catch (err) {
+					console.log(
+						`[x402-access] ⚠ Failed to decode PAYMENT-SIGNATURE for planId extraction: ${err}`,
+					);
+					// Fall through to discovery — the signature might be malformed
+				}
+			}
 
 			// ===== CASE 1: No planId → Discovery (402 with all tiers, no PENDING record) =====
 			if (!planId) {
@@ -152,6 +173,7 @@ export function key0Router(opts: Key0Config): Router {
 							properties: {
 								accessToken: { type: "string", description: "JWT token for API access" },
 								tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
+								expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
 								resourceEndpoint: {
 									type: "string",
 									description: "URL to access the protected resource",

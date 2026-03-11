@@ -19,9 +19,7 @@ import {
 	REFUND_FAIL_REDIS_URL,
 	REFUND_POLL_TIMEOUT_MS,
 } from "../fixtures/constants.ts";
-
 import { clientWalletAddress, key0WalletAddress } from "../fixtures/wallets.ts";
-
 import {
 	printLogs,
 	type StackConfig,
