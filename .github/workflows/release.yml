@@ -66,7 +66,7 @@ jobs:
             type=semver,pattern={{major}},value=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
             type=raw,value=latest
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           push: true
