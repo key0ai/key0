@@ -164,13 +164,8 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 				asset: "USDC",
 				plans: config.plans.map((tier) => ({
 					planId: tier.planId,
-					displayName: tier.displayName,
-					...(tier.description ? { description: tier.description } : {}),
 					unitAmount: tier.unitAmount,
-					resourceType: tier.resourceType,
-					expiresIn: tier.expiresIn,
-					...(tier.features ? { features: tier.features } : {}),
-					...(tier.tags ? { tags: tier.tags } : {}),
+					...(tier.description ? { description: tier.description } : {}),
 				})),
 			};
 			return { content: [{ type: "text" as const, text: JSON.stringify(catalog, null, 2) }] };

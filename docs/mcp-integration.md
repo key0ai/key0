@@ -53,7 +53,7 @@ No new config fields. Set `mcp: true` in `SellerConfig` and define `plans` as us
 ```ts
 const config: SellerConfig = {
   mcp: true,
-  plans: [{ planId: "basic", unitAmount: "$0.99", displayName: "Basic Access", resourceType: "api-call" }],
+  plans: [{ planId: "basic", unitAmount: "$0.99" }],
   // ... standard config
 };
 ```

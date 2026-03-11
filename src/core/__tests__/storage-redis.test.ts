@@ -240,7 +240,6 @@ function makeGrant(): AccessGrant {
 		requestId: "r1",
 		accessToken: "tok",
 		tokenType: "Bearer",
-		expiresAt: "2025-01-01T13:00:00.000Z",
 		resourceEndpoint: "https://example.com/api/photos/42",
 		resourceId: "photo-42",
 		planId: "single",

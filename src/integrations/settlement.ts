@@ -148,7 +148,7 @@ export function buildHttpPaymentRequirements(
 				extra: {
 					name: networkConfig.usdcDomain.name,
 					version: networkConfig.usdcDomain.version,
-					description: `${tier.displayName} — ${tier.unitAmount} USDC`,
+					description: tier.description ?? `${tier.planId} — ${tier.unitAmount} USDC`,
 				},
 			},
 		],
@@ -185,10 +185,7 @@ export function buildDiscoveryResponse(
 				name: networkConfig.usdcDomain.name,
 				version: networkConfig.usdcDomain.version,
 				planId: tier.planId,
-				displayName: tier.displayName,
-				description: tier.description ?? `${tier.displayName} — ${tier.unitAmount} USDC`,
-				...(tier.features ? { features: tier.features } : {}),
-				...(tier.tags ? { tags: tier.tags } : {}),
+				description: tier.description ?? `${tier.planId} — ${tier.unitAmount} USDC`,
 			},
 		};
 	});
@@ -227,7 +224,6 @@ export function buildDiscoveryResponse(
 					properties: {
 						accessToken: { type: "string", description: "JWT token for API access" },
 						tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
-						expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
 						resourceEndpoint: {
 							type: "string",
 							description: "URL to access the protected resource",

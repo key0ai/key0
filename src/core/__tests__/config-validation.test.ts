@@ -11,12 +11,9 @@ function makeValidConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: `0x${"ab".repeat(20)}` as `0x${string}`,
 		network: "testnet",
-		plans: [
-			{ planId: "single", displayName: "Single", unitAmount: "$0.10", resourceType: "photo" },
-		],
+		plans: [{ planId: "single", unitAmount: "$0.10" }],
 		fetchResourceCredentials: async (params) => ({
 			token: `tok_${params.challengeId}`,
-			expiresAt: new Date(Date.now() + 3600 * 1000),
 		}),
 		...overrides,
 	};
@@ -81,7 +78,7 @@ describe("validateSellerConfig", () => {
 		expect(() =>
 			validateSellerConfig(
 				makeValidConfig({
-					plans: [{ planId: "", displayName: "X", unitAmount: "$0.10", resourceType: "photo" }],
+					plans: [{ planId: "", unitAmount: "$0.10" }],
 				}),
 			),
 		).toThrow("non-empty planId");
@@ -92,8 +89,8 @@ describe("validateSellerConfig", () => {
 			validateSellerConfig(
 				makeValidConfig({
 					plans: [
-						{ planId: "same", displayName: "A", unitAmount: "$0.10", resourceType: "photo" },
-						{ planId: "same", displayName: "B", unitAmount: "$0.20", resourceType: "photo" },
+						{ planId: "same", unitAmount: "$0.10" },
+						{ planId: "same", unitAmount: "$0.20" },
 					],
 				}),
 			),
@@ -104,7 +101,7 @@ describe("validateSellerConfig", () => {
 		expect(() =>
 			validateSellerConfig(
 				makeValidConfig({
-					plans: [{ planId: "bad", displayName: "X", unitAmount: "0.10", resourceType: "photo" }],
+					plans: [{ planId: "bad", unitAmount: "0.10" }],
 				}),
 			),
 		).toThrow('invalid unitAmount "0.10"');
@@ -115,13 +112,8 @@ describe("validateSellerConfig", () => {
 			validateSellerConfig(
 				makeValidConfig({
 					plans: [
-						{ planId: "basic", displayName: "Basic", unitAmount: "$0.10", resourceType: "photo" },
-						{
-							planId: "premium",
-							displayName: "Premium",
-							unitAmount: "$1.00",
-							resourceType: "photo",
-						},
+						{ planId: "basic", unitAmount: "$0.10" },
+						{ planId: "premium", unitAmount: "$1.00" },
 					],
 				}),
 			),

@@ -28,22 +28,12 @@ function makeConfig(): SellerConfig {
 		walletAddress: WALLET,
 		network: "testnet",
 		plans: [
-			{
-				planId: "basic",
-				displayName: "Basic Access",
-				unitAmount: "$0.99",
-				resourceType: "api-call",
-			},
-			{
-				planId: "premium",
-				displayName: "Premium Access",
-				unitAmount: "$4.99",
-				resourceType: "api-call",
-			},
+			{ planId: "basic", unitAmount: "$0.99" },
+			{ planId: "premium", unitAmount: "$4.99" },
 		],
 		challengeTTLSeconds: 900,
 		fetchResourceCredentials: async (params) => {
-			const { token, expiresAt } = await issuer.sign(
+			const { token } = await issuer.sign(
 				{
 					sub: params.requestId,
 					jti: params.challengeId,
@@ -54,7 +44,7 @@ function makeConfig(): SellerConfig {
 				3600,
 			);
 
-			return { token, expiresAt, tokenType: "Bearer" };
+			return { token, tokenType: "Bearer" };
 		},
 	};
 }
@@ -140,7 +130,7 @@ describe("x402-http-middleware", () => {
 			expect(requirements.accepts[0]?.extra).toBeDefined();
 			expect(requirements.accepts[0]?.extra?.["name"]).toBe("USDC");
 			expect(requirements.accepts[0]?.extra?.["version"]).toBe("2");
-			expect(requirements.accepts[0]?.extra?.["description"]).toBe("Basic Access — $0.99 USDC");
+			expect(requirements.accepts[0]?.extra?.["description"]).toBe("basic — $0.99 USDC");
 		});
 
 		test("should throw for invalid tier", () => {

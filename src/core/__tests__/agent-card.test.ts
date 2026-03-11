@@ -12,17 +12,9 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: `0x${"ab".repeat(20)}` as `0x${string}`,
 		network: "testnet",
-		plans: [
-			{
-				planId: "single",
-				displayName: "Single Photo",
-				unitAmount: "$0.10",
-				resourceType: "photo",
-			},
-		],
+		plans: [{ planId: "single", unitAmount: "$0.10" }],
 		fetchResourceCredentials: async () => ({
 			token: "test-token",
-			expiresAt: new Date(),
 		}),
 		...overrides,
 	};
@@ -73,7 +65,7 @@ describe("buildAgentCard", () => {
 		const card = buildAgentCard(makeConfig());
 		expect(card.skills).toHaveLength(1);
 		expect(card.skills[0]!.id).toBe("single");
-		expect(card.skills[0]!.name).toBe("Single Photo");
+		expect(card.skills[0]!.name).toBe("single");
 	});
 
 	test("skill description mentions x402 payment and 402 challenge", () => {
@@ -95,9 +87,9 @@ describe("buildAgentCard", () => {
 	test("multiple tiers produce multiple skills with one pricing each", () => {
 		const config = makeConfig({
 			plans: [
-				{ planId: "basic", displayName: "Basic", unitAmount: "$0.10", resourceType: "photo" },
-				{ planId: "premium", displayName: "Premium", unitAmount: "$1.00", resourceType: "photo" },
-				{ planId: "bulk", displayName: "Bulk", unitAmount: "$5.00", resourceType: "photo" },
+				{ planId: "basic", unitAmount: "$0.10" },
+				{ planId: "premium", unitAmount: "$1.00" },
+				{ planId: "bulk", unitAmount: "$5.00" },
 			],
 		});
 		const card = buildAgentCard(config);

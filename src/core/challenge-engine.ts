@@ -402,7 +402,6 @@ export class ChallengeEngine {
 		});
 
 		const accessToken = tokenResult.token;
-		const expiresAt = tokenResult.expiresAt;
 		const tokenType = tokenResult.tokenType || "Bearer";
 
 		const grant: AccessGrant = {
@@ -411,7 +410,6 @@ export class ChallengeEngine {
 			requestId: challenge.requestId,
 			accessToken,
 			tokenType: tokenType as "Bearer",
-			expiresAt: expiresAt.toISOString(),
 			resourceEndpoint,
 			resourceId: challenge.resourceId,
 			planId: challenge.planId,
@@ -726,7 +724,6 @@ export class ChallengeEngine {
 		});
 
 		const accessToken = tokenResult.token;
-		const expiresAt = tokenResult.expiresAt;
 		const tokenType = tokenResult.tokenType || "Bearer";
 
 		// 8. Build access grant
@@ -736,7 +733,6 @@ export class ChallengeEngine {
 			requestId: challenge.requestId,
 			accessToken,
 			tokenType: tokenType as "Bearer",
-			expiresAt: expiresAt.toISOString(),
 			resourceEndpoint,
 			resourceId,
 			planId,

@@ -22,7 +22,6 @@ export type AgentCard = {
 		name?: string;
 		pricing?: Array<{
 			planId: string;
-			displayName: string;
 			unitAmount: string;
 			chainId: number;
 		}>;
@@ -54,7 +53,6 @@ export type AccessGrant = {
 	requestId: string;
 	accessToken: string;
 	tokenType: "Bearer";
-	expiresAt: string;
 	resourceEndpoint: string;
 	resourceId: string;
 	planId: string;

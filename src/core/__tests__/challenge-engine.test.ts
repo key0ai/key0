@@ -18,13 +18,10 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		providerUrl: "https://provider.example.com",
 		walletAddress: WALLET,
 		network: "testnet",
-		plans: [
-			{ planId: "single", displayName: "Single Photo", unitAmount: "$0.10", resourceType: "photo" },
-		],
+		plans: [{ planId: "single", unitAmount: "$0.10" }],
 		challengeTTLSeconds: 900,
 		fetchResourceCredentials: async (params) => ({
 			token: `tok_${params.challengeId}`,
-			expiresAt: new Date(Date.now() + 3600 * 1000),
 			tokenType: "Bearer",
 		}),
 		...overrides,

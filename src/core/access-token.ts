@@ -10,7 +10,6 @@ export type TokenClaims = {
 
 export type TokenResult = {
 	readonly token: string;
-	readonly expiresAt: Date;
 };
 
 export type AccessTokenIssuerConfig = {
@@ -88,7 +87,6 @@ export class AccessTokenIssuer {
 
 		return {
 			token,
-			expiresAt: new Date(exp * 1000),
 		};
 	}
 

@@ -22,20 +22,17 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	const skills: AgentSkill[] = config.plans.map((tier: Plan) => {
 		const pricingEntry: SkillPricing = {
 			planId: tier.planId,
-			displayName: tier.displayName,
-			...(tier.description ? { description: tier.description } : {}),
 			unitAmount: tier.unitAmount,
+			...(tier.description ? { description: tier.description } : {}),
 			asset: "USDC" as const,
 			chainId: networkConfig.chainId,
 			walletAddress: config.walletAddress,
-			...(tier.features ? { features: tier.features } : {}),
-			...(tier.tags ? { tags: tier.tags } : {}),
 		};
 
 		return {
 			id: tier.planId,
-			name: tier.displayName,
-			description: `${tier.displayName} — ${tier.unitAmount} USDC on ${networkName}. Access via JSON-RPC method 'message/send' with AccessRequest, or direct HTTP POST to the URL field with body: { planId, requestId, resourceId }. Server responds with HTTP 402 payment challenge; include PAYMENT-SIGNATURE header with x402 payment payload to complete payment.`,
+			name: tier.planId,
+			description: `${tier.planId} — ${tier.unitAmount} USDC on ${networkName}. Access via JSON-RPC method 'message/send' with AccessRequest, or direct HTTP POST to the URL field with body: { planId, requestId, resourceId }. Server responds with HTTP 402 payment challenge; include PAYMENT-SIGNATURE header with x402 payment payload to complete payment.`,
 			tags: ["x402", "payment"],
 			url: `${baseUrl}/x402/access`,
 			examples: [
@@ -84,7 +81,6 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 				properties: {
 					accessToken: { type: "string", description: "JWT token for API access" },
 					tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
-					expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
 					resourceEndpoint: { type: "string", description: "URL to access the protected resource" },
 					txHash: { type: "string", description: "On-chain transaction hash" },
 					explorerUrl: { type: "string", description: "Blockchain explorer URL" },

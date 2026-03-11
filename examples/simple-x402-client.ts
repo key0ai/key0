@@ -88,7 +88,7 @@ async function main() {
 		console.error("   No pricing found");
 		process.exit(1);
 	}
-	console.log(`   Using: ${pricing.displayName} — ${pricing.unitAmount} USDC\n`);
+	console.log(`   Using: ${pricing.planId} — ${pricing.unitAmount} USDC\n`);
 
 	// -----------------------------------------------------------------------
 	// Step 2: Request access (initial call → HTTP 402)
@@ -195,7 +195,6 @@ async function main() {
 	const grant: AccessGrant = await finalRes.json();
 	console.log("   Access granted!");
 	console.log(`     Token:     ${grant.accessToken.substring(0, 20)}...`);
-	console.log(`     Expires:   ${grant.expiresAt}`);
 	console.log(`     Resource:  ${grant.resourceEndpoint}`);
 	console.log(`     TX:        ${grant.explorerUrl}\n`);
 

@@ -46,7 +46,7 @@ The Setup UI is a browser-based configuration wizard for Key0's Standalone (Dock
 | `docker/docker-compose.yml` | Compose file with Redis + config volume |
 | `docker/.env.example` | Annotated env var reference |
 | `ui/src/App.tsx` | React SPA root — form + output panel |
-| `ui/src/components/PlanEditor.tsx` | Plan configuration form (features, tags, duration presets) |
+| `ui/src/components/PlanEditor.tsx` | Plan configuration form (planId, unitAmount, description) |
 | `ui/src/generate.ts` | Generates `.env`, `docker run`, and `docker-compose.yml` output |
 | `ui/src/types.ts` | `Config` and `Plan` TypeScript types for the UI |
 
@@ -148,39 +148,10 @@ Each plan supports:
 | Field | UI Control | Required |
 |---|---|---|
 | `planId` | Text input | Yes |
-| `displayName` | Text input | Yes |
-| `description` | Text input | No |
 | `unitAmount` | Text input (e.g. `$15.00`) | Yes |
-| `resourceType` | Hidden (defaults to `api-access`) | Auto |
-| `expiresIn` | Duration preset dropdown | No |
-| `features` | Textarea (one per line) | No |
-| `tags` | Pill buttons (`most-popular`, `recommended`, `new`, `best-value`) | No |
+| `description` | Textarea | No |
 
-### Duration Presets
-
-The UI offers a dropdown for common durations instead of a raw seconds input:
-
-| Label | Value (seconds) |
-|---|---|
-| Single-use | _(empty)_ |
-| 1 hour | 3600 |
-| 24 hours | 86400 |
-| 7 days | 604800 |
-| 30 days (Monthly) | 2592000 |
-| 365 days (Yearly) | 31536000 |
-| Custom | Manual input |
-
-### Features
-
-Features are plain strings — one per line in a textarea. They're purely for discovery and display (agent card, MCP `discover_plans`, buyer-facing UI). Key0 does not enforce features; the seller's backend handles quota, concurrency, and gating.
-
-Example:
-```
-1,650 requests/month
-10 concurrent agents
-100 requests/minute
-Priority email support
-```
+The description is a free-form paragraph that can include features, duration, and any other details about the plan. Key0 does not enforce any of it — the seller's backend handles quota, concurrency, token TTL, and gating.
 
 ### Tags
 

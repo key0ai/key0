@@ -74,7 +74,7 @@ Client → Protected API with Bearer JWT
 
 ## Key Configuration
 
-`SellerConfig` drives everything: `walletAddress`, `network`, `plans` (array of plans with `planId`, `unitAmount`, `expiresIn`, optional `description`, `features`, `tags`).
+`SellerConfig` drives everything: `walletAddress`, `network`, `plans` (array of plans with `planId`, `unitAmount`, optional `description`).
 
 Required callback: `fetchResourceCredentials` (issue credential after payment — JWT, API key, etc.).
 

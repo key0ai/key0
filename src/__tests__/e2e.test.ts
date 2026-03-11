@@ -27,12 +27,12 @@ function makeConfig(): SellerConfig {
 		walletAddress: WALLET,
 		network: "testnet",
 		plans: [
-			{ planId: "single", displayName: "Single Photo", unitAmount: "$0.10", resourceType: "photo" },
-			{ planId: "album", displayName: "Full Album", unitAmount: "$1.00", resourceType: "album" },
+			{ planId: "single", unitAmount: "$0.10" },
+			{ planId: "album", unitAmount: "$1.00" },
 		],
 		challengeTTLSeconds: 900,
 		fetchResourceCredentials: async (params) => {
-			const { token, expiresAt } = await issuer.sign(
+			const { token } = await issuer.sign(
 				{
 					sub: params.requestId,
 					jti: params.challengeId,
@@ -43,7 +43,7 @@ function makeConfig(): SellerConfig {
 				3600,
 			);
 
-			return { token, expiresAt, tokenType: "Bearer" };
+			return { token, tokenType: "Bearer" };
 		},
 		resourceEndpointTemplate: "https://api.example.com/photos/{resourceId}",
 	};

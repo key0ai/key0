@@ -43,20 +43,8 @@ app.use(
 			network: NETWORK,
 			challengeTTLSeconds: 900,
 			plans: [
-				{
-					planId: "single-photo",
-					displayName: "Single Photo",
-					unitAmount: "$0.10",
-					resourceType: "photo",
-					expiresIn: 3600,
-				},
-				{
-					planId: "full-album",
-					displayName: "Full Album Access",
-					unitAmount: "$1.00",
-					resourceType: "album",
-					expiresIn: 86400,
-				},
+				{ planId: "single-photo", unitAmount: "$0.10", description: "Single photo access." },
+				{ planId: "full-album", unitAmount: "$1.00", description: "Full album access (24h)." },
 			],
 			fetchResourceCredentials: async (params) => {
 				// Generate JWT using the opt-in AccessTokenIssuer utility

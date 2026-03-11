@@ -4,7 +4,6 @@ export type NetworkName = "mainnet" | "testnet";
 
 export type TokenIssuanceResult = {
 	readonly token: string;
-	readonly expiresAt: Date;
 	readonly tokenType?: string; // Default "Bearer"
 };
 
@@ -32,13 +31,8 @@ export type NetworkConfig = {
 
 export type Plan = {
 	readonly planId: string;
-	readonly displayName: string;
-	readonly description?: string;
 	readonly unitAmount: string; // "$0.10"
-	readonly resourceType: string; // "photo" | "report" | "api-call"
-	readonly expiresIn?: number; // undefined = single-use
-	readonly features?: readonly string[]; // ["1,650 steps/month", "10 concurrent agents"]
-	readonly tags?: readonly string[]; // ["most-popular"]
+	readonly description?: string;
 };
 
 /**

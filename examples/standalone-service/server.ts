@@ -153,8 +153,7 @@ if (tokenMode === "remote") {
 	console.log("Using Native token issuance mode (local JWT)");
 	const localTokenIssuer = new AccessTokenIssuer(SECRET);
 	fetchResourceCredentials = async (params) => {
-		const plan = plans.find((p) => p.planId === params.planId);
-		const ttl = plan?.expiresIn ?? 3600;
+		const ttl = 3600;
 
 		return localTokenIssuer.sign(
 			{
@@ -173,58 +172,27 @@ if (tokenMode === "remote") {
 const plans = [
 	{
 		planId: "basic",
-		displayName: "Pay-as-you-go",
-		description: "Best for low-volume or unpredictable workloads",
 		unitAmount: "$0.015",
-		resourceType: "api-call",
-		features: ["2 concurrent agents", "10 requests/minute", "Email support"],
+		description:
+			"Pay-as-you-go. Best for low-volume or unpredictable workloads. 2 concurrent agents, 10 requests/minute, email support.",
 	},
 	{
 		planId: "starter-monthly",
-		displayName: "Starter",
-		description: "Best for developers running daily workflows",
 		unitAmount: "$15.00",
-		resourceType: "api-call",
-		expiresIn: 2592000, // 30 days
-		features: [
-			"1,650 requests/month",
-			"10 concurrent agents",
-			"100 requests/minute",
-			"Priority email support",
-			"Past 1,650 requests: $0.014/req",
-		],
-		tags: ["most-popular"],
+		description:
+			"Starter (monthly). Best for developers running daily workflows. 1,650 requests/month, 10 concurrent agents, 100 requests/minute, priority email support. Past 1,650 requests: $0.014/req.",
 	},
 	{
 		planId: "starter-yearly",
-		displayName: "Starter",
-		description: "Best for developers running daily workflows — save 7%",
 		unitAmount: "$168.00",
-		resourceType: "api-call",
-		expiresIn: 31536000, // 365 days
-		features: [
-			"1,650 requests/month",
-			"10 concurrent agents",
-			"100 requests/minute",
-			"Priority email support",
-			"Past 1,650 requests: $0.014/req",
-		],
-		tags: ["most-popular"],
+		description:
+			"Starter (yearly — save 7%). Best for developers running daily workflows. 1,650 requests/month, 10 concurrent agents, 100 requests/minute, priority email support. Past 1,650 requests: $0.014/req.",
 	},
 	{
 		planId: "pro-monthly",
-		displayName: "Pro",
-		description: "Best for teams with high-volume workloads",
 		unitAmount: "$150.00",
-		resourceType: "api-call",
-		expiresIn: 2592000, // 30 days
-		features: [
-			"16,500 requests/month",
-			"50 concurrent agents",
-			"1,000 requests/minute",
-			"Priority email + Slack",
-			"Past 16,500 requests: $0.012/req",
-		],
+		description:
+			"Pro (monthly). Best for teams with high-volume workloads. 16,500 requests/month, 50 concurrent agents, 1,000 requests/minute, priority email + Slack. Past 16,500 requests: $0.012/req.",
 	},
 ] as const;
 

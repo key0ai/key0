@@ -47,7 +47,6 @@ export type AccessGrant = {
 	readonly requestId: string;
 	readonly accessToken: string;
 	readonly tokenType: "Bearer";
-	readonly expiresAt: string; // ISO-8601
 	readonly resourceEndpoint: string;
 	readonly resourceId: string;
 	readonly planId: string;

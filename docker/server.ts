@@ -84,13 +84,8 @@ interface SetupBody {
 	providerUrl: string;
 	plans: Array<{
 		planId: string;
-		displayName: string;
-		description?: string;
 		unitAmount: string;
-		resourceType: string;
-		expiresIn?: number;
-		features?: string[];
-		tags?: string[];
+		description?: string;
 	}>;
 	challengeTtlSeconds: string;
 	mcpEnabled: boolean;
@@ -251,10 +246,7 @@ if (!isConfigured) {
 	const _DEFAULT_PLANS: Plan[] = [
 		{
 			planId: "basic",
-			displayName: "Basic",
 			unitAmount: "$0.10",
-			resourceType: "api",
-			expiresIn: 3600,
 		},
 	];
 

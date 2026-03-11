@@ -2,14 +2,11 @@ export type PaymentProtocol = "x402" | "stripe" | "lightning";
 
 export type SkillPricing = {
 	readonly planId: string;
-	readonly displayName: string;
-	readonly description?: string;
 	readonly unitAmount: string; // "$0.10" — human-readable USD, settled as USDC
+	readonly description?: string;
 	readonly asset: "USDC";
 	readonly chainId: number; // 8453 (Base) or 84532 (Base Sepolia)
 	readonly walletAddress: `0x${string}`;
-	readonly features?: readonly string[];
-	readonly tags?: readonly string[];
 };
 
 export type AgentSkillInputSchema = {

@@ -19,12 +19,11 @@ describe("AccessTokenIssuer", () => {
 		expect(() => new AccessTokenIssuer(SECRET)).not.toThrow();
 	});
 
-	test("sign returns token and expiresAt", async () => {
+	test("sign returns token", async () => {
 		const issuer = new AccessTokenIssuer(SECRET);
 		const result = await issuer.sign(CLAIMS, 3600);
 		expect(result.token).toBeTypeOf("string");
 		expect(result.token.length).toBeGreaterThan(0);
-		expect(result.expiresAt).toBeInstanceOf(Date);
 	});
 
 	test("verify returns correct claims", async () => {
@@ -89,14 +88,10 @@ describe("AccessTokenIssuer", () => {
 		).rejects.toThrow("Token verification failed with all secrets");
 	});
 
-	test("expiresAt is approximately ttl seconds in the future", async () => {
+	test("sign embeds exp claim in JWT", async () => {
 		const issuer = new AccessTokenIssuer(SECRET);
-		const before = Date.now();
 		const result = await issuer.sign(CLAIMS, 60);
-		const after = Date.now();
-		const expectedMin = before + 60 * 1000;
-		const expectedMax = after + 60 * 1000;
-		expect(result.expiresAt.getTime()).toBeGreaterThanOrEqual(expectedMin - 1000);
-		expect(result.expiresAt.getTime()).toBeLessThanOrEqual(expectedMax + 1000);
+		const decoded = await issuer.verify(result.token);
+		expect(decoded.exp - decoded.iat).toBe(60);
 	});
 });

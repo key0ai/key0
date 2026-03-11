@@ -39,12 +39,9 @@ export function makeSellerConfig(overrides?: Partial<SellerConfig>): SellerConfi
 		providerUrl: "https://provider.example.com",
 		walletAddress: DEFAULT_WALLET,
 		network: "testnet",
-		plans: [
-			{ planId: "single", displayName: "Single Photo", unitAmount: "$0.10", resourceType: "photo" },
-		],
+		plans: [{ planId: "single", unitAmount: "$0.10" }],
 		fetchResourceCredentials: async () => ({
 			token: "test-token-123",
-			expiresAt: new Date(Date.now() + 3600_000),
 		}),
 		...overrides,
 	};

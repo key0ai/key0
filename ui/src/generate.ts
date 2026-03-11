@@ -2,16 +2,10 @@ import type { Config, Plan } from "./types";
 
 /** Serialize a Plan to the JSON shape expected by Key0 config (strips empty optional fields). */
 function serializePlan(p: Plan) {
-	const features = (p.features || []).filter((f) => f.trim() !== "");
 	return {
 		planId: p.planId,
-		displayName: p.displayName,
-		...(p.description ? { description: p.description } : {}),
 		unitAmount: p.unitAmount,
-		resourceType: p.resourceType,
-		...(p.expiresIn !== "" ? { expiresIn: Number(p.expiresIn) } : {}),
-		...(features.length > 0 ? { features } : {}),
-		...(p.tags && p.tags.length > 0 ? { tags: p.tags } : {}),
+		...(p.description ? { description: p.description } : {}),
 	};
 }
 

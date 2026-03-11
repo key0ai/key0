@@ -65,15 +65,7 @@ app.use(
 			walletAddress: WALLET,
 			network: NETWORK,
 			challengeTTLSeconds: 900,
-			plans: [
-				{
-					planId: "single",
-					displayName: "Single access",
-					unitAmount: "$0.10",
-					resourceType: "data",
-					expiresIn: 3600,
-				},
-			],
+			plans: [{ planId: "single", unitAmount: "$0.10", description: "Single access." }],
 			fetchResourceCredentials: async (params) => {
 				console.log("New token issued", params);
 				throw new Error("No Token Issued"); // NOTE: This is for testing the refund cron

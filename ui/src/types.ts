@@ -1,12 +1,7 @@
 export interface Plan {
 	planId: string;
-	displayName: string;
-	description: string;
 	unitAmount: string;
-	resourceType: string;
-	expiresIn: number | "";
-	features: string[];
-	tags: string[];
+	description: string;
 }
 
 export interface Config {
@@ -74,13 +69,8 @@ export const defaultConfig: Config = {
 	plans: [
 		{
 			planId: "starter",
-			displayName: "Starter",
-			description: "",
 			unitAmount: "$10.00",
-			resourceType: "api-access",
-			expiresIn: 2592000,
-			features: [],
-			tags: [],
+			description: "",
 		},
 	],
 

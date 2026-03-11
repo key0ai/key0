@@ -9,7 +9,7 @@ import { oauthClientCredentialsAuth, sharedSecretAuth, signedJwtAuth } from "../
 
 function makeMockIssuer(token = "mock-jwt"): AccessTokenIssuer {
 	return {
-		sign: mock(async (_claims, _ttl) => ({ token, expiresAt: new Date(Date.now() + 60_000) })),
+		sign: mock(async (_claims, _ttl) => ({ token })),
 	} as unknown as AccessTokenIssuer;
 }
 

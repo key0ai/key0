@@ -48,8 +48,7 @@ export function startBackend(): Promise<Server> {
 			.setExpirationTime("1h")
 			.sign(secretBytes);
 
-		const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
-		res.json({ token, expiresAt, tokenType: "Bearer" });
+		res.json({ token, tokenType: "Bearer" });
 	});
 
 	// ── Per-challenge failure control ────────────────────────────────────────

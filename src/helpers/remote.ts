@@ -87,14 +87,13 @@ export function createRemoteTokenIssuer(
 
 			const data = await response.json();
 
-			// Expecting { token: string, expiresAt: string|Date, tokenType?: string }
+			// Expecting { token: string, tokenType?: string }
 			if (!data.token) {
 				throw new Key0Error("TOKEN_ISSUE_FAILED", "Backend response missing 'token' field", 502);
 			}
 
 			return {
 				token: data.token,
-				expiresAt: data.expiresAt instanceof Date ? data.expiresAt : new Date(data.expiresAt),
 				tokenType: data.tokenType || "Bearer",
 			};
 		} catch (err: unknown) {

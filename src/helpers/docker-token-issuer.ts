@@ -3,7 +3,7 @@ import type { IssueTokenParams, Plan, TokenIssuanceResult } from "../types/index
 export type DockerTokenIssuerOptions = {
 	/** Bearer secret for ISSUE_TOKEN_API requests (optional) */
 	apiSecret?: string;
-	/** Product catalog — used to merge tier fields into request body and read expiresIn */
+	/** Product catalog — used to merge tier fields into request body */
 	plans?: readonly Plan[];
 };
 
@@ -15,8 +15,7 @@ export type DockerTokenIssuerOptions = {
  * - If the response has a `{ token: string }` field, passes it through directly.
  * - Otherwise (e.g. `{ apiKey, apiSecret }`) JSON-serialises the full response as the token
  *   with `tokenType: "custom"`.
- * - `expiresAt` comes from the response when present, otherwise falls back to the tier's
- *   `expiresIn` (default 3600 s).
+ * - Token expiry is the responsibility of the issuing backend, not Key0.
  */
 export function buildDockerTokenIssuer(
 	issueTokenApiUrl: string,
@@ -57,22 +56,15 @@ export function buildDockerTokenIssuer(
 
 		// Passthrough: if response has a `token` string field, use it directly
 		if (typeof data["token"] === "string") {
-			const expiresAt =
-				typeof data["expiresAt"] === "string"
-					? new Date(data["expiresAt"])
-					: new Date(Date.now() + (tier?.expiresIn ?? 3600) * 1000);
 			return {
 				token: data["token"],
-				expiresAt,
 				...(typeof data["tokenType"] === "string" ? { tokenType: data["tokenType"] } : {}),
 			};
 		}
 
 		// No `token` field (e.g. { apiKey, apiSecret }) — JSON-serialize the full response
-		const expiresIn = tier?.expiresIn ?? 3600;
 		return {
 			token: JSON.stringify(data),
-			expiresAt: new Date(Date.now() + expiresIn * 1000),
 			tokenType: "custom",
 		};
 	};

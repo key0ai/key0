@@ -152,7 +152,6 @@ export function key0Router(opts: Key0Config): Router {
 							properties: {
 								accessToken: { type: "string", description: "JWT token for API access" },
 								tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
-								expiresAt: { type: "string", description: "ISO 8601 expiration timestamp" },
 								resourceEndpoint: {
 									type: "string",
 									description: "URL to access the protected resource",

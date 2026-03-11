@@ -49,18 +49,8 @@ function makeConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		walletAddress: WALLET,
 		network: "testnet",
 		plans: [
-			{
-				planId: "basic",
-				displayName: "Basic Access",
-				unitAmount: "$0.99",
-				resourceType: "api-call",
-			},
-			{
-				planId: "premium",
-				displayName: "Premium Access",
-				unitAmount: "$4.99",
-				resourceType: "api-call",
-			},
+			{ planId: "basic", unitAmount: "$0.99" },
+			{ planId: "premium", unitAmount: "$4.99" },
 		],
 		challengeTTLSeconds: 900,
 		fetchResourceCredentials: async (params) => {
@@ -503,7 +493,6 @@ describe("createMcpServer — request_access happy path", () => {
 			config: {
 				fetchResourceCredentials: async (params) => ({
 					token: `custom-tok-${params.challengeId}`,
-					expiresAt: new Date(Date.now() + 3600 * 1000),
 					tokenType: "Bearer",
 				}),
 			},

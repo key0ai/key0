@@ -116,7 +116,7 @@ Build from source: `docker build -t riklr/key0 .`
 | `AGENT_URL` | | `http://localhost:PORT` | Publicly reachable URL of this server — used in the agent card and resource endpoint URLs |
 | `PROVIDER_NAME` | | `Key0` | Your organization name shown in the agent card `provider` field |
 | `PROVIDER_URL` | | `https://key0.ai` | Your organization URL shown in the agent card `provider` field |
-| `PLANS` | | `[{"planId":"basic","displayName":"Basic","unitAmount":"$0.10","resourceType":"api","expiresIn":3600}]` | JSON array of pricing plans — each with `planId`, `displayName`, `unitAmount`, `resourceType`, and optional `expiresIn`, `description`, `features`, `tags` |
+| `PLANS` | | `[{"planId":"basic","unitAmount":"$0.10"}]` | JSON array of pricing plans — each with `planId`, `unitAmount`, and optional `description` |
 | `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
 | `BASE_PATH` | ✅ | — | URL path prefix for A2A endpoints (e.g. `/a2a` mounts `/a2a/jsonrpc` and `/a2a/.well-known/agent.json`) |
 | `ISSUE_TOKEN_API_SECRET` | | — | If set, sent as `Authorization: Bearer <secret>` on every request to `ISSUE_TOKEN_API` |
@@ -143,10 +143,7 @@ After on-chain payment is verified, Key0 POSTs to `ISSUE_TOKEN_API` with the pay
   "resourceId": "photo-42",
   "planId": "basic",
   "txHash": "0x...",
-  "displayName": "Basic",
-  "unitAmount": "$0.10",
-  "resourceType": "api",
-  "expiresIn": 3600
+  "unitAmount": "$0.10"
 }
 ```
 
@@ -266,18 +263,12 @@ app.use(
       walletAddress: "0xYourWalletAddress" as `0x${string}`,
       network: "testnet",
       plans: [
-        {
-          planId: "basic",
-          displayName: "Basic Access",
-          unitAmount: "$0.10",
-          resourceType: "api-call",
-          expiresIn: 3600,
-        },
+        { planId: "basic", unitAmount: "$0.10", description: "Basic API access." },
       ],
       fetchResourceCredentials: async (params) => {
         return tokenIssuer.sign(
           { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
-          params.expiresIn,
+          3600,
         );
       },
     },
@@ -375,13 +366,8 @@ fastify.listen({ port: 3000 });
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `planId` | `string` | ✅ | Unique plan identifier |
-| `displayName` | `string` | ✅ | Display name |
-| `description` | `string` | | Short summary shown in agent card and UI |
 | `unitAmount` | `string` | ✅ | Price (e.g. `"$0.10"`) |
-| `resourceType` | `string` | ✅ | Category (e.g. `"photo"`, `"api-call"`) |
-| `expiresIn` | `number` | | Token validity; omit for single-use |
-| `features` | `string[]` | | Display-only feature list (e.g. `["10 requests/min", "Priority support"]`) |
-| `tags` | `string[]` | | Metadata tags for UI badges (e.g. `["most-popular"]`) |
+| `description` | `string` | | Free-form description of what the plan includes |
 
 #### IssueTokenParams
 
@@ -648,9 +634,11 @@ import { AccessTokenIssuer } from "@riklr/key0";
 const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
 
 fetchResourceCredentials: async (params) => {
+  // TTL is entirely your decision — use planId to vary it, or hardcode
+  const ttl = params.planId === "pro" ? 86400 : 3600;
   return tokenIssuer.sign(
-    { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
-    params.expiresIn,  // token TTL in seconds
+    { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId, planId: params.planId },
+    ttl,
   );
 },
 ```

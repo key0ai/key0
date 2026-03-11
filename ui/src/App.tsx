@@ -66,7 +66,7 @@ export default function App() {
 			? config.redisUrl.length > 0
 			: config.databaseUrl.length > 0) &&
 		config.plans.length > 0 &&
-		config.plans.every((p) => p.planId && p.displayName && p.unitAmount);
+		config.plans.every((p) => p.planId && p.unitAmount);
 
 	const isDockerMode = serverStatus === "setup" || serverStatus === "running";
 
