@@ -117,7 +117,8 @@ function deserializeChallengeRecord(flat: FlatHash): ChallengeRecord | null {
 // ARGV[5] = now ISO string (for updatedAt + audit timestamp)
 // ARGV[6] = actor (e.g. "engine", "cron", "admin", "system")
 // ARGV[7] = reason (or "" for none)
-// ARGV[8..] = alternating field/value pairs to write alongside state
+// ARGV[8] = audit list TTL in seconds (to set/refresh TTL on audit list key)
+// ARGV[9..] = alternating field/value pairs to write alongside state
 
 const TRANSITION_LUA = `
 local current = redis.call('HGET', KEYS[1], 'state')
@@ -131,11 +132,12 @@ local score = ARGV[4]
 local now = ARGV[5]
 local actor = ARGV[6]
 local reason = ARGV[7]
+local auditTTL = tonumber(ARGV[8])
 redis.call('HSET', KEYS[1], 'state', toState, 'updatedAt', now)
 -- Collect field/value updates
 local updates = {}
 local hasUpdates = false
-for i = 8, #ARGV, 2 do
+for i = 9, #ARGV, 2 do
   redis.call('HSET', KEYS[1], ARGV[i], ARGV[i+1])
   updates[ARGV[i]] = ARGV[i+1]
   hasUpdates = true
@@ -162,6 +164,8 @@ if hasUpdates then
   entry.updates = updates
 end
 redis.call('RPUSH', KEYS[3], cjson.encode(entry))
+-- Set/refresh TTL on audit list to match challenge hash TTL
+redis.call('EXPIRE', KEYS[3], auditTTL)
 if toState == 'PAID' and score ~= '' then
   redis.call('ZADD', KEYS[2], score, challengeId)
 elseif fromState == 'PAID' then
@@ -264,7 +268,10 @@ export class RedisChallengeStore implements IChallengeStore {
 			updates: null,
 			createdAt: record.createdAt.toISOString(),
 		};
-		pipeline.rpush(this.auditKey(record.challengeId), JSON.stringify(auditEntry));
+		const auditListKey = this.auditKey(record.challengeId);
+		pipeline.rpush(auditListKey, JSON.stringify(auditEntry));
+		// Set TTL on audit list to match challenge hash TTL
+		pipeline.expire(auditListKey, this.recordTTL);
 
 		const results = await pipeline.exec();
 		if (results) {
@@ -285,10 +292,13 @@ export class RedisChallengeStore implements IChallengeStore {
 		const paidSetKey = this.paidSetKey();
 		const auditListKey = this.auditKey(challengeId);
 
-		// ARGV layout: [fromState, toState, challengeId, paidAtScore, now, actor, reason, ...field/value pairs]
+		// ARGV layout: [fromState, toState, challengeId, paidAtScore, now, actor, reason, auditTTL, ...field/value pairs]
 		// paidAtScore is the paidAt epoch ms (for ZADD on PAID transitions), or "" otherwise.
+		// auditTTL is the TTL in seconds to set on the audit list key (defaults to recordTTL, updated to deliveredTTL for DELIVERED transitions)
 		const score = toState === "PAID" && updates?.paidAt ? updates.paidAt.getTime().toString() : "";
 		const now = new Date().toISOString();
+		// Use recordTTL as default audit TTL (will be updated to deliveredTTL for DELIVERED transitions)
+		const auditTTL = toState === "DELIVERED" ? this.deliveredTTL : this.recordTTL;
 		const argv: string[] = [
 			fromState,
 			toState,
@@ -297,6 +307,7 @@ export class RedisChallengeStore implements IChallengeStore {
 			now,
 			meta?.actor ?? "system",
 			meta?.reason ?? "",
+			auditTTL.toString(),
 		];
 
 		if (updates) {
@@ -339,8 +350,10 @@ export class RedisChallengeStore implements IChallengeStore {
 
 		// DELIVERED records no longer need the full 7-day window — shorten TTL to 12 hours.
 		// This EXPIRE is intentionally outside Lua (TTL adjustment, not a correctness invariant).
+		// Update both challenge hash and audit list TTLs to match.
 		if (toState === "DELIVERED") {
 			await this.redis.expire(key, this.deliveredTTL);
+			await this.redis.expire(auditListKey, this.deliveredTTL);
 		}
 
 		return true;

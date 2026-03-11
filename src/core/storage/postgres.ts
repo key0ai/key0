@@ -32,6 +32,9 @@ type Sql = {
 	// Helper for JSON values
 	// biome-ignore lint/suspicious/noExplicitAny: postgres.js helper signature
 	json(value: unknown): any;
+	// Transaction helper: begin a transaction and execute callback with transaction-scoped sql
+	// biome-ignore lint/suspicious/noExplicitAny: postgres.js transaction signature
+	begin<T>(callback: (sql: Sql) => Promise<T>): Promise<T>;
 };
 
 // ─── Config ──────────────────────────────────────────────────────────
@@ -295,71 +298,73 @@ export class PostgresChallengeStore implements IChallengeStore {
 		await this.ready;
 
 		try {
-			await this.sql`
-				INSERT INTO ${this.sql(this.tableName)} (
-					challenge_id,
-					request_id,
-					client_agent_id,
-					resource_id,
-					tier_id,
-					amount,
-					amount_raw,
-					asset,
-					chain_id,
-					destination,
-					state,
-					expires_at,
-					created_at,
-					updated_at,
-					paid_at,
-					tx_hash,
-					access_grant,
-					from_address,
-					delivered_at,
-					refund_tx_hash,
-					refunded_at,
-					refund_error
-				) VALUES (
-					${record.challengeId},
-					${record.requestId},
-					${record.clientAgentId},
-					${record.resourceId},
-					${record.planId},
-					${record.amount},
-					${record.amountRaw.toString()},
-					${record.asset},
-					${record.chainId},
-					${record.destination},
-					${record.state},
-					${record.expiresAt},
-					${record.createdAt},
-					${record.updatedAt},
-					${record.paidAt ?? null},
-					${record.txHash ?? null},
-					${record.accessGrant ? this.sql.json(record.accessGrant) : null},
-					${record.fromAddress ?? null},
-					${record.deliveredAt ?? null},
-					${record.refundTxHash ?? null},
-					${record.refundedAt ?? null},
-					${record.refundError ?? null}
-				)
-			`;
+			await this.sql.begin(async (sql) => {
+				await sql`
+					INSERT INTO ${sql(this.tableName)} (
+						challenge_id,
+						request_id,
+						client_agent_id,
+						resource_id,
+						tier_id,
+						amount,
+						amount_raw,
+						asset,
+						chain_id,
+						destination,
+						state,
+						expires_at,
+						created_at,
+						updated_at,
+						paid_at,
+						tx_hash,
+						access_grant,
+						from_address,
+						delivered_at,
+						refund_tx_hash,
+						refunded_at,
+						refund_error
+					) VALUES (
+						${record.challengeId},
+						${record.requestId},
+						${record.clientAgentId},
+						${record.resourceId},
+						${record.planId},
+						${record.amount},
+						${record.amountRaw.toString()},
+						${record.asset},
+						${record.chainId},
+						${record.destination},
+						${record.state},
+						${record.expiresAt},
+						${record.createdAt},
+						${record.updatedAt},
+						${record.paidAt ?? null},
+						${record.txHash ?? null},
+						${record.accessGrant ? sql.json(record.accessGrant) : null},
+						${record.fromAddress ?? null},
+						${record.deliveredAt ?? null},
+						${record.refundTxHash ?? null},
+						${record.refundedAt ?? null},
+						${record.refundError ?? null}
+					)
+				`;
 
-			// Audit: log the creation
-			await this.sql`
-				INSERT INTO ${this.sql(this.auditTableName)}
-					(challenge_id, request_id, client_agent_id, from_state, to_state, actor, reason, updates)
-				VALUES (
-					${record.challengeId},
-					${record.requestId},
-					${record.clientAgentId},
-					${null},
-					${record.state},
-					${meta?.actor ?? "engine"},
-					${meta?.reason ?? "challenge_created"},
-					${null}
-				)
-			`;
+				// Audit: log the creation
+				await sql`
+					INSERT INTO ${sql(this.auditTableName)}
+						(challenge_id, request_id, client_agent_id, from_state, to_state, actor, reason, updates)
+					VALUES (
+						${record.challengeId},
+						${record.requestId},
+						${record.clientAgentId},
+						${null},
+						${record.state},
+						${meta?.actor ?? "engine"},
+						${meta?.reason ?? "challenge_created"},
+						${null}
+					)
+				`;
+			});
 		} catch (err: unknown) {
 			const pgError = err as { code?: string };
 			if (pgError?.code === "23505") {
@@ -407,40 +412,43 @@ export class PostgresChallengeStore implements IChallengeStore {
 			updateObj["refund_error"] = updates.refundError;
 		}
 
-		const result = await this.sql`
-			UPDATE ${this.sql(this.tableName)}
-			SET ${this.sql(updateObj, ...Object.keys(updateObj))}
-			WHERE challenge_id = ${challengeId} 
-			  AND state = ${fromState}
-			  AND deleted_at IS NULL
-		`;
-
-		// postgres.js result has .count property for affected rows
-		const affected = (result as unknown as { count: number }).count > 0;
-
-		// Audit: log the transition (only if it actually happened)
-		// Uses a CTE to pull request_id and client_agent_id from the challenge row.
-		if (affected) {
-			await this.sql`
-				WITH ctx AS (
-					SELECT request_id, client_agent_id
-					FROM ${this.sql(this.tableName)}
-					WHERE challenge_id = ${challengeId}
-				)
-				INSERT INTO ${this.sql(this.auditTableName)}
-					(challenge_id, request_id, client_agent_id, from_state, to_state, actor, reason, updates)
-				SELECT
-					${challengeId},
-					ctx.request_id,
-					ctx.client_agent_id,
-					${fromState},
-					${toState},
-					${meta?.actor ?? "system"},
-					${meta?.reason ?? null},
-					${updates ? this.sql.json(updates) : null}
-				FROM ctx
+		let affected = false;
+		await this.sql.begin(async (sql) => {
+			const result = await sql`
+				UPDATE ${sql(this.tableName)}
+				SET ${sql(updateObj, ...Object.keys(updateObj))}
+				WHERE challenge_id = ${challengeId} 
+				  AND state = ${fromState}
+				  AND deleted_at IS NULL
 			`;
-		}
+
+			// postgres.js result has .count property for affected rows
+			affected = (result as unknown as { count: number }).count > 0;
+
+			// Audit: log the transition (only if it actually happened)
+			// Uses a CTE to pull request_id and client_agent_id from the challenge row.
+			if (affected) {
+				await sql`
+					WITH ctx AS (
+						SELECT request_id, client_agent_id
+						FROM ${sql(this.tableName)}
+						WHERE challenge_id = ${challengeId}
+					)
+					INSERT INTO ${sql(this.auditTableName)}
+						(challenge_id, request_id, client_agent_id, from_state, to_state, actor, reason, updates)
+					SELECT
+						${challengeId},
+						ctx.request_id,
+						ctx.client_agent_id,
+						${fromState},
+						${toState},
+						${meta?.actor ?? "system"},
+						${meta?.reason ?? null},
+						${updates ? sql.json(updates) : null}
+					FROM ctx
+				`;
+			}
+		});
 
 		return affected;
 	}

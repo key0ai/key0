@@ -19,7 +19,7 @@ import { Key0Error } from "../types/errors.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-const LOCK_TTL_MS = 60_000; // 60 s — longer than any reasonable on-chain tx
+const LOCK_TTL_MS = 120_000; // 120 s — must exceed settleViaGasWallet timeout (90 s) to prevent nonce conflicts
 const LOCK_POLL_MS = 200; // retry interval while waiting for lock
 
 // Lua script: delete the key only if its value matches our token (atomic)
@@ -63,11 +63,13 @@ async function releaseRedisLock(
 // ---------------------------------------------------------------------------
 
 /**
- * A single promise chain that serialises all gas wallet operations within one
- * Node process. Does NOT protect across multiple instances — set `redis` for
- * multi-instance deployments.
+ * Per-lock-key promise chains that serialise gas wallet operations within one
+ * Node process. Each lock key (gas wallet address) has its own queue, allowing
+ * different wallets to operate in parallel while serialising operations for
+ * the same wallet. Does NOT protect across multiple instances — set `redis`
+ * for multi-instance deployments.
  */
-let gasWalletQueue: Promise<unknown> = Promise.resolve();
+const gasWalletQueues = new Map<string, Promise<unknown>>();
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -118,7 +120,16 @@ export async function withGasWalletLock<T>(
 	}
 
 	// In-process fallback — single instance only
-	const result = gasWalletQueue.then(() => fn());
-	gasWalletQueue = result.catch(() => {});
+	// Use per-key queue to allow parallel operations for different gas wallets
+	const queue = gasWalletQueues.get(lockKey) ?? Promise.resolve();
+	const result = queue.then(() => fn());
+	const queuedPromise = result.catch(() => {});
+	gasWalletQueues.set(lockKey, queuedPromise);
+	// Clean up completed queues to prevent memory leak
+	queuedPromise.finally(() => {
+		if (gasWalletQueues.get(lockKey) === queuedPromise) {
+			gasWalletQueues.delete(lockKey);
+		}
+	});
 	return result;
 }
