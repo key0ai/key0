@@ -1,21 +1,21 @@
 /**
  * Backend Service Example
  *
- * This example shows how to integrate with AgentGate standalone service.
+ * This example shows how to integrate with Key0 standalone service.
  * It demonstrates both token validation modes:
- * - Native: Validates AgentGate JWT tokens
- * - Remote: Issues custom tokens when AgentGate calls /internal/issue-token
+ * - Native: Validates Key0 JWT tokens
+ * - Remote: Issues custom tokens when Key0 calls /internal/issue-token
  *
  * Usage:
  *   bun run start
  */
 
-import type { AccessTokenPayload } from "@riklr/agentgate";
-import { validateAgentGateToken } from "@riklr/agentgate";
+import type { AccessTokenPayload } from "@riklr/key0";
+import { validateKey0Token } from "@riklr/key0";
 import express from "express";
 
 const PORT = Number(process.env.PORT ?? 3000);
-const AGENTGATE_SECRET = process.env.AGENTGATE_ACCESS_TOKEN_SECRET!;
+const KEY0_SECRET = process.env.KEY0_ACCESS_TOKEN_SECRET!;
 const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 
 const app = express();
@@ -32,7 +32,7 @@ const resources = new Map<string, { tierId: string }>([
 const apiKeys = new Map<string, { expiresAt: Date; resourceId: string; tierId: string }>();
 
 // ============================================================================
-// Internal Endpoints (called by AgentGate Service)
+// Internal Endpoints (called by Key0 Service)
 // ============================================================================
 
 // Middleware to verify internal auth
@@ -63,7 +63,7 @@ app.post("/internal/verify-resource", verifyInternalAuth, (req, res) => {
 	res.json({ valid });
 });
 
-// Issue token (only used if AgentGate tokenMode="remote")
+// Issue token (only used if Key0 tokenMode="remote")
 app.post("/internal/issue-token", (req, res) => {
 	const { requestId, resourceId, tierId, txHash } = req.body;
 
@@ -99,19 +99,19 @@ app.post("/internal/payment-received", verifyInternalAuth, (req, res) => {
 // Protected API Endpoints
 // ============================================================================
 
-// Middleware to validate AgentGate tokens (Native Mode)
+// Middleware to validate Key0 tokens (Native Mode)
 async function validateToken(
 	req: express.Request,
 	res: express.Response,
 	next: express.NextFunction,
 ) {
 	try {
-		const payload = await validateAgentGateToken(req.headers.authorization, {
-			secret: AGENTGATE_SECRET,
+		const payload = await validateKey0Token(req.headers.authorization, {
+			secret: KEY0_SECRET,
 		});
 
 		// Attach token to request
-		(req as express.Request & { agentGateToken: AccessTokenPayload }).agentGateToken = payload;
+		(req as express.Request & { key0Token: AccessTokenPayload }).key0Token = payload;
 		next();
 	} catch (err) {
 		// If native token validation fails, check for custom API key (Remote Mode)
@@ -123,9 +123,9 @@ async function validateToken(
 				// Valid API key
 				(
 					req as express.Request & {
-						agentGateToken: { resourceId: string; tierId: string; type: string };
+						key0Token: { resourceId: string; tierId: string; type: string };
 					}
-				).agentGateToken = {
+				).key0Token = {
 					resourceId: keyData.resourceId,
 					tierId: keyData.tierId,
 					type: "api-key",
@@ -146,7 +146,7 @@ app.use("/api", validateToken);
 
 // Sample protected endpoint
 app.get("/api/photos/:id", (req, res) => {
-	const token = (req as unknown as { agentGateToken: AccessTokenPayload }).agentGateToken;
+	const token = (req as unknown as { key0Token: AccessTokenPayload }).key0Token;
 
 	// If token has "default" resourceId, it grants access to all resources (tier-scoped)
 	// Otherwise, verify specific resource ID matches
@@ -174,7 +174,7 @@ app.get("/api/photos/:id", (req, res) => {
 });
 
 app.get("/api/data/:id", (req, res) => {
-	const token = (req as unknown as { agentGateToken: AccessTokenPayload }).agentGateToken;
+	const token = (req as unknown as { key0Token: AccessTokenPayload }).key0Token;
 
 	// Token with "default" resourceId grants tier-based access to all endpoints
 	res.json({

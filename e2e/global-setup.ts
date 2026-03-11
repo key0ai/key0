@@ -3,7 +3,7 @@
  *
  * Starts (once per test run):
  *   1. Backend server (port 3001) — in-process Express
- *   2. Docker stack (AgentGate port 3000 + Redis port 6379) — via docker compose
+ *   2. Docker stack (Key0 port 3000 + Redis port 6379) — via docker compose
  *
  * Tears down both in afterAll.
  *
@@ -13,7 +13,7 @@
 
 import { afterAll, beforeAll } from "bun:test";
 import type { Server } from "node:http";
-import { AGENTGATE_URL } from "./fixtures/constants.ts";
+import { KEY0_URL } from "./fixtures/constants.ts";
 import { startBackend } from "./helpers/backend-server.ts";
 import {
 	printLogs,
@@ -32,11 +32,11 @@ const usePostgres = process.env.E2E_STORAGE_BACKEND === "postgres";
 const STACK_CONFIG: StackConfig = usePostgres
 	? {
 			composeFile: "docker-compose.e2e-postgres.yml",
-			projectName: "agentgate-e2e-pg",
+			projectName: "key0-e2e-pg",
 		}
 	: {
 			composeFile: "docker-compose.e2e.yml",
-			projectName: "agentgate-e2e",
+			projectName: "key0-e2e",
 		};
 
 beforeAll(async () => {
@@ -53,23 +53,23 @@ beforeAll(async () => {
 		throw err;
 	}
 
-	// 3. Verify AgentGate is reachable
-	const healthRes = await fetch(`${AGENTGATE_URL}/health`);
+	// 3. Verify Key0 is reachable
+	const healthRes = await fetch(`${KEY0_URL}/health`);
 	if (!healthRes.ok) {
-		throw new Error(`AgentGate health check failed: ${healthRes.status}`);
+		throw new Error(`Key0 health check failed: ${healthRes.status}`);
 	}
 	const health = await healthRes.json();
-	console.log("[setup] AgentGate health:", health);
+	console.log("[setup] Key0 health:", health);
 
 	// 4. Configure storage-agnostic helpers
 	if (usePostgres) {
-		// For Postgres, helpers talk to AgentGate via HTTP
-		setStorageBackend("postgres", undefined, AGENTGATE_URL, null);
+		// For Postgres, helpers talk to Key0 via HTTP
+		setStorageBackend("postgres", undefined, KEY0_URL, null);
 		console.log("[setup] Storage helpers configured for Postgres");
 	} else {
 		// For Redis, connect the Redis client for direct state assertions
 		connectRedis();
-		setStorageBackend("redis", undefined, AGENTGATE_URL, null);
+		setStorageBackend("redis", undefined, KEY0_URL, null);
 	}
 
 	console.log("[setup] Ready.");

@@ -1,6 +1,6 @@
 ---
 name: test-writer
-description: Writes Bun tests for AgentGate SDK matching project conventions. Use when adding tests for challenge-engine, storage, adapters, middleware, or helpers.
+description: Writes Bun tests for Key0 SDK matching project conventions. Use when adding tests for challenge-engine, storage, adapters, middleware, or helpers.
 tools: Read, Write, Edit, Grep, Glob, Bash
 model: sonnet
 color: cyan
@@ -10,7 +10,7 @@ skills:
   - test-conventions
 ---
 
-You are a test writer for the AgentGate SDK. You write `bun:test` tests that match the project's exact conventions (loaded from the `test-conventions` skill) and cover the payment security invariants (loaded from the `payment-invariants` skill).
+You are a test writer for the Key0 SDK. You write `bun:test` tests that match the project's exact conventions (loaded from the `test-conventions` skill) and cover the payment security invariants (loaded from the `payment-invariants` skill).
 
 ## Factory Helpers
 

@@ -95,8 +95,8 @@ export class AccessTokenIssuer {
 	async verify(token: string): Promise<TokenClaims & { iat: number; exp: number }> {
 		if (this.algorithm === "RS256") {
 			// For verification, we'd need public key, but this method is for internal use
-			// In practice, verification should use the public key separately via validateAgentGateToken
-			throw new Error("RS256 verification requires public key, use validateAgentGateToken instead");
+			// In practice, verification should use the public key separately via validateKey0Token
+			throw new Error("RS256 verification requires public key, use validateKey0Token instead");
 		}
 		const verifyKey = this.key as Uint8Array;
 		const { payload } = await jwtVerify(token, verifyKey, {

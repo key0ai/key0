@@ -15,10 +15,10 @@ export type { RefundConfig, RefundResult } from "./refund.js";
 export { processRefunds } from "./refund.js";
 export type { PostgresStoreConfig } from "./storage/postgres.js";
 // Storage — Postgres
-export { PostgresChallengeStore, PostgresSeenTxStore } from "./storage/postgres.js";
+export { PostgresAuditStore, PostgresChallengeStore, PostgresSeenTxStore } from "./storage/postgres.js";
 export type { RedisStoreConfig } from "./storage/redis.js";
 // Storage — Redis
-export { RedisChallengeStore, RedisSeenTxStore } from "./storage/redis.js";
+export { RedisAuditStore, RedisChallengeStore, RedisSeenTxStore } from "./storage/redis.js";
 export {
 	validateAddress,
 	validateDollarAmount,

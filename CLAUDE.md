@@ -2,11 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project: AgentGate SDK
+## Project: Key0 SDK
 
 Payment-gated A2A (Agent-to-Agent) endpoints using the x402 protocol with USDC on Base. Lets sellers monetize any API: agents request access, pay via on-chain USDC, receive a signed JWT.
 
-Package name: `@riklr/agentgate` (single package, not a monorepo despite README references to packages).
+Package name: `@riklr/key0` (single package, not a monorepo despite README references to packages).
 
 ## Commands
 
@@ -53,9 +53,9 @@ Client → Protected API with Bearer JWT
 
 4. **Integrations** (`src/integrations/`) — Framework adapters mount the challenge/proof endpoints and export `validateAccessToken` middleware for protecting routes. Available for Express, Hono, Fastify, and MCP (Streamable HTTP transport via `@modelcontextprotocol/sdk`).
 
-5. **Executor** (`src/executor.ts`) — `AgentGateExecutor` implements `@a2a-js/sdk`'s `AgentExecutor` for the A2A protocol flow.
+5. **Executor** (`src/executor.ts`) — `Key0Executor` implements `@a2a-js/sdk`'s `AgentExecutor` for the A2A protocol flow.
 
-6. **Factory** (`src/factory.ts`) — `createAgentGate()` wires everything together and returns `{ requestHandler, agentCard, engine, executor }`.
+6. **Factory** (`src/factory.ts`) — `createKey0()` wires everything together and returns `{ requestHandler, agentCard, engine, executor }`.
 
 ### Entry Points
 
@@ -68,7 +68,7 @@ Client → Protected API with Bearer JWT
 
 ### Auth Helpers (`src/helpers/`)
 
-`createSharedSecretAuth`, `createJwtAuth`, `createOAuthAuth` — service-to-service auth strategies for outbound requests from client agents. `RemoteVerifier` and `RemoteTokenIssuer` wrap remote AgentGate endpoints.
+`createSharedSecretAuth`, `createJwtAuth`, `createOAuthAuth` — service-to-service auth strategies for outbound requests from client agents. `RemoteVerifier` and `RemoteTokenIssuer` wrap remote Key0 endpoints.
 
 ## Key Configuration
 

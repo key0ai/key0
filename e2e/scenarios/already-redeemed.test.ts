@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { AGENTGATE_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
+import { KEY0_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
 import { readChallengeState } from "../helpers/storage-client.ts";
 
@@ -73,7 +73,7 @@ describe("Already Redeemed", () => {
 
 		// Re-request access with same requestId (no payment)
 		// The /x402/access endpoint should detect DELIVERED and return the grant
-		const res = await fetch(`${AGENTGATE_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({

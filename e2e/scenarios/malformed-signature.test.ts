@@ -4,20 +4,20 @@
  * decodePaymentSignature() in src/integrations/settlement.ts:
  *   1. Tries base64url decode → JSON.parse
  *   2. Falls back to standard base64 → JSON.parse
- *   3. If both fail → throws AgentGateError("INVALID_REQUEST", ..., 400)
+ *   3. If both fail → throws Key0Error("INVALID_REQUEST", ..., 400)
  *
- * The /x402/access handler catches AgentGateError and returns the HTTP status
+ * The /x402/access handler catches Key0Error and returns the HTTP status
  * from the error (400 in this case).
  *
  * No wallet needed — pure HTTP test.
  */
 
 import { describe, expect, test } from "bun:test";
-import { AGENTGATE_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
+import { KEY0_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 
 describe("Malformed PAYMENT-SIGNATURE", () => {
 	test("completely invalid string returns 400 INVALID_REQUEST", async () => {
-		const res = await fetch(`${AGENTGATE_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -38,7 +38,7 @@ describe("Malformed PAYMENT-SIGNATURE", () => {
 		// "hello world" is valid base64-decodable but not JSON
 		const nonJsonBase64 = Buffer.from("hello world — not json").toString("base64");
 
-		const res = await fetch(`${AGENTGATE_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -60,7 +60,7 @@ describe("Malformed PAYMENT-SIGNATURE", () => {
 		const badPayload = { foo: "bar", not: "a payment payload" };
 		const encoded = Buffer.from(JSON.stringify(badPayload)).toString("base64");
 
-		const res = await fetch(`${AGENTGATE_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",

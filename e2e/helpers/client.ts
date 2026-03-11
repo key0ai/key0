@@ -1,5 +1,5 @@
 /**
- * E2eTestClient: drives the AgentGate Docker payment flow.
+ * E2eTestClient: drives the Key0 Docker payment flow.
  *
  * Payment flow (EIP-3009 off-chain authorization, gas wallet settlement):
  *   1. POST /x402/access                     → HTTP 402 with challengeId + payment requirements
@@ -91,7 +91,7 @@ const TRANSFER_WITH_AUTHORIZATION_TYPES = {
 
 export class E2eTestClient {
 	constructor(
-		private readonly agentgateUrl: string,
+		private readonly key0Url: string,
 		private readonly walletClient: WalletClient,
 		private readonly publicClient: PublicClient,
 		private readonly usdcAddress: `0x${string}`,
@@ -112,7 +112,7 @@ export class E2eTestClient {
 		requestId: string;
 		resourceId?: string;
 	}): Promise<ChallengeResponse> {
-		const res = await fetch(`${this.agentgateUrl}/x402/access`, {
+		const res = await fetch(`${this.key0Url}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -213,7 +213,7 @@ export class E2eTestClient {
 
 		const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
 
-		const res = await fetch(`${this.agentgateUrl}/x402/access`, {
+		const res = await fetch(`${this.key0Url}/x402/access`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -273,7 +273,7 @@ export class E2eTestClient {
 	// ── Agent card ────────────────────────────────────────────────────────
 
 	async fetchAgentCard(): Promise<AgentCard> {
-		const res = await fetch(`${this.agentgateUrl}/.well-known/agent.json`);
+		const res = await fetch(`${this.key0Url}/.well-known/agent.json`);
 		if (!res.ok) throw new Error(`Failed to fetch agent card: ${res.status}`);
 		return res.json() as Promise<AgentCard>;
 	}

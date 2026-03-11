@@ -1,6 +1,7 @@
 import { sendUsdc } from "../adapter/send-usdc.js";
-import type { IChallengeStore, NetworkName } from "../types/index.js";
+import type { IChallengeStore, IRedisLockClient, NetworkName } from "../types/index.js";
 import { CHAIN_CONFIGS } from "../types/index.js";
+import { gasWalletLockKey, withGasWalletLock } from "../utils/gas-wallet-lock.js";
 
 export type RefundConfig = {
 	readonly store: IChallengeStore;
@@ -17,6 +18,14 @@ export type RefundConfig = {
 	readonly minAgeMs?: number;
 	/** Max records to process per cron run. Default: 50. */
 	readonly batchSize?: number;
+	/**
+	 * Optional Redis client for distributed gas wallet locking.
+	 * When provided alongside gasWalletPrivateKey, refund transactions are
+	 * serialised with settlement transactions via a shared distributed lock,
+	 * preventing nonce conflicts.
+	 * When absent, falls back to an in-process serial queue (single-instance only).
+	 */
+	readonly redis?: IRedisLockClient;
 };
 
 export type RefundResult = {
@@ -45,9 +54,21 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 		network,
 		minAgeMs = 300_000,
 		batchSize = 50,
+		redis,
 	} = config;
 	const networkConfig = CHAIN_CONFIGS[network];
 	const results: RefundResult[] = [];
+
+	// Compute the lock key once — shared with settlePayment so refunds and
+	// settlements from the same gas wallet are properly serialised.
+	const lockKey = gasWalletPrivateKey
+		? gasWalletLockKey(
+				// Derive the gas wallet address from the private key.
+				// We import privateKeyToAccount lazily to avoid pulling viem
+				// into callers that don't need it.
+				(await import("viem/accounts")).privateKeyToAccount(gasWalletPrivateKey).address,
+			)
+		: undefined;
 
 	let pending: Awaited<ReturnType<IChallengeStore["findPendingForRefund"]>>;
 	try {
@@ -69,27 +90,33 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 		if (!fromAddress || !txHash) continue;
 
 		// 1. Atomically claim this record for refunding — prevents double-refund
-		const claimed = await store.transition(record.challengeId, "PAID", "REFUND_PENDING");
+		const claimed = await store.transition(record.challengeId, "PAID", "REFUND_PENDING", undefined, { actor: "cron", reason: "undelivered_payment" });
 		if (!claimed) {
 			// Another cron worker already claimed it
 			continue;
 		}
 
-		// 2. Broadcast refund tx
+		// 2. Broadcast refund tx (serialised via gas wallet lock when applicable)
 		try {
-			const refundTxHash = await sendUsdc({
-				to: fromAddress,
-				amountRaw: record.amountRaw,
-				privateKey: walletPrivateKey,
-				...(gasWalletPrivateKey ? { gasWalletPrivateKey } : {}),
-				networkConfig,
-			});
+			const sendUsdcCall = () =>
+				sendUsdc({
+					to: fromAddress,
+					amountRaw: record.amountRaw,
+					privateKey: walletPrivateKey,
+					...(gasWalletPrivateKey ? { gasWalletPrivateKey } : {}),
+					networkConfig,
+				});
+
+			const refundTxHash =
+				gasWalletPrivateKey && lockKey
+					? await withGasWalletLock(sendUsdcCall, redis, lockKey)
+					: await sendUsdcCall();
 
 			// 3. Mark as refunded
 			await store.transition(record.challengeId, "REFUND_PENDING", "REFUNDED", {
 				refundTxHash,
 				refundedAt: new Date(),
-			});
+			}, { actor: "cron", reason: "refund_tx_confirmed" });
 
 			results.push({
 				challengeId: record.challengeId,
@@ -106,7 +133,7 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 			try {
 				await store.transition(record.challengeId, "REFUND_PENDING", "REFUND_FAILED", {
 					refundError: error,
-				});
+				}, { actor: "cron", reason: error });
 			} catch (transitionErr) {
 				console.error(
 					`[Refund] Failed to mark REFUND_FAILED for ${record.challengeId}:`,
@@ -146,7 +173,7 @@ export async function retryFailedRefunds(
 		if (!record || record.state !== "REFUND_FAILED") continue;
 		const ok = await store.transition(id, "REFUND_FAILED", "PAID", {
 			paidAt: record.paidAt ? new Date(record.paidAt) : new Date(),
-		});
+		}, { actor: "admin", reason: "requeued_for_retry" });
 		if (ok) requeued.push(id);
 	}
 	return requeued;

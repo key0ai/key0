@@ -1,6 +1,6 @@
-# AgentGate — Timeout & Retry Handling Review
+# Key0 — Timeout & Retry Handling Review
 
-This document audits every async operation in the AgentGate SDK for timeout protection, retry behavior, and failure-mode gaps. Each finding includes the file, the risk, and a recommended fix.
+This document audits every async operation in the Key0 SDK for timeout protection, retry behavior, and failure-mode gaps. Each finding includes the file, the risk, and a recommended fix.
 
 ---
 
@@ -55,7 +55,7 @@ const timeoutMs = this.config.tokenIssueTimeoutMs ?? 15_000;
 const tokenResult = await Promise.race([
   this.config.onIssueToken({ ... }),
   new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new AgentGateError("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)), timeoutMs)
+    setTimeout(() => reject(new Key0Error("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)), timeoutMs)
   ),
 ]);
 ```
@@ -250,7 +250,7 @@ async function acquireRedisLock(redis, key, token, maxWaitMs = 30_000): Promise<
     if (ok === "OK") return;
     await new Promise((r) => setTimeout(r, LOCK_POLL_MS));
   }
-  throw new AgentGateError("INTERNAL_ERROR", "Failed to acquire settlement lock", 503);
+  throw new Key0Error("INTERNAL_ERROR", "Failed to acquire settlement lock", 503);
 }
 ```
 
@@ -278,7 +278,7 @@ The risk is limited: the JWT was generated in memory but never sent to the clien
 try {
   await this.store.transition(challenge.challengeId, "PAID", "DELIVERED", { ... });
 } catch (err) {
-  console.error("[AgentGate] Failed to mark DELIVERED, returning grant anyway:", err);
+  console.error("[Key0] Failed to mark DELIVERED, returning grant anyway:", err);
   // Grant is valid — return it. Record stays PAID; if refund cron runs before
   // client uses the token, that's an acceptable edge case vs. losing the payment entirely.
 }
@@ -327,7 +327,7 @@ If `onVerifyResource` fails in step 2 (resource deleted between challenge and pa
 
 ```ts
 this.config.onPaymentReceived(grant).catch((err: unknown) => {
-  console.error("[AgentGate] onPaymentReceived hook error:", err);
+  console.error("[Key0] onPaymentReceived hook error:", err);
 });
 ```
 
@@ -353,7 +353,7 @@ this.config.onPaymentReceived(grant).catch((err: unknown) => {
 
 **File**: `src/core/storage/redis.ts`, `src/factory.ts`
 
-**Problem**: Neither the store constructors nor `createAgentGate()` verify that the Redis connection is healthy. If Redis is misconfigured or down, the first real request will fail with a cryptic ioredis error.
+**Problem**: Neither the store constructors nor `createKey0()` verify that the Redis connection is healthy. If Redis is misconfigured or down, the first real request will fail with a cryptic ioredis error.
 
 **Fix**: Add a `ping()` check in the factory or provide an explicit `healthCheck()` method.
 
@@ -439,14 +439,14 @@ The pattern is technically correct: the caller gets `result` (which may reject),
 **File**: `src/integrations/settlement.ts:450`
 
 ```ts
-const lockKey = `agentgate:settle-lock:${privateKey.slice(0, 10)}`;
+const lockKey = `key0:settle-lock:${privateKey.slice(0, 10)}`;
 ```
 
 **Problem**: The lock key is based on the private key prefix. This is a minor security concern (leaking key prefix in Redis) and a correctness concern (two different keys with the same first 10 chars would share a lock — extremely unlikely but technically possible).
 
 **Fix**: Use a hash of the public address instead:
 ```ts
-const lockKey = `agentgate:settle-lock:${gasAccount.address}`;
+const lockKey = `key0:settle-lock:${gasAccount.address}`;
 ```
 
 ---
@@ -547,7 +547,7 @@ const lockKey = `agentgate:settle-lock:${gasAccount.address}`;
 
 **File**: `src/core/storage/redis.ts:261-275`
 
-**Problem**: When a PAID record's challenge hash expires after 7 days (Redis TTL), the entry in the `agentgate:paid` sorted set is never removed. The refund cron calls `findPendingForRefund`, gets the challengeId from the sorted set, but `store.get()` returns null. The entry is silently skipped (line 270) but **remains in the sorted set forever**.
+**Problem**: When a PAID record's challenge hash expires after 7 days (Redis TTL), the entry in the `key0:paid` sorted set is never removed. The refund cron calls `findPendingForRefund`, gets the challengeId from the sorted set, but `store.get()` returns null. The entry is silently skipped (line 270) but **remains in the sorted set forever**.
 
 Over time, long-running deployments accumulate ghost entries. Each cron run fetches and discards these, wasting Redis bandwidth.
 
@@ -568,7 +568,7 @@ if (!record) {
 
 **File**: `src/core/storage/redis.ts:201` (requestTTL = 900s), `src/core/challenge-engine.ts:489-503`
 
-**Problem**: The request index key (`agentgate:request:{requestId}`) has a 900s TTL. The challenge record itself has a 7-day TTL. After the request index expires, a new `requestAccess()` with the same `requestId` will create a second PENDING challenge — the old one still exists in Redis but is unreachable via `findActiveByRequestId`.
+**Problem**: The request index key (`key0:request:{requestId}`) has a 900s TTL. The challenge record itself has a 7-day TTL. After the request index expires, a new `requestAccess()` with the same `requestId` will create a second PENDING challenge — the old one still exists in Redis but is unreachable via `findActiveByRequestId`.
 
 This is safe because:
 - Each challenge has a unique `challengeId`
@@ -741,6 +741,6 @@ Bugs discovered during code review of the timeout & retry implementation itself.
 
 **File**: `src/core/refund.ts` — `retryFailedRefunds`
 
-**Problem**: `store.transition(id, "REFUND_FAILED", "PAID")` passes no `paidAt`, so the Lua script's `score` argument is `""` and the `ZADD` to the `agentgate:paid` sorted set is skipped. The record's hash state becomes PAID but it is invisible to `findPendingForRefund()` (which queries via `ZRANGEBYSCORE`). The function returns success while the record is permanently orphaned.
+**Problem**: `store.transition(id, "REFUND_FAILED", "PAID")` passes no `paidAt`, so the Lua script's `score` argument is `""` and the `ZADD` to the `key0:paid` sorted set is skipped. The record's hash state becomes PAID but it is invisible to `findPendingForRefund()` (which queries via `ZRANGEBYSCORE`). The function returns success while the record is permanently orphaned.
 
 **Fix**: Read the record first to get the original `paidAt`, then pass it in the transition so the Lua script fires `ZADD` and the sorted set index is maintained.

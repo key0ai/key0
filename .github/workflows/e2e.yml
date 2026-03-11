@@ -33,7 +33,7 @@ jobs:
         working-directory: e2e
 
       - name: Build Docker image
-        run: docker build -t agentgate-e2e .
+        run: docker build -t key0-e2e .
 
       - name: Run e2e tests
         working-directory: e2e
@@ -43,8 +43,8 @@ jobs:
           CLIENT_WALLET_PRIVATE_KEY: ${{ secrets.CLIENT_WALLET_PRIVATE_KEY }}
           GAS_WALLET_ADDRESS: ${{ secrets.GAS_WALLET_ADDRESS }}
           GAS_WALLET_PRIVATE_KEY: ${{ secrets.GAS_WALLET_PRIVATE_KEY }}
-          AGENTGATE_WALLET_ADDRESS: ${{ secrets.AGENTGATE_WALLET_ADDRESS }}
-          AGENTGATE_WALLET_KEY: ${{ secrets.AGENTGATE_WALLET_KEY }}
+          KEY0_WALLET_ADDRESS: ${{ secrets.KEY0_WALLET_ADDRESS }}
+          KEY0_WALLET_KEY: ${{ secrets.KEY0_WALLET_KEY }}
           ALCHEMY_BASE_SEPOLIA_RPC_URL: ${{ secrets.ALCHEMY_BASE_SEPOLIA_RPC_URL }}
 
       - name: Upload logs on failure
@@ -58,6 +58,7 @@ jobs:
 
   e2e-postgres:
     name: E2E (Postgres)
+    needs: e2e-redis # Run sequentially to avoid gas wallet nonce conflicts on Base Sepolia
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -76,7 +77,7 @@ jobs:
         working-directory: e2e
 
       - name: Build Docker image
-        run: docker build -t agentgate-e2e .
+        run: docker build -t key0-e2e .
 
       - name: Run e2e tests (Postgres)
         working-directory: e2e
@@ -87,8 +88,8 @@ jobs:
           CLIENT_WALLET_PRIVATE_KEY: ${{ secrets.CLIENT_WALLET_PRIVATE_KEY }}
           GAS_WALLET_ADDRESS: ${{ secrets.GAS_WALLET_ADDRESS }}
           GAS_WALLET_PRIVATE_KEY: ${{ secrets.GAS_WALLET_PRIVATE_KEY }}
-          AGENTGATE_WALLET_ADDRESS: ${{ secrets.AGENTGATE_WALLET_ADDRESS }}
-          AGENTGATE_WALLET_KEY: ${{ secrets.AGENTGATE_WALLET_KEY }}
+          KEY0_WALLET_ADDRESS: ${{ secrets.KEY0_WALLET_ADDRESS }}
+          KEY0_WALLET_KEY: ${{ secrets.KEY0_WALLET_KEY }}
           ALCHEMY_BASE_SEPOLIA_RPC_URL: ${{ secrets.ALCHEMY_BASE_SEPOLIA_RPC_URL }}
 
       - name: Upload logs on failure

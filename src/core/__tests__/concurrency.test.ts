@@ -3,6 +3,7 @@ import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js"
 import type { ChallengeRecord } from "../../types";
 
 function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRecord {
+	const now = new Date();
 	return {
 		challengeId: crypto.randomUUID(),
 		requestId: crypto.randomUUID(),
@@ -16,7 +17,8 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		destination: `0x${"ab".repeat(20)}` as `0x${string}`,
 		state: "PENDING",
 		expiresAt: new Date(Date.now() + 900_000),
-		createdAt: new Date(),
+		createdAt: now,
+		updatedAt: now,
 		...overrides,
 	};
 }

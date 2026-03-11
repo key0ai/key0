@@ -1,4 +1,4 @@
-# Claude Code Best Practices — AgentGate SDK
+# Claude Code Best Practices — Key0 SDK
 
 This document explains the Claude Code configuration applied to this repo: what each file does, why it exists, and how to use it day-to-day.
 
@@ -132,7 +132,7 @@ It outputs a PASS/FAIL/N/A verdict per invariant and a final APPROVE / REQUEST C
 - Injectable `clock` for time-travel testing instead of `setTimeout`
 - `TestChallengeStore` + `TestSeenTxStore` from `src/test-utils/stores.js` (no config needed)
 - `Promise.all` + `.filter(Boolean).length === 1` for concurrency assertions
-- `AgentGateError` assertions check both `.code` and `.httpStatus`
+- `Key0Error` assertions check both `.code` and `.httpStatus`
 - `MockPaymentAdapter.setVerifyResult()` for controlling verification outcomes
 
 **Frontmatter config**:
@@ -156,7 +156,7 @@ The key distinction from `CLAUDE.md`: CLAUDE.md is loaded into every session for
 
 ### `payment-invariants`
 
-The 5 security invariants that protect AgentGate's payment flow. Both agents preload this skill.
+The 5 security invariants that protect Key0's payment flow. Both agents preload this skill.
 
 **Why both agents need it**:
 - `@security-reviewer` uses it as the checklist to review code against
@@ -173,7 +173,7 @@ The invariants (in brief):
 
 The exact `bun:test` patterns for this codebase. Only `@test-writer` preloads this.
 
-Contains: imports, `makeConfig()`/`makeEngine()`/`makeRequest()` factory patterns, injectable clock for time-travel testing, `TestChallengeStore`/`TestSeenTxStore` from `test-utils/stores.js`, `Promise.all` + filter-Boolean concurrency assertions, `AgentGateError` `.code`/`.httpStatus` assertions, `MockPaymentAdapter.setVerifyResult()`.
+Contains: imports, `makeConfig()`/`makeEngine()`/`makeRequest()` factory patterns, injectable clock for time-travel testing, `TestChallengeStore`/`TestSeenTxStore` from `test-utils/stores.js`, `Promise.all` + filter-Boolean concurrency assertions, `Key0Error` `.code`/`.httpStatus` assertions, `MockPaymentAdapter.setVerifyResult()`.
 
 ---
 

@@ -1,17 +1,17 @@
 /**
  * x402 Discovery — verifies the discovery flow via POST /x402/access with no tierId.
  *
- * When a client POSTs to /x402/access without a tierId, AgentGate returns HTTP 402
+ * When a client POSTs to /x402/access without a tierId, Key0 returns HTTP 402
  * with all available tiers in the accepts array. No PENDING record is created.
  * This is the entry point for clients that don't yet know which tier to purchase.
  */
 
 import { describe, expect, test } from "bun:test";
-import { AGENTGATE_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
+import { KEY0_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 
 describe("x402 Discovery", () => {
 	test("POST /x402/access with no body returns 402 with all tiers", async () => {
-		const res = await fetch(`${AGENTGATE_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({}),
@@ -49,8 +49,8 @@ describe("x402 Discovery", () => {
 		expect(decoded.x402Version).toBe(2);
 	});
 
-	test("discovery response includes agentgate extensions with input/output schema", async () => {
-		const res = await fetch(`${AGENTGATE_URL}/x402/access`, {
+	test("discovery response includes key0 extensions with input/output schema", async () => {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({}),
@@ -62,14 +62,14 @@ describe("x402 Discovery", () => {
 		const extensions = body["extensions"] as Record<string, unknown> | undefined;
 		expect(extensions).toBeDefined();
 
-		const agentgate = extensions?.["agentgate"] as Record<string, unknown> | undefined;
-		expect(agentgate).toBeDefined();
-		expect(agentgate?.["inputSchema"]).toBeDefined();
-		expect(agentgate?.["outputSchema"]).toBeDefined();
+		const key0 = extensions?.["key0"] as Record<string, unknown> | undefined;
+		expect(key0).toBeDefined();
+		expect(key0?.["inputSchema"]).toBeDefined();
+		expect(key0?.["outputSchema"]).toBeDefined();
 	});
 
 	test("www-authenticate header is set on discovery response", async () => {
-		const res = await fetch(`${AGENTGATE_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({}),

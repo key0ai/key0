@@ -7,7 +7,7 @@ import type {
 	SellerConfig,
 	X402SettleResponse,
 } from "../types/index.js";
-import { AgentGateError } from "../types/index.js";
+import { Key0Error } from "../types/index.js";
 import {
 	buildHttpPaymentRequirements,
 	decodePaymentSignature,
@@ -217,7 +217,7 @@ export function createX402HttpMiddleware(engine: ChallengeEngine, config: Seller
 			return res.status(200).json(grant);
 		} catch (err: unknown) {
 			console.error("[x402-http-middleware] ✗ ERROR:", err);
-			if (err instanceof AgentGateError) {
+			if (err instanceof Key0Error) {
 				// Return the grant directly for PROOF_ALREADY_REDEEMED (status 200)
 				if (err.code === "PROOF_ALREADY_REDEEMED" && err.details?.["grant"]) {
 					return res.status(200).json(err.details["grant"]);

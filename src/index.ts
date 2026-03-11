@@ -9,10 +9,10 @@ export * from "./adapter/index.js";
 // Export Core Logic
 export * from "./core/index.js";
 // Executor
-export { AgentGateExecutor } from "./executor.js";
-export type { AgentGateConfig } from "./factory.js";
+export { Key0Executor } from "./executor.js";
+export type { Key0Config } from "./factory.js";
 // Factory
-export { createAgentGate } from "./factory.js";
+export { createKey0 } from "./factory.js";
 export type { AuthHeaderProvider } from "./helpers/auth.js";
 // Auth Strategies
 export { oauthClientCredentialsAuth, sharedSecretAuth, signedJwtAuth } from "./helpers/auth.js";
@@ -28,4 +28,4 @@ export type {
 	ValidatorConfig,
 } from "./validator/index.js";
 // Validator (lightweight for backend services)
-export { validateAgentGateToken } from "./validator/index.js";
+export { validateKey0Token } from "./validator/index.js";

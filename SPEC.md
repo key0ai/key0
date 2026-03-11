@@ -1,9 +1,9 @@
-# AgentGate — Protocol Specification
+# Key0 — Protocol Specification
 
 **Version**: 0.2
 **Status**: Implemented
 **Date**: 2026-03-04
-**Working Repo**: `agentgate`
+**Working Repo**: `key0`
 
 ---
 
@@ -17,7 +17,7 @@ As the agent economy grows, API providers need a way to:
 2. **Monetize** agent access without credit-card processors, subscription billing portals, or KYC friction.
 3. **Control** access at the resource level — per-call, per-album, per-report — not just per-account.
 
-**AgentGate** is an open-source SDK that lets any API provider publish an A2A-compliant agent, define priced capabilities, and accept crypto payments from client agents — without changing their existing backend.
+**Key0** is an open-source SDK that lets any API provider publish an A2A-compliant agent, define priced capabilities, and accept crypto payments from client agents — without changing their existing backend.
 
 ---
 
@@ -25,12 +25,12 @@ As the agent economy grows, API providers need a way to:
 
 > **One Agent Card. Zero Signup. Instant Access.**
 
-AgentGate provides:
+Key0 provides:
 - A **seller SDK** to publish a payment-gated A2A agent for any API or SaaS product.
 - A **payment adapter interface** implemented with x402 (Base Chain USDC), extensible to any payment rail.
 - A **challenge/access-token lifecycle** engine with idempotency, replay protection, and expiration handling.
 
-Client agents are **out of scope** — any A2A-compatible agent that can discover an agent card, hold a USDC wallet, and submit a transaction hash can interact with AgentGate. No buyer SDK is provided or required.
+Client agents are **out of scope** — any A2A-compatible agent that can discover an agent card, hold a USDC wallet, and submit a transaction hash can interact with Key0. No buyer SDK is provided or required.
 
 **Out of scope**: Buyer SDKs, multi-tenant SaaS dashboards, refund UIs, subscription recurring billing, fiat rails.
 
@@ -40,9 +40,9 @@ Client agents are **out of scope** — any A2A-compatible agent that can discove
 
 | Persona | Role | Pain Today |
 |---|---|---|
-| **API Provider** | Owns the product, deploys AgentGate alongside their API | No way to monetize agent traffic; signup walls block autonomous clients |
+| **API Provider** | Owns the product, deploys Key0 alongside their API | No way to monetize agent traffic; signup walls block autonomous clients |
 | **Client Agent** (external, out of scope) | Any A2A agent that discovers the card, pays on-chain, consumes the service | Treated as a black-box caller — assumed capable of wallet management and payment |
-| **Open Source Contributor** | Developer adding new payment adapters or integrating AgentGate | Needs clear adapter interfaces and well-typed contracts |
+| **Open Source Contributor** | Developer adding new payment adapters or integrating Key0 | Needs clear adapter interfaces and well-typed contracts |
 
 ---
 
@@ -78,7 +78,7 @@ So that I never double-bill or accept payment from the wrong chain.
 
 ```
   ANY A2A-COMPATIBLE CLIENT AGENT
-  (wallet + payment capability assumed — not AgentGate's concern)
+  (wallet + payment capability assumed — not Key0's concern)
          │
          │  ① GET /.well-known/agent.json  (discover)
          │  ② A2A tasks/send → request-access  (get challenge)
@@ -88,7 +88,7 @@ So that I never double-bill or accept payment from the wrong chain.
          │
          ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│                        AGENTGATE RUNTIME                             │
+│                        KEY0 RUNTIME                             │
 │                      (deployed by seller)                            │
 │                                                                      │
 │  ┌─────────────────┐  ┌──────────────────────┐  ┌────────────────┐  │
@@ -120,7 +120,7 @@ So that I never double-bill or accept payment from the wrong chain.
          ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                  SELLER'S EXISTING API                               │
-│         Unchanged — AgentGate sits in front, injects token check     │
+│         Unchanged — Key0 sits in front, injects token check     │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -345,7 +345,7 @@ Returns the agent card. No auth required.
 
 **Output (active challenge exists for requestId)**: Same `X402Challenge` — idempotent, same `challengeId`
 
-**Output (resource not found)**: `AgentGateError` with `code: "RESOURCE_NOT_FOUND"`
+**Output (resource not found)**: `Key0Error` with `code: "RESOURCE_NOT_FOUND"`
 
 **Pre-flight checks**:
 1. Validate `tierId` is a known product tier.
@@ -360,17 +360,17 @@ Returns the agent card. No auth required.
 
 **Output (success)**: `AccessGrant`
 
-**Output (challenge not found)**: `AgentGateError` `CHALLENGE_NOT_FOUND`
+**Output (challenge not found)**: `Key0Error` `CHALLENGE_NOT_FOUND`
 
-**Output (challenge expired)**: `AgentGateError` `CHALLENGE_EXPIRED`
+**Output (challenge expired)**: `Key0Error` `CHALLENGE_EXPIRED`
 
-**Output (chain mismatch)**: `AgentGateError` `CHAIN_MISMATCH`
+**Output (chain mismatch)**: `Key0Error` `CHAIN_MISMATCH`
 
-**Output (amount mismatch)**: `AgentGateError` `AMOUNT_MISMATCH`
+**Output (amount mismatch)**: `Key0Error` `AMOUNT_MISMATCH`
 
-**Output (tx not confirmed)**: `AgentGateError` `TX_UNCONFIRMED`
+**Output (tx not confirmed)**: `Key0Error` `TX_UNCONFIRMED`
 
-**Output (already redeemed)**: `AgentGateError` `TX_ALREADY_REDEEMED`
+**Output (already redeemed)**: `Key0Error` `TX_ALREADY_REDEEMED`
 
 **On-chain verification steps** (all six must pass):
 1. Transaction receipt `status === "success"` (not just existence).
@@ -386,7 +386,7 @@ After verification: mark challenge as `PAID`, call `onIssueToken`, fire `onPayme
 
 ### 7.2 x402 HTTP Endpoint
 
-In addition to A2A, AgentGate mounts a standard x402 HTTP endpoint at `POST /x402/access`.
+In addition to A2A, Key0 mounts a standard x402 HTTP endpoint at `POST /x402/access`.
 The endpoint handles three cases based on the request body and headers:
 
 **Case 1 — Discovery** (no `tierId` in body):
@@ -419,16 +419,16 @@ Client POST /x402/access  { tierId, requestId, resourceId? }
 
 ### 7.3 Access Token Validation
 
-AgentGate provides middleware for protecting seller API routes:
+Key0 provides middleware for protecting seller API routes:
 
 ```typescript
 // Express
-import { validateAccessToken } from "@riklr/agentgate/express";
+import { validateAccessToken } from "@riklr/key0/express";
 app.use("/api/photos", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET }));
 
 // Standalone (no framework dependency)
-import { validateAgentGateToken } from "@riklr/agentgate";
-const payload = await validateAgentGateToken(authHeader, { secret });
+import { validateKey0Token } from "@riklr/key0";
+const payload = await validateKey0Token(authHeader, { secret });
 ```
 
 The JWT payload (when using `AccessTokenIssuer`):
@@ -533,7 +533,7 @@ Before issuing a challenge, `onVerifyResource` confirms the resource exists and 
 
 ```
 Step 1: Install SDK
-  bun add @riklr/agentgate
+  bun add @riklr/key0
 
 Step 2: Configure
   - Set walletAddress (public, goes in agent card)
@@ -554,7 +554,7 @@ Step 5: Set up Redis storage
   const seenTxStore = new RedisSeenTxStore({ redis })
 
 Step 6: Mount the agent router
-  app.use(agentGateRouter({ config, adapter, store, seenTxStore }))
+  app.use(key0Router({ config, adapter, store, seenTxStore }))
   // Auto-serves:
   //   GET  /.well-known/agent.json
   //   POST /a2a/jsonrpc  (A2A JSON-RPC)
@@ -569,7 +569,7 @@ Step 8: For production — switch to mainnet
 
 ### No Platform Signup Required
 
-AgentGate is a **self-hosted open-source SDK**. There is no central registry or SaaS dashboard. The seller runs the agent runtime inside their own infrastructure alongside their existing API.
+Key0 is a **self-hosted open-source SDK**. There is no central registry or SaaS dashboard. The seller runs the agent runtime inside their own infrastructure alongside their existing API.
 
 ---
 
@@ -596,7 +596,7 @@ AgentGate is a **self-hosted open-source SDK**. There is no central registry or 
 | Token standard | USDC ERC-20 | Stable, widely held |
 | Access tokens | `jose` (JWT, HS256/RS256) | Standards-compliant, supports both symmetric and asymmetric keys |
 | Challenge store | Redis via ioredis (`RedisChallengeStore`, `RedisSeenTxStore`) | Atomic Lua transitions, TTL-based cleanup, multi-process safe |
-| Package | Single package `@riklr/agentgate` with framework subpath exports | Simple install, tree-shakeable |
+| Package | Single package `@riklr/key0` with framework subpath exports | Simple install, tree-shakeable |
 
 ---
 

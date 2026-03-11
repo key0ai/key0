@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AccessTokenIssuer } from "../../core/access-token.js";
-import { AgentGateError } from "../../types/index.js";
+import { Key0Error } from "../../types/index.js";
 import { oauthClientCredentialsAuth, sharedSecretAuth, signedJwtAuth } from "../auth.js";
 
 // ---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ describe("signedJwtAuth", () => {
 		expect(headers).toEqual({ Authorization: "Bearer mock-jwt" });
 	});
 
-	test("calls issuer.sign with sub: 'agentgate-service'", async () => {
+	test("calls issuer.sign with sub: 'key0-service'", async () => {
 		const issuer = makeMockIssuer();
 		const auth = signedJwtAuth(issuer, "backend-service");
 		await auth();
@@ -88,7 +88,7 @@ describe("signedJwtAuth", () => {
 			{ sub: string; resourceId: string },
 			number,
 		];
-		expect(claims.sub).toBe("agentgate-service");
+		expect(claims.sub).toBe("key0-service");
 	});
 
 	test("calls issuer.sign with resourceId equal to the audience arg", async () => {
@@ -229,7 +229,7 @@ describe("oauthClientCredentialsAuth", () => {
 	);
 
 	test(
-		"throws AgentGateError with code INTERNAL_ERROR on non-ok OAuth response",
+		"throws Key0Error with code INTERNAL_ERROR on non-ok OAuth response",
 		withFetch(
 			mock(async () => makeOauthResponse({ ok: false, status: 401, body: "Unauthorized" })),
 			async () => {
@@ -239,7 +239,7 @@ describe("oauthClientCredentialsAuth", () => {
 					clientSecret: "client-secret",
 				});
 				const err = await auth().catch((e) => e);
-				expect(err).toBeInstanceOf(AgentGateError);
+				expect(err).toBeInstanceOf(Key0Error);
 				expect(err.code).toBe("INTERNAL_ERROR");
 				expect(err.httpStatus).toBe(500);
 			},
@@ -247,7 +247,7 @@ describe("oauthClientCredentialsAuth", () => {
 	);
 
 	test(
-		"throws AgentGateError with code INTERNAL_ERROR on invalid OAuth response (missing access_token)",
+		"throws Key0Error with code INTERNAL_ERROR on invalid OAuth response (missing access_token)",
 		withFetch(
 			mock(async () => makeOauthResponse({ body: { expires_in: 3600 } })),
 			async () => {
@@ -257,7 +257,7 @@ describe("oauthClientCredentialsAuth", () => {
 					clientSecret: "client-secret",
 				});
 				const err = await auth().catch((e) => e);
-				expect(err).toBeInstanceOf(AgentGateError);
+				expect(err).toBeInstanceOf(Key0Error);
 				expect(err.code).toBe("INTERNAL_ERROR");
 				expect(err.httpStatus).toBe(500);
 				expect(err.message).toContain("missing access_token");

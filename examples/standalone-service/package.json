@@ -1,5 +1,5 @@
 {
-	"name": "agentgate-standalone-service",
+	"name": "key0-standalone-service",
 	"version": "0.1.0",
 	"type": "module",
 	"scripts": {
@@ -7,7 +7,7 @@
 		"dev": "bun --watch server.ts"
 	},
 	"dependencies": {
-		"@riklr/agentgate": "file:../..",
+		"@riklr/key0": "file:../..",
 		"bullmq": "^5.0.0",
 		"express": "^4.21.0",
 		"ioredis": "^5.0.0",

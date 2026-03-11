@@ -1,15 +1,15 @@
 # Separate stack for challenge-timeout.test.ts: short TTL, different ports.
 services:
-  agentgate-short-ttl:
+  key0-short-ttl:
     build: ..
     ports:
       - "3010:3010"
     environment:
       PORT: 3010
-      AGENTGATE_WALLET_ADDRESS: ${AGENTGATE_WALLET_ADDRESS}
+      KEY0_WALLET_ADDRESS: ${KEY0_WALLET_ADDRESS}
       GAS_WALLET_PRIVATE_KEY: ${GAS_WALLET_PRIVATE_KEY}
       ISSUE_TOKEN_API: http://host.docker.internal:3001/internal/issue-token
-      AGENTGATE_NETWORK: testnet
+      KEY0_NETWORK: testnet
       REDIS_URL: redis://redis-short-ttl:6379
       CHALLENGE_TTL_SECONDS: ${E2E_SHORT_CHALLENGE_TTL:-5}
       AGENT_URL: http://localhost:3010

@@ -3,8 +3,8 @@
  * Uses the store interface instead of direct Redis access.
  */
 
-import type { IChallengeStore } from "@riklr/agentgate";
-import { AGENTGATE_URL } from "../fixtures/constants.ts";
+import type { IChallengeStore } from "@riklr/key0";
+import { KEY0_URL } from "../fixtures/constants.ts";
 import {
 	connectRedis,
 	readChallengeRecord as redisReadRecord,
@@ -14,7 +14,7 @@ import {
 
 let _store: IChallengeStore | null = null;
 let storageBackend: "redis" | "postgres" = "redis";
-let baseUrl: string = AGENTGATE_URL;
+let baseUrl: string = KEY0_URL;
 let redisUrl: string | null = null;
 
 /**
@@ -24,16 +24,16 @@ let redisUrl: string | null = null;
 export function setStorageBackend(
 	backend: "redis" | "postgres",
 	challengeStore?: IChallengeStore,
-	agentgateUrl?: string,
+	key0Url?: string,
 	customRedisUrl?: string | null,
 ) {
 	storageBackend = backend;
 	if (backend === "postgres" && challengeStore) {
 		_store = challengeStore;
 	}
-	// If agentgateUrl is explicitly provided (even as empty string), reset baseUrl
-	if (agentgateUrl !== undefined) {
-		baseUrl = agentgateUrl || AGENTGATE_URL;
+	// If key0Url is explicitly provided (even as empty string), reset baseUrl
+	if (key0Url !== undefined) {
+		baseUrl = key0Url || KEY0_URL;
 	}
 	// If customRedisUrl is explicitly provided (including null), reset redisUrl
 	if (customRedisUrl !== undefined) {
@@ -56,7 +56,7 @@ export async function readChallengeState(challengeId: string): Promise<string | 
 	if (redisUrl) {
 		const Redis = (await import("ioredis")).default;
 		const redis = new Redis(redisUrl);
-		return redis.hget(`agentgate:challenge:${challengeId}`, "state");
+		return redis.hget(`key0:challenge:${challengeId}`, "state");
 	}
 	return redisReadState(challengeId);
 }
@@ -88,6 +88,7 @@ export async function readChallengeRecord(
 			state: record.state,
 			expiresAt: new Date(record.expiresAt).toISOString(),
 			createdAt: new Date(record.createdAt).toISOString(),
+			updatedAt: new Date(record.updatedAt).toISOString(),
 			...(record.paidAt ? { paidAt: new Date(record.paidAt).toISOString() } : {}),
 			...(record.txHash ? { txHash: record.txHash } : {}),
 			...(record.fromAddress ? { fromAddress: record.fromAddress } : {}),
@@ -103,7 +104,7 @@ export async function readChallengeRecord(
 	if (redisUrl) {
 		const Redis = (await import("ioredis")).default;
 		const redis = new Redis(redisUrl);
-		const flat = await redis.hgetall(`agentgate:challenge:${challengeId}`);
+		const flat = await redis.hgetall(`key0:challenge:${challengeId}`);
 		if (!flat["challengeId"]) return null;
 		return flat;
 	}
@@ -177,7 +178,7 @@ export async function transitionChallengeState(
 
 	// For Redis, use direct Redis operations
 	const redis = connectRedis();
-	const challengeKey = `agentgate:challenge:${challengeId}`;
+	const challengeKey = `key0:challenge:${challengeId}`;
 
 	// Atomic transition using Lua script (similar to store.transition)
 	const script = `
@@ -215,8 +216,32 @@ export async function expireRequestIdIndex(requestId: string): Promise<boolean> 
 
 	// For Redis, delete the requestId index key
 	const redis = connectRedis();
-	const deleted = await redis.del(`agentgate:request:${requestId}`);
+	const deleted = await redis.del(`key0:request:${requestId}`);
 	return deleted === 1;
+}
+
+/**
+ * Read the audit history for a challenge.
+ * Uses the /test/audit/:challengeId HTTP endpoint (works for both backends).
+ */
+export async function readAuditHistory(
+	challengeId: string,
+): Promise<
+	{
+		id?: string | number;
+		challengeId: string;
+		fromState: string | null;
+		toState: string;
+		updates: Record<string, unknown> | null;
+		createdAt: string;
+	}[]
+> {
+	const res = await fetch(`${baseUrl}/test/audit/${challengeId}`);
+	if (!res.ok) {
+		throw new Error(`Failed to read audit history: ${res.status} ${await res.text()}`);
+	}
+	const body = (await res.json()) as { entries: any[] };
+	return body.entries;
 }
 
 /**

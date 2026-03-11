@@ -1,6 +1,6 @@
 import { DefaultRequestHandler, InMemoryTaskStore } from "@a2a-js/sdk/server";
 import { buildAgentCard, ChallengeEngine } from "./core/index.js";
-import { AgentGateExecutor } from "./executor.js";
+import { Key0Executor } from "./executor.js";
 import type {
 	AgentCard,
 	IChallengeStore,
@@ -9,32 +9,32 @@ import type {
 	SellerConfig,
 } from "./types/index.js";
 
-export type AgentGateConfig = {
+export type Key0Config = {
 	readonly config: SellerConfig;
 	readonly adapter: IPaymentAdapter;
 	readonly store: IChallengeStore;
 	readonly seenTxStore: ISeenTxStore;
 };
 
-export type AgentGateInstance = {
+export type Key0Instance = {
 	requestHandler: DefaultRequestHandler;
 	agentCard: AgentCard;
 	engine: ChallengeEngine;
-	executor: AgentGateExecutor;
+	executor: Key0Executor;
 };
 
-export function createAgentGate(opts: AgentGateConfig): AgentGateInstance {
+export function createKey0(opts: Key0Config): Key0Instance {
 	if (!opts.store) {
 		throw new Error(
-			"[AgentGate] store is required. Use RedisChallengeStore for production.\n" +
-				"  import { RedisChallengeStore } from '@riklr/agentgate';\n" +
+			"[Key0] store is required. Use RedisChallengeStore for production.\n" +
+				"  import { RedisChallengeStore } from '@riklr/key0';\n" +
 				"  const store = new RedisChallengeStore({ redis });",
 		);
 	}
 	if (!opts.seenTxStore) {
 		throw new Error(
-			"[AgentGate] seenTxStore is required. Use RedisSeenTxStore for production.\n" +
-				"  import { RedisSeenTxStore } from '@riklr/agentgate';\n" +
+			"[Key0] seenTxStore is required. Use RedisSeenTxStore for production.\n" +
+				"  import { RedisSeenTxStore } from '@riklr/key0';\n" +
 				"  const seenTxStore = new RedisSeenTxStore({ redis });",
 		);
 	}
@@ -48,7 +48,7 @@ export function createAgentGate(opts: AgentGateConfig): AgentGateInstance {
 		adapter: opts.adapter,
 	});
 
-	const executor = new AgentGateExecutor(engine, opts.config);
+	const executor = new Key0Executor(engine, opts.config);
 	const agentCard = buildAgentCard(opts.config);
 
 	const requestHandler = new DefaultRequestHandler(

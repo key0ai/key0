@@ -1,5 +1,5 @@
 name: "\U0001F41B Bug Report"
-description: Report a bug or regression in the AgentGate SDK
+description: Report a bug or regression in the Key0 SDK
 title: "bug: "
 labels: ["bug", "needs triage"]
 type: Bug
@@ -10,9 +10,9 @@ body:
         Thanks for taking the time to report a bug! Please fill out this form as completely as possible.
 
         Before submitting:
-        - **Search [existing issues](https://github.com/Riklr/agentgate/issues)** to avoid duplicates. If one exists, upvote it instead.
+        - **Search [existing issues](https://github.com/Riklr/key0/issues)** to avoid duplicates. If one exists, upvote it instead.
         - Bugs without a minimal reproduction will be closed. Always test on **testnet (Base Sepolia)** first.
-        - For questions and general help, use [GitHub Discussions](https://github.com/Riklr/agentgate/discussions) or Discord.
+        - For questions and general help, use [GitHub Discussions](https://github.com/Riklr/key0/discussions) or Discord.
 
   - type: checkboxes
     id: preflight
@@ -21,9 +21,9 @@ body:
       options:
         - label: I searched existing issues and this is not a duplicate.
           required: true
-        - label: I have read the [Contributing Guidelines](https://github.com/Riklr/agentgate/blob/master/CONTRIBUTING.md).
+        - label: I have read the [Contributing Guidelines](https://github.com/Riklr/key0/blob/master/CONTRIBUTING.md).
           required: true
-        - label: I agree to the [Code of Conduct](https://github.com/Riklr/agentgate/blob/master/CODE_OF_CONDUCT.md).
+        - label: I agree to the [Code of Conduct](https://github.com/Riklr/key0/blob/master/CODE_OF_CONDUCT.md).
           required: true
         - label: I tested on **testnet (Base Sepolia)** before reporting.
           required: true
@@ -46,7 +46,7 @@ body:
       description: |
         Link to a **public** GitHub repository or a minimal code snippet that reproduces the issue.
         Issues without a reproduction are very likely to be closed.
-      placeholder: "https://github.com/your-user/agentgate-repro"
+      placeholder: "https://github.com/your-user/key0-repro"
     validations:
       required: true
 
@@ -56,7 +56,7 @@ body:
       label: Steps to reproduce
       description: Step-by-step instructions to trigger the bug.
       placeholder: |
-        1. Configure AgentGate with Express using Redis storage
+        1. Configure Key0 with Express using Redis storage
         2. Send a POST /access request with a valid transaction hash
         3. Observe the 500 response
     validations:
@@ -72,11 +72,11 @@ body:
         # Run and paste output:
         # bun --version
         # node --version
-        # cat package.json | grep -E '"@agentgate|viem|bun"'
+        # cat package.json | grep -E '"@key0|viem|bun"'
 
         Bun version:
         Node version:
-        AgentGate version:
+        Key0 version:
         viem version:
         OS:
     validations:
@@ -86,7 +86,7 @@ body:
     id: framework
     attributes:
       label: Framework
-      description: Which framework are you using AgentGate with?
+      description: Which framework are you using Key0 with?
       options:
         - Express
         - Hono
@@ -122,11 +122,11 @@ body:
   - type: textarea
     id: config
     attributes:
-      label: AgentGate configuration (sanitized)
-      description: Paste your `AgentGate` / `createAgentGate` config. Remove any private keys, secrets, or wallet addresses.
+      label: Key0 configuration (sanitized)
+      description: Paste your `Key0` / `createKey0` config. Remove any private keys, secrets, or wallet addresses.
       render: typescript
       placeholder: |
-        createAgentGate({
+        createKey0({
           config: { network: 'testnet', walletAddress: '0xREDACTED', ... },
           adapter: new X402Adapter({ network: 'testnet' }),
           store: new RedisChallengeStore({ redis }),

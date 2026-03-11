@@ -16,7 +16,7 @@ export type StackConfig = {
 
 function compose(args: string, config: StackConfig): void {
 	const file = config.composeFile ?? "docker-compose.e2e.yml";
-	const project = config.projectName ?? "agentgate-e2e";
+	const project = config.projectName ?? "key0-e2e";
 	const cmd = `docker compose -f ${file} -p ${project} ${args}`;
 	execSync(cmd, { cwd: E2E_DIR, stdio: "inherit", env: { ...process.env } });
 }
@@ -51,7 +51,7 @@ export async function waitForHttp(url: string, timeoutMs = 60_000): Promise<void
 /** Print recent docker compose logs (for debugging on failure). */
 export function printLogs(config: StackConfig = {}): void {
 	const file = config.composeFile ?? "docker-compose.e2e.yml";
-	const project = config.projectName ?? "agentgate-e2e";
+	const project = config.projectName ?? "key0-e2e";
 	const result = spawnSync("docker", ["compose", "-f", file, "-p", project, "logs", "--tail=100"], {
 		cwd: E2E_DIR,
 		encoding: "utf8",

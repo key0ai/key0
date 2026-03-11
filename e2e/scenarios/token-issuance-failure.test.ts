@@ -3,31 +3,15 @@
  *
  * Security invariant: if onIssueToken fails, the challenge record MUST remain in PAID state
  * so the refund cron can pick it up. It must NOT be rolled back to PENDING or deleted.
+ *
+ * Uses per-challengeId failure (/test/fail-for-challenge) instead of the global mode toggle
+ * to avoid poisoning the shared backend for concurrently running test files.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { BACKEND_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
 import { readChallengeState } from "../helpers/storage-client.ts";
-
-beforeEach(async () => {
-	// Set backend to fail mode
-	const res = await fetch(`${BACKEND_URL}/test/set-mode`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ mode: "fail" }),
-	});
-	expect(res.status).toBe(204);
-});
-
-afterEach(async () => {
-	// Reset backend to success mode
-	await fetch(`${BACKEND_URL}/test/set-mode`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ mode: "success" }),
-	});
-});
 
 describe("Token Issuance Failure", () => {
 	test("challenge stays in PAID state when backend /issue-token returns 500", async () => {
@@ -47,8 +31,16 @@ describe("Token Issuance Failure", () => {
 			amountRaw: BigInt(requirements.amount),
 		});
 
+		// Mark ONLY this challenge to fail token issuance (one-shot, no global side effects)
+		const failRes = await fetch(`${BACKEND_URL}/test/fail-for-challenge`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ challengeId }),
+		});
+		expect(failRes.status).toBe(204);
+
 		// Step 3: Submit payment — gas wallet settles, but backend returns 500
-		// AgentGate should return an error response (HTTP 500)
+		// Key0 should return an error response (HTTP 500)
 		const result = await client.submitPayment({
 			tierId: DEFAULT_TIER_ID,
 			requestId,

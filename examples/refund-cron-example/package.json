@@ -7,7 +7,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@riklr/agentgate": "file:../..",
+		"@riklr/key0": "file:../..",
 		"bullmq": "^5.0.0",
 		"express": "^4.21.0",
 		"ioredis": "^5.0.0"

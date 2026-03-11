@@ -1,6 +1,6 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import type { IssueTokenParams } from "../../types/index.js";
-import { AgentGateError } from "../../types/index.js";
+import { Key0Error } from "../../types/index.js";
 import { createRemoteResourceVerifier, createRemoteTokenIssuer } from "../remote.js";
 
 // ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ describe("createRemoteResourceVerifier", () => {
 	);
 
 	test(
-		"throws AgentGateError with code RESOURCE_VERIFY_TIMEOUT and httpStatus 504 on abort",
+		"throws Key0Error with code RESOURCE_VERIFY_TIMEOUT and httpStatus 504 on abort",
 		withFetch(
 			mock(async () => {
 				const err = new Error("aborted");
@@ -111,7 +111,7 @@ describe("createRemoteResourceVerifier", () => {
 			async () => {
 				const verifier = createRemoteResourceVerifier({ url: "https://example.com/verify" });
 				const err = await verifier("photo-42", "single").catch((e) => e);
-				expect(err).toBeInstanceOf(AgentGateError);
+				expect(err).toBeInstanceOf(Key0Error);
 				expect(err.code).toBe("RESOURCE_VERIFY_TIMEOUT");
 				expect(err.httpStatus).toBe(504);
 			},
@@ -227,13 +227,13 @@ describe("createRemoteTokenIssuer", () => {
 	);
 
 	test(
-		"throws AgentGateError with code TOKEN_ISSUE_FAILED and httpStatus 502 on non-2xx response",
+		"throws Key0Error with code TOKEN_ISSUE_FAILED and httpStatus 502 on non-2xx response",
 		withFetch(
 			mock(async () => makeJsonResponse("Internal Server Error", false, 500)),
 			async () => {
 				const issuer = createRemoteTokenIssuer({ url: "https://example.com/issue-token" });
 				const err = await issuer(makeParams()).catch((e) => e);
-				expect(err).toBeInstanceOf(AgentGateError);
+				expect(err).toBeInstanceOf(Key0Error);
 				expect(err.code).toBe("TOKEN_ISSUE_FAILED");
 				expect(err.httpStatus).toBe(502);
 			},
@@ -241,13 +241,13 @@ describe("createRemoteTokenIssuer", () => {
 	);
 
 	test(
-		"throws AgentGateError with code TOKEN_ISSUE_FAILED when response missing 'token' field",
+		"throws Key0Error with code TOKEN_ISSUE_FAILED when response missing 'token' field",
 		withFetch(
 			mock(async () => makeJsonResponse({ expiresAt: FUTURE_DATE })),
 			async () => {
 				const issuer = createRemoteTokenIssuer({ url: "https://example.com/issue-token" });
 				const err = await issuer(makeParams()).catch((e) => e);
-				expect(err).toBeInstanceOf(AgentGateError);
+				expect(err).toBeInstanceOf(Key0Error);
 				expect(err.code).toBe("TOKEN_ISSUE_FAILED");
 				expect(err.httpStatus).toBe(502);
 				expect(err.message).toContain("token");
@@ -256,7 +256,7 @@ describe("createRemoteTokenIssuer", () => {
 	);
 
 	test(
-		"throws AgentGateError with code TOKEN_ISSUE_TIMEOUT and httpStatus 504 on abort",
+		"throws Key0Error with code TOKEN_ISSUE_TIMEOUT and httpStatus 504 on abort",
 		withFetch(
 			mock(async () => {
 				const err = new Error("aborted");
@@ -266,7 +266,7 @@ describe("createRemoteTokenIssuer", () => {
 			async () => {
 				const issuer = createRemoteTokenIssuer({ url: "https://example.com/issue-token" });
 				const err = await issuer(makeParams()).catch((e) => e);
-				expect(err).toBeInstanceOf(AgentGateError);
+				expect(err).toBeInstanceOf(Key0Error);
 				expect(err.code).toBe("TOKEN_ISSUE_TIMEOUT");
 				expect(err.httpStatus).toBe(504);
 			},
@@ -274,7 +274,7 @@ describe("createRemoteTokenIssuer", () => {
 	);
 
 	test(
-		"throws AgentGateError with code TOKEN_ISSUE_FAILED and httpStatus 502 on network error",
+		"throws Key0Error with code TOKEN_ISSUE_FAILED and httpStatus 502 on network error",
 		withFetch(
 			mock(async () => {
 				throw new Error("ECONNREFUSED");
@@ -282,7 +282,7 @@ describe("createRemoteTokenIssuer", () => {
 			async () => {
 				const issuer = createRemoteTokenIssuer({ url: "https://example.com/issue-token" });
 				const err = await issuer(makeParams()).catch((e) => e);
-				expect(err).toBeInstanceOf(AgentGateError);
+				expect(err).toBeInstanceOf(Key0Error);
 				expect(err.code).toBe("TOKEN_ISSUE_FAILED");
 				expect(err.httpStatus).toBe(502);
 				expect(err.message).toContain("ECONNREFUSED");

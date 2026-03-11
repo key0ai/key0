@@ -1,24 +1,24 @@
-import type { NetworkName } from "@riklr/agentgate";
+import type { NetworkName } from "@riklr/key0";
 import {
 	AccessTokenIssuer,
 	processRefunds,
 	RedisChallengeStore,
 	RedisSeenTxStore,
 	X402Adapter,
-} from "@riklr/agentgate";
-import { agentGateRouter, validateAccessToken } from "@riklr/agentgate/express";
+} from "@riklr/key0";
+import { key0Router, validateAccessToken } from "@riklr/key0/express";
 import { Queue, Worker } from "bullmq";
 import express from "express";
 import { Redis } from "ioredis";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 const PUBLIC_URL = process.env["PUBLIC_URL"] ?? `http://localhost:${PORT}`;
-const NETWORK = (process.env["AGENTGATE_NETWORK"] ?? "testnet") as NetworkName;
-const WALLET = (process.env["AGENTGATE_WALLET_ADDRESS"] ??
+const NETWORK = (process.env["KEY0_NETWORK"] ?? "testnet") as NetworkName;
+const WALLET = (process.env["KEY0_WALLET_ADDRESS"] ??
 	"0x0000000000000000000000000000000000000000") as `0x${string}`;
 const SECRET =
-	process.env["AGENTGATE_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
-const WALLET_PRIVATE_KEY = process.env["AGENTGATE_WALLET_PRIVATE_KEY"] as `0x${string}` | undefined;
+	process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
+const WALLET_PRIVATE_KEY = process.env["KEY0_WALLET_PRIVATE_KEY"] as `0x${string}` | undefined;
 const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
 
 const REFUND_INTERVAL_MS = Number(process.env["REFUND_INTERVAL_MS"] ?? 15_000);
@@ -29,7 +29,7 @@ app.use(express.json());
 
 const adapter = new X402Adapter({
 	network: NETWORK,
-	rpcUrl: process.env["AGENTGATE_RPC_URL"],
+	rpcUrl: process.env["KEY0_RPC_URL"],
 });
 
 const _tokenIssuer = new AccessTokenIssuer(SECRET);
@@ -53,7 +53,7 @@ const makeBullConnection = () => {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 app.use(
-	agentGateRouter({
+	key0Router({
 		store,
 		seenTxStore,
 		config: {
@@ -117,7 +117,7 @@ app.get("/api/items/:id", (req, res) => {
 
 async function runRefundCron(): Promise<void> {
 	if (!WALLET_PRIVATE_KEY) {
-		console.log("[Cron] Skipped — AGENTGATE_WALLET_PRIVATE_KEY not set.");
+		console.log("[Cron] Skipped — KEY0_WALLET_PRIVATE_KEY not set.");
 		return;
 	}
 
@@ -181,7 +181,7 @@ async function start() {
 		console.log(`  Interval     : ${REFUND_INTERVAL_MS / 1000}s`);
 		console.log(`  Grace period : ${REFUND_MIN_AGE_MS / 1000}s`);
 		console.log(
-			`  Status       : ${WALLET_PRIVATE_KEY ? "ACTIVE" : "DISABLED (set AGENTGATE_WALLET_PRIVATE_KEY)"}\n`,
+			`  Status       : ${WALLET_PRIVATE_KEY ? "ACTIVE" : "DISABLED (set KEY0_WALLET_PRIVATE_KEY)"}\n`,
 		);
 	});
 }

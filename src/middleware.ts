@@ -1,5 +1,5 @@
 import { type JWTPayload, jwtVerify } from "jose";
-import { AgentGateError } from "./types/index.js";
+import { Key0Error } from "./types/index.js";
 
 export type AccessTokenPayload = JWTPayload & {
 	readonly sub: string; // requestId
@@ -22,7 +22,7 @@ export async function validateToken(
 	config: ValidateAccessTokenConfig,
 ): Promise<AccessTokenPayload> {
 	if (!authHeader || !authHeader.startsWith("Bearer ")) {
-		throw new AgentGateError("INVALID_REQUEST", "Missing or malformed Authorization header", 401);
+		throw new Key0Error("INVALID_REQUEST", "Missing or malformed Authorization header", 401);
 	}
 
 	const token = authHeader.slice(7);
@@ -33,8 +33,8 @@ export async function validateToken(
 		return payload as AccessTokenPayload;
 	} catch (err: unknown) {
 		if (err instanceof Error && err.message.includes("expired")) {
-			throw new AgentGateError("CHALLENGE_EXPIRED", "Access token expired", 401);
+			throw new Key0Error("CHALLENGE_EXPIRED", "Access token expired", 401);
 		}
-		throw new AgentGateError("INVALID_REQUEST", "Invalid access token", 401);
+		throw new Key0Error("INVALID_REQUEST", "Invalid access token", 401);
 	}
 }

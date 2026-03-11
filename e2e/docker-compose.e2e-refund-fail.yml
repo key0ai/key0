@@ -1,19 +1,20 @@
-# Separate stack for refund-failure.test.ts: empty AGENTGATE wallet (0 USDC).
+# Separate stack for refund-failure.test.ts: empty KEY0 wallet (0 USDC).
 # The refund cron will attempt to send USDC but fail because the wallet is empty.
 services:
-  agentgate-refund-fail:
+  key0-refund-fail:
     build: ..
     ports:
       - "3020:3020"
     environment:
       PORT: 3020
-      AGENTGATE_WALLET_ADDRESS: ${AGENTGATE_WALLET_ADDRESS}
+      KEY0_WALLET_ADDRESS: ${KEY0_WALLET_ADDRESS}
       # Empty wallet: deterministic test-only private key, never funded with USDC.
       # Address: derived from this key (has 0 USDC on any testnet).
-      AGENTGATE_WALLET_PRIVATE_KEY: "0x0000000000000000000000000000000000000000000000000000000000001234"
-      GAS_WALLET_PRIVATE_KEY: ${GAS_WALLET_PRIVATE_KEY}
+      KEY0_WALLET_PRIVATE_KEY: "0x0000000000000000000000000000000000000000000000000000000000001234"
+      # NOTE: No GAS_WALLET_PRIVATE_KEY — the dummy wallet has no ETH either,
+      # so refund attempts fail immediately without consuming the real gas wallet's nonce.
       ISSUE_TOKEN_API: http://host.docker.internal:3001/internal/issue-token
-      AGENTGATE_NETWORK: testnet
+      KEY0_NETWORK: testnet
       REDIS_URL: redis://redis-refund-fail:6379
       REFUND_INTERVAL_MS: 5000
       REFUND_MIN_AGE_MS: 3000

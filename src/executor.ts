@@ -10,9 +10,9 @@ import type {
 	SellerConfig,
 	X402PaymentPayload,
 } from "./types/index.js";
-import { AgentGateError, CHAIN_CONFIGS, X402_METADATA_KEYS } from "./types/index.js";
+import { Key0Error, CHAIN_CONFIGS, X402_METADATA_KEYS } from "./types/index.js";
 
-export class AgentGateExecutor implements AgentExecutor {
+export class Key0Executor implements AgentExecutor {
 	private readonly config: SellerConfig;
 	private readonly networkConfig: NetworkConfig;
 
@@ -69,7 +69,7 @@ export class AgentGateExecutor implements AgentExecutor {
 				);
 			}
 		} catch (err: unknown) {
-			if (err instanceof AgentGateError) {
+			if (err instanceof Key0Error) {
 				this.sendErrorTask(
 					eventBus,
 					taskId,
@@ -113,7 +113,7 @@ export class AgentGateExecutor implements AgentExecutor {
 		// Get the full challenge record to build x402 metadata
 		const record = await this.engine.getChallengeRecord(challenge.challengeId);
 		if (!record) {
-			throw new AgentGateError("INTERNAL_ERROR", "Challenge record not found after creation", 500);
+			throw new Key0Error("INTERNAL_ERROR", "Challenge record not found after creation", 500);
 		}
 
 		const x402PaymentRequired = this.engine.buildX402PaymentRequired(record);
@@ -167,7 +167,7 @@ export class AgentGateExecutor implements AgentExecutor {
 		const challengeId = extra["challengeId"] as string | undefined;
 
 		if (!challengeId) {
-			throw new AgentGateError(
+			throw new Key0Error(
 				"INVALID_REQUEST",
 				"Payment payload missing challengeId in accepted.extra. Include the full accepted requirements echoed from the payment-required response.",
 				400,
@@ -177,7 +177,7 @@ export class AgentGateExecutor implements AgentExecutor {
 		// 2. Look up the challenge record to get tierId, resourceId, requestId
 		const record = await this.engine.getChallengeRecord(challengeId);
 		if (!record) {
-			throw new AgentGateError(
+			throw new Key0Error(
 				"CHALLENGE_NOT_FOUND",
 				`Challenge "${challengeId}" not found or has expired. Please start a new AccessRequest.`,
 				404,
@@ -210,7 +210,7 @@ export class AgentGateExecutor implements AgentExecutor {
 				taskId,
 				contextId,
 				"payment-failed",
-				err instanceof AgentGateError ? err.message : "Payment settlement failed",
+				err instanceof Key0Error ? err.message : "Payment settlement failed",
 			);
 			throw err;
 		}

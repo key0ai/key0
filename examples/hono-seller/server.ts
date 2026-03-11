@@ -1,26 +1,26 @@
-import type { NetworkName } from "@riklr/agentgate";
-import { AccessTokenIssuer, X402Adapter } from "@riklr/agentgate";
-import { agentGateApp, honoValidateAccessToken } from "@riklr/agentgate/hono";
+import type { NetworkName } from "@riklr/key0";
+import { AccessTokenIssuer, X402Adapter } from "@riklr/key0";
+import { key0App, honoValidateAccessToken } from "@riklr/key0/hono";
 import { Hono } from "hono";
 
 const PORT = Number(process.env["PORT"] ?? 3001);
-const NETWORK = (process.env["AGENTGATE_NETWORK"] ?? "testnet") as NetworkName;
-const WALLET = (process.env["AGENTGATE_WALLET_ADDRESS"] ??
+const NETWORK = (process.env["KEY0_NETWORK"] ?? "testnet") as NetworkName;
+const WALLET = (process.env["KEY0_WALLET_ADDRESS"] ??
 	"0x0000000000000000000000000000000000000000") as `0x${string}`;
 const SECRET =
-	process.env["AGENTGATE_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
+	process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
 
 // Create the x402 payment adapter
 const adapter = new X402Adapter({
 	network: NETWORK,
-	rpcUrl: process.env["AGENTGATE_RPC_URL"],
+	rpcUrl: process.env["KEY0_RPC_URL"],
 });
 
 // Create token issuer (opt-in utility for JWT generation)
 const tokenIssuer = new AccessTokenIssuer(SECRET);
 
-// Mount AgentGate — serves agent card + A2A endpoint
-const gate = agentGateApp({
+// Mount Key0 — serves agent card + A2A endpoint
+const gate = key0App({
 	config: {
 		agentName: "Photo Gallery Agent",
 		agentDescription: "Purchase access to premium photos via USDC payments on Base",
@@ -75,7 +75,7 @@ const gate = agentGateApp({
 
 const app = new Hono();
 
-// Mount AgentGate routes
+// Mount Key0 routes
 app.route("/", gate);
 
 // Protect API routes with access token validation

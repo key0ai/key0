@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AccessTokenIssuer } from "../core";
 import { validateToken } from "../middleware.js";
-import { AgentGateError } from "../types";
+import { Key0Error } from "../types";
 
 const SECRET = "a-very-long-secret-that-is-at-least-32-characters!";
 const CLAIMS = {
@@ -31,8 +31,8 @@ describe("validateToken", () => {
 			await validateToken(undefined, { secret: SECRET });
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(AgentGateError);
-			expect((err as AgentGateError).httpStatus).toBe(401);
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).httpStatus).toBe(401);
 		}
 	});
 
@@ -41,7 +41,7 @@ describe("validateToken", () => {
 			await validateToken(null, { secret: SECRET });
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(AgentGateError);
+			expect(err).toBeInstanceOf(Key0Error);
 		}
 	});
 
@@ -50,8 +50,8 @@ describe("validateToken", () => {
 			await validateToken("Token abc123", { secret: SECRET });
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(AgentGateError);
-			expect((err as AgentGateError).message).toContain("Missing or malformed");
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).message).toContain("Missing or malformed");
 		}
 	});
 
@@ -64,8 +64,8 @@ describe("validateToken", () => {
 			await validateToken(tampered, { secret: SECRET });
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(AgentGateError);
-			expect((err as AgentGateError).httpStatus).toBe(401);
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).httpStatus).toBe(401);
 		}
 	});
 
@@ -79,8 +79,8 @@ describe("validateToken", () => {
 			});
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(AgentGateError);
-			expect((err as AgentGateError).httpStatus).toBe(401);
+			expect(err).toBeInstanceOf(Key0Error);
+			expect((err as Key0Error).httpStatus).toBe(401);
 		}
 	});
 
@@ -89,7 +89,7 @@ describe("validateToken", () => {
 			await validateToken("Bearer ", { secret: SECRET });
 			expect(true).toBe(false);
 		} catch (err) {
-			expect(err).toBeInstanceOf(AgentGateError);
+			expect(err).toBeInstanceOf(Key0Error);
 		}
 	});
 });

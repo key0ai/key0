@@ -44,10 +44,10 @@ export type ResourceInfo = {
 };
 
 /**
- * AgentGate extension data for embedding API schema in x402 responses.
+ * Key0 extension data for embedding API schema in x402 responses.
  * Follows the pattern used by Allium's `extensions.bazaar`.
  */
-export type AgentGateExtension = {
+export type Key0Extension = {
 	readonly inputSchema?: object;
 	readonly outputSchema?: object;
 	readonly description?: string;
@@ -63,7 +63,7 @@ export type X402PaymentRequiredResponse = {
 	readonly accepts: readonly PaymentRequirements[];
 	readonly error?: string;
 	readonly extensions?: {
-		readonly agentgate?: AgentGateExtension;
+		readonly key0?: Key0Extension;
 		[key: string]: unknown;
 	};
 };

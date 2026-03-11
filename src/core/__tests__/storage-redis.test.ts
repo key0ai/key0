@@ -9,6 +9,8 @@ function createMockRedis() {
 	const ttls = new Map<string, number>();
 	// Sorted sets: key → Map<member, score>
 	const sortedSets = new Map<string, Map<string, number>>();
+	// Lists: key → string[] (for audit logs)
+	const lists = new Map<string, string[]>();
 
 	type PipelineOp = () => void;
 
@@ -69,16 +71,33 @@ function createMockRedis() {
 			return "OK";
 		},
 
+		rpush(key: string, value: string): number {
+			const list = lists.get(key) || [];
+			list.push(value);
+			lists.set(key, list);
+			return list.length;
+		},
+
+		lrange(key: string, start: number, stop: number): string[] {
+			const list = lists.get(key) || [];
+			if (stop === -1) return list.slice(start);
+			return list.slice(start, stop + 1);
+		},
+
 		eval(_script: string, numKeys: number, ...args: string[]): number {
 			// Simulate the Lua transition script.
-			// KEYS[1]=challenge hash, KEYS[2]=paid sorted set
-			// ARGV: [fromState, toState, challengeId, score, ...field/value pairs]
+			// KEYS[1]=challenge hash, KEYS[2]=paid sorted set, KEYS[3]=audit list
+			// ARGV: [fromState, toState, challengeId, score, now, actor, reason, ...field/value pairs]
 			const key = args[0] as string;
 			const paidSetKey = args[1] as string;
+			const auditKey = args[2] as string;
 			const fromState = args[numKeys] as string;
 			const toState = args[numKeys + 1] as string;
 			const challengeId = args[numKeys + 2] as string;
 			const score = args[numKeys + 3] as string;
+			const now = args[numKeys + 4] as string;
+			const actor = args[numKeys + 5] as string;
+			const reason = args[numKeys + 6] as string;
 
 			const hash = store.get(key);
 			if (!(hash instanceof Map)) return 0;
@@ -87,10 +106,34 @@ function createMockRedis() {
 			if (current !== fromState) return 0;
 
 			hash.set("state", toState);
-			// Apply field/value pairs (start after the 4 fixed ARGV slots)
-			for (let i = numKeys + 4; i < args.length; i += 2) {
+			hash.set("updatedAt", now);
+
+			// Collect field/value updates
+			const fieldUpdates: Record<string, string> = {};
+			// Apply field/value pairs (start after the 7 fixed ARGV slots)
+			for (let i = numKeys + 7; i < args.length; i += 2) {
 				hash.set(args[i] as string, args[i + 1] as string);
+				fieldUpdates[args[i] as string] = args[i + 1] as string;
 			}
+
+			// Read requestId and clientAgentId from the hash (mirrors Lua HGET)
+			const requestId = hash.get("requestId") ?? "";
+			const clientAgentId = hash.get("clientAgentId");
+
+			// Audit: append to audit list (mirrors Lua RPUSH)
+			const auditEntryObj: Record<string, unknown> = {
+				challengeId,
+				requestId,
+				fromState,
+				toState,
+				actor,
+				createdAt: now,
+			};
+			if (clientAgentId) auditEntryObj["clientAgentId"] = clientAgentId;
+			if (reason !== "") auditEntryObj["reason"] = reason;
+			if (Object.keys(fieldUpdates).length > 0) auditEntryObj["updates"] = fieldUpdates;
+
+			mock.rpush(auditKey, JSON.stringify(auditEntryObj));
 
 			// Simulate sorted set maintenance (mirrors the Lua ZADD/ZREM logic)
 			if (toState === "PAID" && score !== "") {
@@ -115,6 +158,10 @@ function createMockRedis() {
 				},
 				set(...setArgs: unknown[]) {
 					ops.push(() => (mock.set as (...a: unknown[]) => unknown)(...setArgs));
+					return pipe;
+				},
+				rpush(key: string, value: string) {
+					ops.push(() => mock.rpush(key, value));
 					return pipe;
 				},
 				async exec() {
@@ -158,6 +205,7 @@ function createMockRedis() {
 		_store: store,
 		_ttls: ttls,
 		_sortedSets: sortedSets,
+		_lists: lists,
 	};
 
 	return mock;
@@ -180,6 +228,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		state: "PENDING",
 		expiresAt: new Date("2025-01-01T12:00:00.000Z"),
 		createdAt: new Date("2025-01-01T11:45:00.000Z"),
+		updatedAt: new Date("2025-01-01T11:45:00.000Z"),
 		...overrides,
 	};
 }
@@ -293,8 +342,8 @@ describe("RedisChallengeStore", () => {
 		const record = makeChallengeRecord();
 		await store.create(record);
 
-		const challengeKey = `agentgate:challenge:${record.challengeId}`;
-		const requestKey = `agentgate:request:${record.requestId}`;
+		const challengeKey = `key0:challenge:${record.challengeId}`;
+		const requestKey = `key0:request:${record.requestId}`;
 
 		// Challenge hash key uses the full 7-day lifecycle TTL
 		expect(redis._ttls.get(challengeKey)).toBe(604_800);
@@ -379,7 +428,7 @@ describe("RedisChallengeStore", () => {
 		const record = makeChallengeRecord();
 		await store.create(record);
 
-		const key = `agentgate:challenge:${record.challengeId}`;
+		const key = `key0:challenge:${record.challengeId}`;
 		expect(redis._ttls.get(key)).toBe(604_800); // 7 days
 	});
 
@@ -393,7 +442,7 @@ describe("RedisChallengeStore", () => {
 		const record = makeChallengeRecord();
 		await store.create(record);
 
-		const reqKey = `agentgate:request:${record.requestId}`;
+		const reqKey = `key0:request:${record.requestId}`;
 		expect(redis._ttls.get(reqKey)).toBe(1800);
 	});
 
@@ -404,7 +453,7 @@ describe("RedisChallengeStore", () => {
 		const record = makeChallengeRecord({ state: "PAID" });
 		await store.create(record);
 
-		const key = `agentgate:challenge:${record.challengeId}`;
+		const key = `key0:challenge:${record.challengeId}`;
 		expect(redis._ttls.get(key)).toBe(604_800); // 7 days at creation
 
 		await store.transition(record.challengeId, "PAID", "DELIVERED", {
@@ -421,7 +470,7 @@ describe("RedisChallengeStore", () => {
 		const record = makeChallengeRecord({ state: "REFUND_PENDING" });
 		await store.create(record);
 
-		const key = `agentgate:challenge:${record.challengeId}`;
+		const key = `key0:challenge:${record.challengeId}`;
 		const ttlBefore = redis._ttls.get(key);
 
 		await store.transition(record.challengeId, "REFUND_PENDING", "REFUNDED", {
@@ -491,7 +540,7 @@ describe("RedisSeenTxStore", () => {
 		const store = new RedisSeenTxStore({ redis: redis as never });
 
 		await store.markUsed(TX_HASH, "challenge-1");
-		const key = `agentgate:seentx:${TX_HASH}`;
+		const key = `key0:seentx:${TX_HASH}`;
 		expect(redis._ttls.get(key)).toBe(604800);
 	});
 

@@ -1,6 +1,6 @@
-# Contributing to AgentGate
+# Contributing to Key0
 
-Thank you for your interest in contributing to AgentGate! No contribution is too small — whether it's a bug report, a documentation fix, a new framework adapter, or a feature proposal, all contributions are valued.
+Thank you for your interest in contributing to Key0! No contribution is too small — whether it's a bug report, a documentation fix, a new framework adapter, or a feature proposal, all contributions are valued.
 
 Please take a few minutes to read this guide before opening an issue or pull request.
 
@@ -27,9 +27,9 @@ Please take a few minutes to read this guide before opening an issue or pull req
 
 **Please do not open GitHub Issues for questions or support requests.**
 
-If you have a question about how to use AgentGate, join our community:
+If you have a question about how to use Key0, join our community:
 
-- **GitHub Discussions:** [github.com/Riklr/agentgate/discussions](https://github.com/Riklr/agentgate/discussions)
+- **GitHub Discussions:** [github.com/Riklr/key0/discussions](https://github.com/Riklr/key0/discussions)
 
 Reserve GitHub Issues for confirmed bugs and feature proposals only. This keeps the issue tracker actionable for maintainers.
 
@@ -37,7 +37,7 @@ Reserve GitHub Issues for confirmed bugs and feature proposals only. This keeps 
 
 ## Project Overview
 
-AgentGate is a TypeScript SDK for monetizing APIs through payment-gated access using the x402 HTTP payment protocol. It enables autonomous agents to discover, pay for, and access services on-chain with USDC on Base — without complex smart contract development.
+Key0 is a TypeScript SDK for monetizing APIs through payment-gated access using the x402 HTTP payment protocol. It enables autonomous agents to discover, pay for, and access services on-chain with USDC on Base — without complex smart contract development.
 
 Key protocols: **x402** (HTTP 402 payment flow), **A2A** (Agent-to-Agent discovery), **EIP-3009** (gasless token authorization).
 
@@ -87,8 +87,8 @@ If you are unsure whether something qualifies as large, open a Discussion first 
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/Riklr/agentgate.git
-cd agentgate
+git clone https://github.com/Riklr/key0.git
+cd key0
 
 # 2. Install dependencies
 bun install
@@ -133,7 +133,7 @@ src/
 ├── validator/       # Lightweight token validation for backend services
 ├── test-utils/      # Mock adapters and test fixtures
 ├── executor.ts      # A2A executor implementation
-├── factory.ts       # AgentGate factory
+├── factory.ts       # Key0 factory
 ├── middleware.ts    # Token validation middleware
 └── index.ts         # Public export barrel
 
@@ -191,7 +191,7 @@ Keep the summary under 72 characters. Use the commit body for context when the c
 
 ## Code Style
 
-AgentGate uses [Biome](https://biomejs.dev) for linting and formatting. All code must pass:
+Key0 uses [Biome](https://biomejs.dev) for linting and formatting. All code must pass:
 
 ```bash
 bun run lint        # Check for lint errors
@@ -204,7 +204,7 @@ Key rules:
 - **Strict TypeScript** — `tsconfig.json` has `strict: true`
 - Do not disable Biome rules with inline comments without a clear explanation
 
-If you are adding a new framework integration, follow the existing pattern in `src/integrations/` — wrap the core `AgentGate` instance, don't reimplement logic.
+If you are adding a new framework integration, follow the existing pattern in `src/integrations/` — wrap the core `Key0` instance, don't reimplement logic.
 
 ---
 
@@ -244,7 +244,7 @@ Do not use mainnet in tests. Mock on-chain calls wherever possible; use Base Sep
 
 > **Do not report security vulnerabilities as public GitHub Issues.**
 
-AgentGate handles payment flows, private key management patterns, EIP-3009 authorization, and on-chain transaction verification. A vulnerability in any of these areas could result in loss of funds.
+Key0 handles payment flows, private key management patterns, EIP-3009 authorization, and on-chain transaction verification. A vulnerability in any of these areas could result in loss of funds.
 
 If you discover a security vulnerability, please report it privately:
 

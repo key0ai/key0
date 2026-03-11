@@ -25,6 +25,7 @@ export type {
 } from "./challenge.js";
 
 export type {
+	IRedisLockClient,
 	IssueTokenParams,
 	NetworkConfig,
 	NetworkName,
@@ -35,12 +36,12 @@ export type {
 } from "./config.js";
 
 export { CHAIN_CONFIGS, USDC_DECIMALS } from "./config-shared.js";
-export type { AgentGateErrorCode } from "./errors.js";
-export { AgentGateError } from "./errors.js";
+export type { Key0ErrorCode } from "./errors.js";
+export { Key0Error } from "./errors.js";
 
-export type { ChallengeTransitionUpdates, IChallengeStore, ISeenTxStore } from "./storage.js";
+export type { AuditActor, AuditEntry, ChallengeTransitionUpdates, IAuditStore, IChallengeStore, ISeenTxStore, TransitionMeta } from "./storage.js";
 export type {
-	AgentGateExtension,
+	Key0Extension,
 	EIP3009Authorization,
 	FacilitatorVerifyResponse,
 	PaymentRequirements,

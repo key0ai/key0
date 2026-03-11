@@ -1,5 +1,5 @@
 {
-	"name": "@riklr/agentgate",
+	"name": "@riklr/key0",
 	"version": "0.1.0",
 	"type": "module",
 	"main": "./src/index.ts",

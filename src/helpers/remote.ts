@@ -1,5 +1,5 @@
 import type { IssueTokenParams, ResourceVerifier, TokenIssuanceResult } from "../types/index.js";
-import { AgentGateError } from "../types/index.js";
+import { Key0Error } from "../types/index.js";
 import { type AuthHeaderProvider, sharedSecretAuth } from "./auth.js";
 
 export type RemoteVerifierConfig = {
@@ -52,7 +52,7 @@ function resolveAuth(
 
 /**
  * Creates an onVerifyResource callback that calls a remote HTTP endpoint.
- * This is useful when AgentGate is deployed as a separate service.
+ * This is useful when Key0 is deployed as a separate service.
  *
  * @example
  * ```typescript
@@ -101,7 +101,7 @@ export function createRemoteResourceVerifier(config: RemoteVerifierConfig): Reso
 			clearTimeout(timeout);
 
 			if (err instanceof Error && err.name === "AbortError") {
-				throw new AgentGateError("RESOURCE_VERIFY_TIMEOUT", "Remote verification timed out", 504);
+				throw new Key0Error("RESOURCE_VERIFY_TIMEOUT", "Remote verification timed out", 504);
 			}
 
 			console.error("[RemoteVerifier] Network error:", err);
@@ -113,7 +113,7 @@ export function createRemoteResourceVerifier(config: RemoteVerifierConfig): Reso
 /**
  * Creates an onIssueToken callback that calls a remote HTTP endpoint.
  * This is useful when you want your backend to issue custom tokens/API keys
- * instead of AgentGate's native JWT.
+ * instead of Key0's native JWT.
  *
  * @example
  * ```typescript
@@ -154,7 +154,7 @@ export function createRemoteTokenIssuer(
 
 			if (!response.ok) {
 				const errorText = await response.text();
-				throw new AgentGateError(
+				throw new Key0Error(
 					"TOKEN_ISSUE_FAILED",
 					`Backend failed to issue token: ${response.status} ${errorText}`,
 					502,
@@ -165,7 +165,7 @@ export function createRemoteTokenIssuer(
 
 			// Expecting { token: string, expiresAt: string|Date, tokenType?: string }
 			if (!data.token) {
-				throw new AgentGateError(
+				throw new Key0Error(
 					"TOKEN_ISSUE_FAILED",
 					"Backend response missing 'token' field",
 					502,
@@ -180,15 +180,15 @@ export function createRemoteTokenIssuer(
 		} catch (err: unknown) {
 			clearTimeout(timeout);
 
-			if (err instanceof AgentGateError) {
+			if (err instanceof Key0Error) {
 				throw err;
 			}
 
 			if (err instanceof Error && err.name === "AbortError") {
-				throw new AgentGateError("TOKEN_ISSUE_TIMEOUT", "Remote token issuance timed out", 504);
+				throw new Key0Error("TOKEN_ISSUE_TIMEOUT", "Remote token issuance timed out", 504);
 			}
 
-			throw new AgentGateError(
+			throw new Key0Error(
 				"TOKEN_ISSUE_FAILED",
 				`Network error: ${err instanceof Error ? err.message : String(err)}`,
 				502,

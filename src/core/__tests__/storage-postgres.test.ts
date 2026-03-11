@@ -121,47 +121,68 @@ function createMockSql() {
 			);
 			count = 0;
 		}
-		// INSERT INTO challenges
+		// INSERT INTO challenges or audit table
 		else if (query.includes("insert into") && !query.includes("on conflict")) {
 			const tableName = values[0];
 			const rows = tables.get(tableName) || [];
 
-			// Enforce primary key uniqueness on challenge_id to mimic Postgres behavior.
-			const existing = rows.find((r) => r["challenge_id"] === values[1]);
-			if (existing) {
-				const error = new Error(
-					'duplicate key value violates unique constraint "challenges_pkey"',
-				) as Error & { code?: string };
-				error.code = "23505";
-				throw error;
-			}
+			// Distinguish challenges INSERT (22 column values) from audit INSERT (4 column values)
+			if (values.length > 10) {
+				// Challenges table INSERT
+				// Enforce primary key uniqueness on challenge_id to mimic Postgres behavior.
+				const existing = rows.find((r) => r["challenge_id"] === values[1]);
+				if (existing) {
+					const error = new Error(
+						'duplicate key value violates unique constraint "challenges_pkey"',
+					) as Error & { code?: string };
+					error.code = "23505";
+					throw error;
+				}
 
-			const newRow: Row = {
-				challenge_id: values[1],
-				request_id: values[2],
-				client_agent_id: values[3],
-				resource_id: values[4],
-				tier_id: values[5],
-				amount: values[6],
-				amount_raw: values[7],
-				asset: values[8],
-				chain_id: values[9],
-				destination: values[10],
-				state: values[11],
-				expires_at: values[12],
-				created_at: values[13],
-				paid_at: values[14],
-				tx_hash: values[15],
-				access_grant: values[16],
-				from_address: values[17],
-				delivered_at: values[18],
-				refund_tx_hash: values[19],
-				refunded_at: values[20],
-				refund_error: values[21],
-				deleted_at: null, // Default to null for new records
-			};
-			rows.push(newRow);
-			tables.set(tableName, rows);
+				const newRow: Row = {
+					challenge_id: values[1],
+					request_id: values[2],
+					client_agent_id: values[3],
+					resource_id: values[4],
+					tier_id: values[5],
+					amount: values[6],
+					amount_raw: values[7],
+					asset: values[8],
+					chain_id: values[9],
+					destination: values[10],
+					state: values[11],
+					expires_at: values[12],
+					created_at: values[13],
+					updated_at: values[14],
+					paid_at: values[15],
+					tx_hash: values[16],
+					access_grant: values[17],
+					from_address: values[18],
+					delivered_at: values[19],
+					refund_tx_hash: values[20],
+					refunded_at: values[21],
+					refund_error: values[22],
+					deleted_at: null, // Default to null for new records
+				};
+				rows.push(newRow);
+				tables.set(tableName, rows);
+			} else {
+				// Audit table INSERT (challenge_id, request_id, client_agent_id, from_state, to_state, updates, actor, reason)
+				const auditRow: Row = {
+					id: String(rows.length + 1),
+					challenge_id: values[1],
+					request_id: values[2],
+					client_agent_id: values[3],
+					from_state: values[4],
+					to_state: values[5],
+					updates: values[6],
+					actor: values[7],
+					reason: values[8],
+					created_at: new Date(),
+				};
+				rows.push(auditRow);
+				tables.set(tableName, rows);
+			}
 			result = [];
 			count = 1;
 		}
@@ -319,6 +340,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		state: "PENDING",
 		expiresAt: new Date("2025-01-01T12:00:00.000Z"),
 		createdAt: new Date("2025-01-01T11:45:00.000Z"),
+		updatedAt: new Date("2025-01-01T11:45:00.000Z"),
 		...overrides,
 	};
 }
@@ -606,7 +628,7 @@ describe("PostgresChallengeStore", () => {
 
 		// Manually soft-delete by setting deleted_at (simulating cleanup)
 		const tables = (sql as unknown as { _tables: Map<string, Row[]> })._tables;
-		const rows = tables.get("agentgate_challenges") || [];
+		const rows = tables.get("key0_challenges") || [];
 		const row = rows.find((r) => r["challenge_id"] === record.challengeId);
 		if (row) {
 			row["deleted_at"] = new Date(Date.now() - 1000 * 60 * 60 * 24); // 1 day ago
@@ -618,7 +640,7 @@ describe("PostgresChallengeStore", () => {
 		expect(purgedCount).toBe(1);
 
 		// Verify record is permanently deleted
-		const remainingRows = tables.get("agentgate_challenges") || [];
+		const remainingRows = tables.get("key0_challenges") || [];
 		expect(remainingRows.find((r) => r["challenge_id"] === record.challengeId)).toBeUndefined();
 	});
 });

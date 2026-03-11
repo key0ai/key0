@@ -1,9 +1,9 @@
 ---
 name: payment-invariants
-description: The 5 security invariants that protect AgentGate's payment flow. Load this to know what must never be broken — and therefore what must always be tested and reviewed.
+description: The 5 security invariants that protect Key0's payment flow. Load this to know what must never be broken — and therefore what must always be tested and reviewed.
 ---
 
-# AgentGate Payment Security Invariants
+# Key0 Payment Security Invariants
 
 These are the 5 rules that must hold at all times. Violating any one of them means someone can get paid access without paying, pay once and receive multiple tokens, or corrupt the payment state.
 

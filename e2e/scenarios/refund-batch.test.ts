@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID, REFUND_POLL_TIMEOUT_MS } from "../fixtures/constants.ts";
-import { agentgateWalletAddress, clientWalletAddress } from "../fixtures/wallets.ts";
+import { key0WalletAddress, clientWalletAddress } from "../fixtures/wallets.ts";
 import { readChallengeState, writePaidChallengeRecord } from "../helpers/storage-client.ts";
 import { pollUntil } from "../helpers/wait.ts";
 
@@ -21,7 +21,7 @@ describe("Refund Batch Processing", () => {
 		`${BATCH_SIZE} PAID records are all refunded by the cron within timeout`,
 		async () => {
 			const clientAddr = clientWalletAddress();
-			const agentgateAddr = agentgateWalletAddress();
+			const key0Addr = key0WalletAddress();
 
 			// Write multiple PAID records, all eligible for refund
 			const challengeIds: string[] = [];
@@ -37,7 +37,7 @@ describe("Refund Batch Processing", () => {
 					tierId: DEFAULT_TIER_ID,
 					amount: "$0.01",
 					amountRaw: REFUND_AMOUNT_RAW,
-					destination: agentgateAddr,
+					destination: key0Addr,
 					fromAddress: clientAddr,
 					txHash: `0x${crypto.randomUUID().replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`,
 					paidAt: new Date(Date.now() - 10_000), // 10s ago — past REFUND_MIN_AGE_MS

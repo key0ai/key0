@@ -6,11 +6,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { AGENTGATE_URL } from "../fixtures/constants.ts";
+import { KEY0_URL } from "../fixtures/constants.ts";
 
 describe("Invalid Tier", () => {
 	test("nonexistent tierId returns 400 TIER_NOT_FOUND", async () => {
-		const res = await fetch(`${AGENTGATE_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -28,7 +28,7 @@ describe("Invalid Tier", () => {
 	test("missing tierId returns 402 discovery response with all tiers", async () => {
 		// POST /x402/access with no tierId triggers discovery mode:
 		// returns 402 with all available tiers (no PENDING record created)
-		const res = await fetch(`${AGENTGATE_URL}/x402/access`, {
+		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ requestId: crypto.randomUUID() }),

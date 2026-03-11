@@ -13,8 +13,8 @@
 		"noPropertyAccessFromIndexSignature": false,
 		"exactOptionalPropertyTypes": false,
 		"paths": {
-			"@riklr/agentgate": ["../../src/index.ts"],
-			"@riklr/agentgate/*": ["../../src/integrations/*.ts"]
+			"@riklr/key0": ["../../src/index.ts"],
+			"@riklr/key0/*": ["../../src/integrations/*.ts"]
 		}
 	},
 	"include": ["server.ts"]

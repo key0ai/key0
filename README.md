@@ -1,8 +1,8 @@
-# AgentGate
+# Key0
 
 Payment-gated A2A (Agent-to-Agent) endpoints using the x402 protocol with USDC on Base.
 
-AgentGate lets you monetize any API: agents request access, pay via on-chain USDC, and receive a signed credential to access protected resources. No smart contracts needed.
+Key0 lets you monetize any API: agents request access, pay via on-chain USDC, and receive a signed credential to access protected resources. No smart contracts needed.
 
 ---
 
@@ -10,7 +10,7 @@ AgentGate lets you monetize any API: agents request access, pay via on-chain USD
 
 | | [Standalone (Docker)](#standalone-mode) | [Embedded (SDK)](#embedded-mode) |
 |---|---|---|
-| **Setup** | `docker run riklr/agentgate:latest` | `bun add @riklr/agentgate` |
+| **Setup** | `docker run riklr/key0:latest` | `bun add @riklr/key0` |
 | **Config** | Environment variables | TypeScript config |
 | **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `onIssueToken` callback |
 | **Best for** | Quick deploy, no code changes | Full control, existing app |
@@ -19,11 +19,11 @@ AgentGate lets you monetize any API: agents request access, pay via on-chain USD
 
 ## Standalone Mode
 
-Run AgentGate as a pre-built Docker container. No code required — configure entirely via environment variables and point it at your own token-issuance endpoint.
+Run Key0 as a pre-built Docker container. No code required — configure entirely via environment variables and point it at your own token-issuance endpoint.
 
 ```
 ┌──────────────┐        ┌───────────────────────────┐        ┌──────────────────┐
-│ Client Agent │        │    AgentGate (Docker)     │        │  Your Backend    │
+│ Client Agent │        │    Key0 (Docker)     │        │  Your Backend    │
 │              │        │                           │        │                  │
 │  discover    │───────▶│  /.well-known/agent.json  │        │                  │
 │              │◀───────│  agent card + pricing      │        │                  │
@@ -51,28 +51,28 @@ Run AgentGate as a pre-built Docker container. No code required — configure en
 
 | Variable | Description |
 |---|---|
-| `AGENTGATE_WALLET_ADDRESS` | USDC-receiving wallet (`0x...`) |
-| `ISSUE_TOKEN_API` | URL that AgentGate POSTs to after payment is verified |
+| `KEY0_WALLET_ADDRESS` | USDC-receiving wallet (`0x...`) |
+| `ISSUE_TOKEN_API` | URL that Key0 POSTs to after payment is verified |
 
 ```bash
 docker run \
-  -e AGENTGATE_WALLET_ADDRESS=0xYourWallet \
+  -e KEY0_WALLET_ADDRESS=0xYourWallet \
   -e ISSUE_TOKEN_API=https://api.example.com/issue-token \
   -p 3000:3000 \
-  riklr/agentgate:latest
+  riklr/key0:latest
 ```
 
 ### With Docker Compose + Redis
 
 ```bash
 cp docker/.env.example docker/.env
-# Edit docker/.env: set AGENTGATE_WALLET_ADDRESS and ISSUE_TOKEN_API
+# Edit docker/.env: set KEY0_WALLET_ADDRESS and ISSUE_TOKEN_API
 docker compose -f docker/docker-compose.yml up
 ```
 
 ### Docker Image
 
-Published to Docker Hub on every release: [`riklr/agentgate`](https://hub.docker.com/r/riklr/agentgate)
+Published to Docker Hub on every release: [`riklr/key0`](https://hub.docker.com/r/riklr/key0)
 
 | Tag | When |
 |---|---|
@@ -80,29 +80,29 @@ Published to Docker Hub on every release: [`riklr/agentgate`](https://hub.docker
 | `1.2.3` / `1.2` / `1` | Specific version |
 | `canary` | Latest `main` branch build |
 
-Build from source: `docker build -t riklr/agentgate .`
+Build from source: `docker build -t riklr/key0 .`
 
 ### Environment Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `AGENTGATE_WALLET_ADDRESS` | ✅ | — | Your wallet address (`0x…`) that receives USDC payments from agents |
-| `ISSUE_TOKEN_API` | ✅ | — | Your endpoint that AgentGate POSTs to after payment is verified to issue access tokens |
-| `AGENTGATE_NETWORK` | | `testnet` | Blockchain network — `mainnet` for Base, `testnet` for Base Sepolia |
+| `KEY0_WALLET_ADDRESS` | ✅ | — | Your wallet address (`0x…`) that receives USDC payments from agents |
+| `ISSUE_TOKEN_API` | ✅ | — | Your endpoint that Key0 POSTs to after payment is verified to issue access tokens |
+| `KEY0_NETWORK` | | `testnet` | Blockchain network — `mainnet` for Base, `testnet` for Base Sepolia |
 | `PORT` | | `3000` | Port the HTTP server listens on |
-| `AGENT_NAME` | | `AgentGate Server` | Name of your agent as shown in `/.well-known/agent.json` |
+| `AGENT_NAME` | | `Key0 Server` | Name of your agent as shown in `/.well-known/agent.json` |
 | `AGENT_DESCRIPTION` | | `Payment-gated A2A endpoint` | Short description of your agent shown in the agent card |
 | `AGENT_URL` | | `http://localhost:PORT` | Publicly reachable URL of this server — used in the agent card and resource endpoint URLs |
-| `PROVIDER_NAME` | | `AgentGate` | Your organization name shown in the agent card `provider` field |
-| `PROVIDER_URL` | | `https://agentgate.dev` | Your organization URL shown in the agent card `provider` field |
+| `PROVIDER_NAME` | | `Key0` | Your organization name shown in the agent card `provider` field |
+| `PROVIDER_URL` | | `https://key0.ai` | Your organization URL shown in the agent card `provider` field |
 | `PRODUCTS` | | `[{"tierId":"basic","label":"Basic","amount":"$0.10","resourceType":"api","accessDurationSeconds":3600}]` | JSON array of pricing tiers — each with `tierId`, `label`, `amount`, `resourceType`, and optional `accessDurationSeconds` |
 | `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
 | `BASE_PATH` | ✅ | — | URL path prefix for A2A endpoints (e.g. `/a2a` mounts `/a2a/jsonrpc` and `/a2a/.well-known/agent.json`) |
 | `ISSUE_TOKEN_API_SECRET` | | — | If set, sent as `Authorization: Bearer <secret>` on every request to `ISSUE_TOKEN_API` |
 | `REDIS_URL` | ✅ | — | Redis connection URL — required for multi-replica deployments and the BullMQ refund cron |
 | `GAS_WALLET_PRIVATE_KEY` | | — | Private key of a wallet holding ETH on Base — enables self-contained settlement without a CDP facilitator |
-| `AGENTGATE_WALLET_PRIVATE_KEY` | | — | Private key of `AGENTGATE_WALLET_ADDRESS` — required for the refund cron to send USDC back to payers |
-| `REFUND_INTERVAL_MS` | | `60000` | How often the refund cron runs (ms) — only active when `AGENTGATE_WALLET_PRIVATE_KEY` is set |
+| `KEY0_WALLET_PRIVATE_KEY` | | — | Private key of `KEY0_WALLET_ADDRESS` — required for the refund cron to send USDC back to payers |
+| `REFUND_INTERVAL_MS` | | `60000` | How often the refund cron runs (ms) — only active when `KEY0_WALLET_PRIVATE_KEY` is set |
 | `REFUND_MIN_AGE_MS` | | `300000` | Minimum age (ms) a stuck `PAID` record must reach before the refund cron picks it up |
 | `REFUND_BATCH_SIZE` | | `50` | Max number of `PAID` records processed per refund cron tick |
 | `TOKEN_ISSUE_TIMEOUT_MS` | | `15000` | Timeout (ms) for each `ISSUE_TOKEN_API` call |
@@ -112,7 +112,7 @@ See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 
 ### ISSUE_TOKEN_API Contract
 
-After on-chain payment is verified, AgentGate POSTs to `ISSUE_TOKEN_API` with the payment context merged with the matching product tier:
+After on-chain payment is verified, Key0 POSTs to `ISSUE_TOKEN_API` with the payment context merged with the matching product tier:
 
 ```json
 {
@@ -144,11 +144,11 @@ If the response has a `token` string field it is used directly. Otherwise the fu
 
 ### Automatic Refunds (Standalone)
 
-When `AGENTGATE_WALLET_PRIVATE_KEY` is set, the Docker server runs a BullMQ refund cron automatically — no extra setup needed. It scans for `PAID` challenges that were never delivered (e.g. because `ISSUE_TOKEN_API` returned an error) and sends USDC back to the payer.
+When `KEY0_WALLET_PRIVATE_KEY` is set, the Docker server runs a BullMQ refund cron automatically — no extra setup needed. It scans for `PAID` challenges that were never delivered (e.g. because `ISSUE_TOKEN_API` returned an error) and sends USDC back to the payer.
 
 ```
 ┌──────────────┐   ┌───────────────────────────┐   ┌──────────────────┐
-│ Client Agent │   │    AgentGate (Docker)     │   │   Blockchain     │
+│ Client Agent │   │    Key0 (Docker)     │   │   Blockchain     │
 │              │   │                           │   │                  │
 │  pays USDC   │──▶│  verify on-chain          │──▶│                  │
 │              │   │  PENDING ──────────────▶ PAID │◀─ Transfer event │
@@ -169,7 +169,7 @@ When `AGENTGATE_WALLET_PRIVATE_KEY` is set, the Docker server runs a BullMQ refu
 
 ```bash
 # docker/.env — add to enable refunds
-AGENTGATE_WALLET_PRIVATE_KEY=0xYourWalletPrivateKeyHere
+KEY0_WALLET_PRIVATE_KEY=0xYourWalletPrivateKeyHere
 REFUND_INTERVAL_MS=60000   # scan every 60s
 REFUND_MIN_AGE_MS=300000   # refund after 5-min grace period
 ```
@@ -180,13 +180,13 @@ REFUND_MIN_AGE_MS=300000   # refund after 5-min grace period
 
 ## Embedded Mode
 
-Install the SDK and add AgentGate as middleware inside your existing application. You keep full control over token issuance, resource verification, and routing.
+Install the SDK and add Key0 as middleware inside your existing application. You keep full control over token issuance, resource verification, and routing.
 
 ```
 ┌──────────────┐        ┌──────────────────────────────────────────────────┐
 │ Client Agent │        │                 Your Application                  │
 │              │        │  ┌────────────────────────────────────────────┐  │
-│  discover    │───────▶│  │           AgentGate Middleware              │  │
+│  discover    │───────▶│  │           Key0 Middleware              │  │
 │              │◀───────│  │  /.well-known/agent.json  (auto-generated)  │  │
 │              │        │  │  /x402/access  (x402 payment + settlement)  │  │
 │  request     │───────▶│  │  onVerifyResource()  ──▶  your DB/logic     │  │
@@ -208,7 +208,7 @@ Install the SDK and add AgentGate as middleware inside your existing application
 ### Install
 
 ```bash
-bun add @riklr/agentgate
+bun add @riklr/key0
 ```
 
 Optional peer dependencies:
@@ -220,8 +220,8 @@ bun add ioredis   # Redis-backed storage for multi-process deployments
 
 ```typescript
 import express from "express";
-import { agentGateRouter, validateAccessToken } from "@riklr/agentgate/express";
-import { X402Adapter, AccessTokenIssuer, RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
+import { key0Router, validateAccessToken } from "@riklr/key0/express";
+import { X402Adapter, AccessTokenIssuer, RedisChallengeStore, RedisSeenTxStore } from "@riklr/key0";
 import Redis from "ioredis";
 
 const app = express();
@@ -235,7 +235,7 @@ const store = new RedisChallengeStore({ redis });
 const seenTxStore = new RedisSeenTxStore({ redis });
 
 app.use(
-  agentGateRouter({
+  key0Router({
     config: {
       agentName: "My Agent",
       agentDescription: "A payment-gated API",
@@ -280,13 +280,13 @@ app.listen(3000);
 
 ```typescript
 import { Hono } from "hono";
-import { agentGateApp, honoValidateAccessToken } from "@riklr/agentgate/hono";
-import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
+import { key0App, honoValidateAccessToken } from "@riklr/key0/hono";
+import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@riklr/key0";
 import Redis from "ioredis";
 
 const adapter = new X402Adapter({ network: "testnet" });
 const redis = new Redis(process.env.REDIS_URL!);
-const gate = agentGateApp({
+const gate = key0App({
   config: { /* same config */ },
   adapter,
   store: new RedisChallengeStore({ redis }),
@@ -308,15 +308,15 @@ export default { port: 3000, fetch: app.fetch };
 
 ```typescript
 import Fastify from "fastify";
-import { agentGatePlugin, fastifyValidateAccessToken } from "@riklr/agentgate/fastify";
-import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
+import { key0Plugin, fastifyValidateAccessToken } from "@riklr/key0/fastify";
+import { X402Adapter, RedisChallengeStore, RedisSeenTxStore } from "@riklr/key0";
 import Redis from "ioredis";
 
 const fastify = Fastify();
 const adapter = new X402Adapter({ network: "testnet" });
 const redis = new Redis(process.env.REDIS_URL!);
 
-await fastify.register(agentGatePlugin, {
+await fastify.register(key0Plugin, {
   config: { /* same config */ },
   adapter,
   store: new RedisChallengeStore({ redis }),
@@ -382,7 +382,7 @@ When `onIssueToken` throws or the server crashes after payment but before delive
 ┌──────────────┐   ┌──────────────────────────────────────────────────┐   ┌──────────┐
 │ Client Agent │   │                 Your Application                  │   │Blockchain│
 │              │   │  ┌────────────────────────────────────────────┐  │   │          │
-│  pays USDC   │──▶│  │  AgentGate Middleware                       │  │──▶│          │
+│  pays USDC   │──▶│  │  Key0 Middleware                       │  │──▶│          │
 │              │   │  │  verify on-chain                            │  │◀──│          │
 │              │   │  │  PENDING ──────────────────────────▶ PAID   │  │   │          │
 │              │   │  │  onIssueToken() throws                      │  │   │          │
@@ -400,13 +400,13 @@ When `onIssueToken` throws or the server crashes after payment but before delive
 
 ```typescript
 import { Queue, Worker } from "bullmq";
-import { processRefunds } from "@riklr/agentgate";
+import { processRefunds } from "@riklr/key0";
 
-// Uses the same `store` passed to agentGateRouter
+// Uses the same `store` passed to key0Router
 const worker = new Worker("refund-cron", async () => {
   const results = await processRefunds({
     store,
-    walletPrivateKey: process.env.AGENTGATE_WALLET_PRIVATE_KEY as `0x${string}`,
+    walletPrivateKey: process.env.KEY0_WALLET_PRIVATE_KEY as `0x${string}`,
     network: "testnet",
     minAgeMs: 5 * 60 * 1000, // 5-min grace period
   });
@@ -427,8 +427,8 @@ await queue.add("process", {}, { repeat: { every: 60_000 } });
 ### Environment Variables
 
 ```bash
-AGENTGATE_NETWORK=testnet                          # "testnet" or "mainnet"
-AGENTGATE_WALLET_ADDRESS=0xYourWalletAddress        # Receive-only wallet (no private key needed)
+KEY0_NETWORK=testnet                          # "testnet" or "mainnet"
+KEY0_WALLET_ADDRESS=0xYourWalletAddress        # Receive-only wallet (no private key needed)
 ACCESS_TOKEN_SECRET=your-secret-min-32-chars        # JWT signing secret for AccessTokenIssuer
 PORT=3000                                           # Server port
 
@@ -442,7 +442,7 @@ GAS_WALLET_PRIVATE_KEY=0xYourPrivateKey
 
 ## How It Works
 
-AgentGate supports two payment flows. Both follow the same `ChallengeRecord` lifecycle (`PENDING → PAID → DELIVERED`) and are eligible for automatic refunds.
+Key0 supports two payment flows. Both follow the same `ChallengeRecord` lifecycle (`PENDING → PAID → DELIVERED`) and are eligible for automatic refunds.
 
 ### A2A Flow (Agent-to-Agent)
 
@@ -524,16 +524,16 @@ If `onIssueToken` fails in either flow, the record stays `PAID` and the automati
 
 ## Clients
 
-Any agent that can hold a wallet and sign an on-chain USDC transfer can pay AgentGate-protected APIs autonomously — no human in the loop.
+Any agent that can hold a wallet and sign an on-chain USDC transfer can pay Key0-protected APIs autonomously — no human in the loop.
 
 ### Coding Agents (e.g. Claude Code)
 
-Coding agents like [Claude Code](https://claude.ai/code) can discover an AgentGate endpoint, pay for access, and receive API keys or tokens entirely on their own using an MCP wallet tool. The [Coinbase payments MCP](https://github.com/coinbase/payments-mcp) gives Claude a client-side wallet it can use to sign and broadcast USDC transfers directly:
+Coding agents like [Claude Code](https://claude.ai/code) can discover an Key0 endpoint, pay for access, and receive API keys or tokens entirely on their own using an MCP wallet tool. The [Coinbase payments MCP](https://github.com/coinbase/payments-mcp) gives Claude a client-side wallet it can use to sign and broadcast USDC transfers directly:
 
 ```
 1. Agent reads /.well-known/agent.json → discovers pricing and wallet address
 2. Agent calls payments-mcp to sign a USDC authorization (EIP-3009)
-3. Agent sends the signed authorization → AgentGate settles on-chain and returns an AccessGrant with the token/API key
+3. Agent sends the signed authorization → Key0 settles on-chain and returns an AccessGrant with the token/API key
 4. Agent uses the token to call the protected resource
 ```
 
@@ -541,11 +541,11 @@ No configuration or human approval required — the agent handles the full payme
 
 ### MCP (Model Context Protocol)
 
-Set `mcp: true` in your config to expose AgentGate as an MCP server. MCP clients like Claude Desktop, Cursor, and Claude Code can discover and call your tools directly.
+Set `mcp: true` in your config to expose Key0 as an MCP server. MCP clients like Claude Desktop, Cursor, and Claude Code can discover and call your tools directly.
 
 ```typescript
 app.use(
-  agentGateRouter({
+  key0Router({
     config: {
       // ...existing config
       mcp: true, // enables MCP routes
@@ -579,22 +579,22 @@ See [`docs/mcp-integration.md`](./docs/mcp-integration.md) for architecture deta
 
 ### Autonomous Agents (e.g. OpenClaw)
 
-Headless autonomous agents can do the same. Any agent runtime that supports wallet signing (via an embedded wallet, a KMS-backed key, or an MCP-compatible tool) can interact with AgentGate without modification — the protocol is standard HTTP + on-chain USDC.
+Headless autonomous agents can do the same. Any agent runtime that supports wallet signing (via an embedded wallet, a KMS-backed key, or an MCP-compatible tool) can interact with Key0 without modification — the protocol is standard HTTP + on-chain USDC.
 
 The seller never needs to pre-register clients, issue API keys manually, or manage billing. Payment is the credential.
 
 ## Storage
 
-AgentGate requires Redis for storage. `store` and `seenTxStore` are mandatory fields.
+Key0 requires Redis for storage. `store` and `seenTxStore` are mandatory fields.
 
 ```typescript
-import { RedisChallengeStore, RedisSeenTxStore } from "@riklr/agentgate";
+import { RedisChallengeStore, RedisSeenTxStore } from "@riklr/key0";
 import Redis from "ioredis";
 
 const redis = new Redis(process.env.REDIS_URL);
 
 app.use(
-  agentGateRouter({
+  key0Router({
     config: { /* ... */ },
     adapter,
     store: new RedisChallengeStore({ redis, challengeTTLSeconds: 900 }),
@@ -623,7 +623,7 @@ Redis storage provides:
 The `onIssueToken` callback gives you full control over what token is issued after a verified payment. Use the built-in `AccessTokenIssuer` for JWT issuance, or return any string (API key, opaque token, etc.):
 
 ```typescript
-import { AccessTokenIssuer } from "@riklr/agentgate";
+import { AccessTokenIssuer } from "@riklr/key0";
 
 const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
 
@@ -680,7 +680,7 @@ The examples use Base Sepolia by default — testnet USDC is free.
 # Terminal 1 — seller
 cd examples/express-seller
 cp .env.example .env
-# set AGENTGATE_WALLET_ADDRESS and ACCESS_TOKEN_SECRET
+# set KEY0_WALLET_ADDRESS and ACCESS_TOKEN_SECRET
 bun run start
 
 # Terminal 2 — buyer
@@ -694,9 +694,9 @@ bun run start
 |---|---|
 | [`examples/express-seller`](./examples/express-seller) | Express photo gallery with two pricing tiers |
 | [`examples/hono-seller`](./examples/hono-seller) | Same features using Hono |
-| [`examples/standalone-service`](./examples/standalone-service) | AgentGate as a separate service with Redis + gas wallet |
+| [`examples/standalone-service`](./examples/standalone-service) | Key0 as a separate service with Redis + gas wallet |
 | [`examples/refund-cron-example`](./examples/refund-cron-example) | BullMQ refund cron with Redis-backed storage |
-| [`examples/backend-integration`](./examples/backend-integration) | AgentGate service + backend API coordination |
+| [`examples/backend-integration`](./examples/backend-integration) | Key0 service + backend API coordination |
 | [`examples/client-agent`](./examples/client-agent) | Buyer agent with real on-chain USDC payments |
 
 ---
@@ -715,6 +715,6 @@ bun run build        # Compile to ./dist
 ## Documentation
 
 - [SPEC.md](./SPEC.md) — Protocol specification
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines and development setup (`github.com/Riklr/agentgate`)
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines and development setup (`github.com/Riklr/key0`)
 - [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling
 - [mcp-integration.md](./docs/mcp-integration.md) — MCP server: transport choice, stateless architecture, tool design, concerns

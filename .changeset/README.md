@@ -1,6 +1,6 @@
 # Changesets
 
-This folder is managed by [`@changesets/cli`](https://github.com/changesets/changesets). It tracks unreleased changes and drives versioning + changelog generation for `@riklr/agentgate`.
+This folder is managed by [`@changesets/cli`](https://github.com/changesets/changesets). It tracks unreleased changes and drives versioning + changelog generation for `@riklr/key0`.
 
 ---
 
@@ -20,8 +20,8 @@ Every release publishes **two artifacts** from the `release.yml` workflow:
 
 | Artifact | Target |
 |---|---|
-| npm package | `@riklr/agentgate` on npmjs.com |
-| Docker image | `riklr/agentgate` on Docker Hub (tagged by semver + `latest`) |
+| npm package | `@riklr/key0` on npmjs.com |
+| Docker image | `riklr/key0` on Docker Hub (tagged by semver + `latest`) |
 
 Both are triggered automatically when a `v*` tag is pushed to `main`.
 
@@ -85,7 +85,7 @@ git push origin main --tags
 The `release.yml` workflow triggers on `v*` tags and:
 1. Runs `bun run build`
 2. Runs `changeset publish --provenance` → publishes to npm
-3. Builds and pushes the Docker image to `riklr/agentgate` (only runs if npm publish succeeds)
+3. Builds and pushes the Docker image to `riklr/key0` (only runs if npm publish succeeds)
 
 ---
 

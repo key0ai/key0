@@ -2,7 +2,7 @@
  * Challenge Timeout — verifies that once the requestId index key expires,
  * the same requestId creates a NEW challenge (idempotency resets after TTL).
  *
- * Simulates TTL expiry by deleting `agentgate:request:{requestId}` directly
+ * Simulates TTL expiry by deleting `key0:request:{requestId}` directly
  * from Redis, avoiding the need for a separate short-TTL Docker stack.
  */
 

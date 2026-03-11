@@ -1,8 +1,8 @@
 import { createPublicClient, formatUnits, http } from "viem";
 import { base, baseSepolia } from "viem/chains";
 
-const NETWORK = process.env["AGENTGATE_NETWORK"] ?? "testnet";
-const WALLET = (process.env["AGENTGATE_WALLET_ADDRESS"] ?? "") as `0x${string}`;
+const NETWORK = process.env["KEY0_NETWORK"] ?? "testnet";
+const WALLET = (process.env["KEY0_WALLET_ADDRESS"] ?? "") as `0x${string}`;
 
 const USDC: Record<string, `0x${string}`> = {
 	testnet: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

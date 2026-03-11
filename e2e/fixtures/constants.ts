@@ -1,6 +1,6 @@
 /** Shared constants for e2e tests. */
 
-export const AGENTGATE_URL = "http://localhost:3000";
+export const KEY0_URL = "http://localhost:3000";
 export const BACKEND_URL = "http://localhost:3001";
 
 // Base Sepolia testnet
@@ -13,7 +13,7 @@ export const DEFAULT_TIER_ID = "basic";
 export const DEFAULT_TIER_AMOUNT_MICRO = 100_000n; // $0.10 USDC
 
 /** Refund-fail stack constants (refund-failure.test.ts) */
-export const REFUND_FAIL_AGENTGATE_URL = "http://localhost:3020";
+export const REFUND_FAIL_KEY0_URL = "http://localhost:3020";
 export const REFUND_FAIL_REDIS_URL = "redis://localhost:6381";
 
 /** Refund cron timing (matches docker-compose.e2e.yml) */

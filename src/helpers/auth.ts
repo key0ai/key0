@@ -1,5 +1,5 @@
 import type { AccessTokenIssuer } from "../core/access-token.js";
-import { AgentGateError } from "../types/index.js";
+import { Key0Error } from "../types/index.js";
 
 /**
  * A function that returns headers for authentication.
@@ -23,7 +23,7 @@ export function sharedSecretAuth(headerName: string, secret: string): AuthHeader
 /**
  * Strategy 2: Signed JWT (Service-to-Service)
  * Uses the existing AccessTokenIssuer to sign a short-lived JWT.
- * Useful when AgentGate is configured with RS256 keys and the backend has the public key.
+ * Useful when Key0 is configured with RS256 keys and the backend has the public key.
  *
  * @example
  * ```typescript
@@ -38,7 +38,7 @@ export function signedJwtAuth(
 	return async () => {
 		const { token } = await issuer.sign(
 			{
-				sub: "agentgate-service",
+				sub: "key0-service",
 				jti: crypto.randomUUID(),
 				resourceId: audience,
 				tierId: "system",
@@ -135,7 +135,7 @@ export function oauthClientCredentialsAuth(config: {
 			return { Authorization: `Bearer ${cachedToken}` };
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : String(err);
-			throw new AgentGateError("INTERNAL_ERROR", `Failed to authenticate via OAuth: ${msg}`, 500);
+			throw new Key0Error("INTERNAL_ERROR", `Failed to authenticate via OAuth: ${msg}`, 500);
 		}
 	};
 }

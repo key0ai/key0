@@ -1,6 +1,6 @@
-# AgentGate E2E Test Suite
+# Key0 E2E Test Suite
 
-End-to-end tests that run the real AgentGate Docker container against Base Sepolia testnet. Every test exercises the full stack: HTTP layer → challenge engine → Redis storage → on-chain USDC settlement.
+End-to-end tests that run the real Key0 Docker container against Base Sepolia testnet. Every test exercises the full stack: HTTP layer → challenge engine → Redis storage → on-chain USDC settlement.
 
 ## Architecture
 
@@ -11,11 +11,11 @@ Test Process (Bun)
   │     ├── POST /test/set-mode          ← switches backend behaviour per-test
   │     └── GET  /api/resource/:id       ← protected API (validates Bearer JWT)
   │
-  ├── Docker: agentgate (port 3000)
+  ├── Docker: key0 (port 3000)
   │     env: ISSUE_TOKEN_API → http://host.docker.internal:3001/internal/issue-token
   │
   ├── Docker: redis:7-alpine (port 6380)
-  │     ← AgentGate stores challenge state here
+  │     ← Key0 stores challenge state here
   │     ← Tests read/write state directly via ioredis for setup and assertions
   │
   └── E2eTestClient (viem, EIP-3009)
@@ -55,8 +55,8 @@ Copy `.env.example` to `.env` and fill in the values:
 | `CLIENT_WALLET_ADDRESS` | Buyer address |
 | `GAS_WALLET_PRIVATE_KEY` | Pays gas for on-chain settlement; also second buyer in concurrent test |
 | `GAS_WALLET_ADDRESS` | Gas wallet address |
-| `AGENTGATE_WALLET_ADDRESS` | Receives USDC payments; signs EIP-3009 for refunds |
-| `AGENTGATE_WALLET_KEY` | AGENTGATE wallet private key (for signing refund authorizations) |
+| `KEY0_WALLET_ADDRESS` | Receives USDC payments; signs EIP-3009 for refunds |
+| `KEY0_WALLET_KEY` | KEY0 wallet private key (for signing refund authorizations) |
 | `ALCHEMY_BASE_SEPOLIA_RPC_URL` | Reliable RPC — Alchemy or equivalent |
 
 ## Test Scenarios
@@ -78,7 +78,7 @@ The full purchase flow where everything works correctly.
 
 **Main test (purchase → JWT → protected API):**
 1. `POST /x402/access` with no payment → server returns HTTP 402 with `challengeId` and payment requirements in a base64-encoded `payment-required` header.
-2. Client signs an EIP-3009 `TransferWithAuthorization` off-chain — authorizes the gas wallet to move USDC from the client's address to the AgentGate wallet.
+2. Client signs an EIP-3009 `TransferWithAuthorization` off-chain — authorizes the gas wallet to move USDC from the client's address to the Key0 wallet.
 3. `POST /x402/access` with `payment-signature` header containing the EIP-3009 signature → gas wallet executes the on-chain transfer → server issues an `AccessGrant` (JWT).
 4. `GET /api/resource/resource-1` with `Authorization: Bearer <jwt>` → backend returns 200 with resource data.
 
@@ -92,7 +92,7 @@ The full purchase flow where everything works correctly.
 
 Verifies that idempotency resets after a challenge TTL expires.
 
-Instead of waiting 300 seconds for the real TTL, it deletes the `agentgate:request:{requestId}` index key from Redis directly — simulating expiry. The second `requestAccess` call with the same `requestId` creates a new challenge with a different `challengeId`, proving the idempotency window is bounded by the key's TTL.
+Instead of waiting 300 seconds for the real TTL, it deletes the `key0:request:{requestId}` index key from Redis directly — simulating expiry. The second `requestAccess` call with the same `requestId` creates a new challenge with a different `challengeId`, proving the idempotency window is bounded by the key's TTL.
 
 ---
 
@@ -100,7 +100,7 @@ Instead of waiting 300 seconds for the real TTL, it deletes the `agentgate:reque
 
 Verifies that a signed EIP-3009 authorization cannot be reused across two challenges.
 
-Does a full purchase and gets a grant. Then submits the exact same `payment-signature` on a new challenge. The server rejects it with `TX_ALREADY_REDEEMED`. Prevention relies on the `agentgate:seentx:{nonce}` SET NX key in Redis — once a nonce is recorded, the same value can never claim a second challenge.
+Does a full purchase and gets a grant. Then submits the exact same `payment-signature` on a new challenge. The server rejects it with `TX_ALREADY_REDEEMED`. Prevention relies on the `key0:seentx:{nonce}` SET NX key in Redis — once a nonce is recorded, the same value can never claim a second challenge.
 
 ---
 
@@ -116,7 +116,7 @@ Signs an EIP-3009 authorization for `1n` micro-USDC (far below the required `100
 
 Verifies that payment directed to the wrong address is rejected.
 
-Signs an EIP-3009 authorization with the `to` field set to a random address instead of the AgentGate wallet address. Settlement rejects it with `WRONG_RECIPIENT` — the `payTo` in the authorization must match `config.walletAddress`.
+Signs an EIP-3009 authorization with the `to` field set to a random address instead of the Key0 wallet address. Settlement rejects it with `WRONG_RECIPIENT` — the `payTo` in the authorization must match `config.walletAddress`.
 
 ---
 
@@ -134,7 +134,7 @@ Verifies tier validation on `POST /x402/access`.
 Verifies the discovery flow: `POST /x402/access` with no `tierId`.
 
 The `/x402/access` endpoint has three modes:
-1. **No tierId** → discovery 402: returns all tiers in the `accepts` array with `tierId` in each tier's `extra`. No PENDING record is created. Also validates the `payment-required` header, `www-authenticate` header, and `agentgate` extensions (inputSchema, outputSchema).
+1. **No tierId** → discovery 402: returns all tiers in the `accepts` array with `tierId` in each tier's `extra`. No PENDING record is created. Also validates the `payment-required` header, `www-authenticate` header, and `key0` extensions (inputSchema, outputSchema).
 2. **tierId, no signature** → challenge 402 (covered by happy-path)
 3. **tierId + signature** → settle and grant (covered by happy-path)
 
@@ -152,7 +152,7 @@ Signs a `TransferWithAuthorization` with `validBeforeOverride: 1n` (Unix epoch +
 
 Verifies that the same `requestId` always returns the same `challengeId` within the TTL window.
 
-Calls `requestAccess` twice with identical `requestId`. Both responses return the same `challengeId`. The `agentgate:request:{requestId}` index key in Redis ensures the second call finds and returns the existing challenge instead of creating a new one.
+Calls `requestAccess` twice with identical `requestId`. Both responses return the same `challengeId`. The `key0:request:{requestId}` index key in Redis ensures the second call finds and returns the existing challenge instead of creating a new one.
 
 ---
 
@@ -171,7 +171,7 @@ Verifies the refund cron picks up a PAID record and returns USDC to the original
 Writes a PAID record directly into Redis via `writePaidChallengeRecord` (bypasses the full payment flow to avoid cost and latency). The record has `fromAddress = CLIENT_WALLET_ADDRESS`, `amountRaw = 10_000n` ($0.01 USDC), and `paidAt` set 10 seconds in the past — already past the 3-second `REFUND_MIN_AGE_MS`. The test polls `readChallengeState()` every second until it becomes `"REFUNDED"` (within 30 seconds).
 
 Internally, the cron:
-1. Queries the `agentgate:paid` sorted set for records older than `REFUND_MIN_AGE_MS`.
+1. Queries the `key0:paid` sorted set for records older than `REFUND_MIN_AGE_MS`.
 2. Atomically transitions the record `PAID → REFUND_PENDING` (prevents double-refund across instances).
 3. Sends USDC back to `fromAddress` via EIP-3009 `transferWithAuthorization` — the gas wallet pays the gas.
 4. Transitions `REFUND_PENDING → REFUNDED` with the `refundTxHash`.
@@ -182,9 +182,9 @@ USDC cost per run: ~$0.01.
 
 ### `refund-failure.test.ts` — Refund Failure (1 test)
 
-Verifies that when the AGENTGATE wallet has 0 USDC, the refund fails gracefully — the record transitions to `REFUND_FAILED` rather than being stuck in `REFUND_PENDING` indefinitely.
+Verifies that when the KEY0 wallet has 0 USDC, the refund fails gracefully — the record transitions to `REFUND_FAILED` rather than being stuck in `REFUND_PENDING` indefinitely.
 
-Uses a **separate Docker stack** (`docker-compose.e2e-refund-fail.yml`) where `AGENTGATE_WALLET_PRIVATE_KEY` is set to a deterministic unfunded key (`0x...1234`) — an address that has never held USDC on any testnet. Writes a PAID record to that stack's Redis. The cron runs, attempts `transferWithAuthorization`, the USDC contract reverts (insufficient balance), the exception is caught, and the record transitions to `REFUND_FAILED`.
+Uses a **separate Docker stack** (`docker-compose.e2e-refund-fail.yml`) where `KEY0_WALLET_PRIVATE_KEY` is set to a deterministic unfunded key (`0x...1234`) — an address that has never held USDC on any testnet. Writes a PAID record to that stack's Redis. The cron runs, attempts `transferWithAuthorization`, the USDC contract reverts (insufficient balance), the exception is caught, and the record transitions to `REFUND_FAILED`.
 
 ---
 
@@ -192,7 +192,7 @@ Uses a **separate Docker stack** (`docker-compose.e2e-refund-fail.yml`) where `A
 
 Verifies that two clients purchasing simultaneously both succeed with distinct grants — no race condition on the gas wallet nonce.
 
-Fires `purchaseAccess()` from two `E2eTestClient` instances (CLIENT and GAS wallets) simultaneously via `Promise.all`. Both payments arrive at the server at the same time. The server serializes the two gas wallet settlement calls using a Redis distributed lock (`agentgate:settle-lock:{walletPrefix}` with SET NX) — preventing both from reading the same pending nonce. Both settle successfully, return distinct `AccessGrant`s with distinct `txHash`es, and both challenge records end up in `DELIVERED` state.
+Fires `purchaseAccess()` from two `E2eTestClient` instances (CLIENT and GAS wallets) simultaneously via `Promise.all`. Both payments arrive at the server at the same time. The server serializes the two gas wallet settlement calls using a Redis distributed lock (`key0:settle-lock:{walletPrefix}` with SET NX) — preventing both from reading the same pending nonce. Both settle successfully, return distinct `AccessGrant`s with distinct `txHash`es, and both challenge records end up in `DELIVERED` state.
 
 ---
 
@@ -260,6 +260,6 @@ USDC cost per run: ~$0.03 (3 x $0.01 refunds).
 
 **Redis port:** Docker Redis is mapped to `localhost:6380` (not 6379) to avoid conflict with any locally running Redis.
 
-**Gas wallet settlement lock:** When Redis is available, concurrent `settleViaGasWallet` calls are serialized via a Redis lock (`agentgate:settle-lock:{prefix}`, TTL 60s) — safe across multiple instances. Without Redis, falls back to an in-process promise queue (single instance only).
+**Gas wallet settlement lock:** When Redis is available, concurrent `settleViaGasWallet` calls are serialized via a Redis lock (`key0:settle-lock:{prefix}`, TTL 60s) — safe across multiple instances. Without Redis, falls back to an in-process promise queue (single instance only).
 
-**Sorted set atomicity:** The `agentgate:paid` sorted set is updated inside the same Lua script as the state transition — both the hash write and the ZADD/ZREM are atomic. A process crash cannot leave a PAID record outside the sorted set where the refund cron would never find it.
+**Sorted set atomicity:** The `key0:paid` sorted set is updated inside the same Lua script as the state transition — both the hash write and the ZADD/ZREM are atomic. A process crash cannot leave a PAID record outside the sorted set where the refund cron would never find it.

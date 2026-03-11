@@ -81,7 +81,7 @@ If `onIssueToken` throws in either path, the record stays `PAID` and the refund 
 Scan for all `PAID` records older than `minAgeMs`, atomically claim each one, send USDC back to the buyer, and write the result. Designed to be called from a periodic job.
 
 ```typescript
-import { processRefunds } from '@riklr/agentgate';
+import { processRefunds } from '@riklr/key0';
 
 const results = await processRefunds({
   store,
@@ -104,7 +104,7 @@ const results = await processRefunds({
 | ------------------ | ----------------------- | ----------------- | --------------------------------------------- |
 | Option              | Type                    | Default           | Description                                   |
 | ------------------- | ----------------------- | ----------------- | --------------------------------------------- |
-| `store`             | `IChallengeStore`       | required          | The same store passed to `createAgentGate`    |
+| `store`             | `IChallengeStore`       | required          | The same store passed to `createKey0`    |
 | `walletPrivateKey`  | `0x${string}`           | required          | Seller wallet used to send USDC back          |
 | `network`           | `'mainnet' \| 'testnet'` | required         | Determines USDC contract and RPC endpoint     |
 | `minAgeMs`          | `number`                | `300_000` (5 min) | Grace period before a PAID record is eligible |
@@ -121,12 +121,12 @@ Records are automatically cleaned up based on their final state. Redis is the on
 
 | Key                                      | TTL                                       |
 | ---------------------------------------- | ----------------------------------------- |
-| `agentgate:challenge:{id}` (hash)        | **7 days** (set at creation)              |
-| `agentgate:request:{requestId}` (string) | `challengeTTLSeconds` (900s default)      |
-| `agentgate:paid` (sorted set)            | no expiry — members removed on transition |
+| `key0:challenge:{id}` (hash)        | **7 days** (set at creation)              |
+| `key0:request:{requestId}` (string) | `challengeTTLSeconds` (900s default)      |
+| `key0:paid` (sorted set)            | no expiry — members removed on transition |
 
 
-On `PAID → DELIVERED`, the SDK immediately calls `EXPIRE agentgate:challenge:{id} 43200` to shorten the hash key TTL to **12 hours**. No background job needed — the TTL reset happens inside the same transition call.
+On `PAID → DELIVERED`, the SDK immediately calls `EXPIRE key0:challenge:{id} 43200` to shorten the hash key TTL to **12 hours**. No background job needed — the TTL reset happens inside the same transition call.
 
 **Configuring TTLs on the Redis store:**
 
@@ -149,12 +149,12 @@ new RedisChallengeStore({
 import Redis from 'ioredis';
 import { Queue, Worker } from 'bullmq';
 import {
-  createAgentGate,
+  createKey0,
   X402Adapter,
   RedisChallengeStore,
   RedisSeenTxStore,
   processRefunds,
-} from '@riklr/agentgate';
+} from '@riklr/key0';
 
 const redis = new Redis(process.env.REDIS_URL);
 
@@ -166,7 +166,7 @@ const store = new RedisChallengeStore({
 
 const seenTxStore = new RedisSeenTxStore({ redis });
 
-const { requestHandler } = createAgentGate({
+const { requestHandler } = createKey0({
   store,
   seenTxStore,
   adapter: new X402Adapter({ network: 'mainnet' }),
@@ -237,15 +237,15 @@ If two cron workers fire at exactly the same time, both read `PAID`. The first L
 
 ## How findPendingForRefund Works
 
-Uses a sorted set `agentgate:paid` (member = `challengeId`, score = `paidAt` epoch ms) maintained alongside the hash:
+Uses a sorted set `key0:paid` (member = `challengeId`, score = `paidAt` epoch ms) maintained alongside the hash:
 
-- On `PENDING → PAID`: `ZADD agentgate:paid <paidAt_ms> <challengeId>`
-- On `PAID → anything`: `ZREM agentgate:paid <challengeId>`
+- On `PENDING → PAID`: `ZADD key0:paid <paidAt_ms> <challengeId>`
+- On `PAID → anything`: `ZREM key0:paid <challengeId>`
 
 Query:
 
 ```
-ZRANGEBYSCORE agentgate:paid 0 <(now - minAgeMs)>
+ZRANGEBYSCORE key0:paid 0 <(now - minAgeMs)>
 ```
 
 Returns all challengeIds whose `paidAt` is older than the grace period in O(log N + M) time. Each result is fetched and verified (`state === "PAID"`, `fromAddress` present) before being returned.

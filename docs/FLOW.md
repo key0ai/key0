@@ -1,4 +1,4 @@
-# AgentGate Payment Flow — Complete Lifecycle
+# Key0 Payment Flow — Complete Lifecycle
 
 This document is the source of truth for the full payment lifecycle, state machine, Redis schema, HTTP request/response structures, settlement strategies, and security checks.
 
@@ -21,7 +21,7 @@ This document is the source of truth for the full payment lifecycle, state machi
 
 ## Overview
 
-AgentGate uses a **two-phase payment flow**: the client first requests access (receiving a payment challenge), then signs an EIP-3009 authorization off-chain. The server (or a facilitator) settles on-chain. The client never sends a transaction directly.
+Key0 uses a **two-phase payment flow**: the client first requests access (receiving a payment challenge), then signs an EIP-3009 authorization off-chain. The server (or a facilitator) settles on-chain. The client never sends a transaction directly.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -136,18 +136,18 @@ All transitions use **atomic Lua scripts** — if `currentState != expectedFromS
 
 ### Health Check
 
-`RedisChallengeStore` exposes a `healthCheck()` method that sends a `PING` to Redis and throws if the response is not `PONG`. This is **not called automatically** by `createAgentGate()` — callers should invoke it at startup for fail-fast behavior:
+`RedisChallengeStore` exposes a `healthCheck()` method that sends a `PING` to Redis and throws if the response is not `PONG`. This is **not called automatically** by `createKey0()` — callers should invoke it at startup for fail-fast behavior:
 
 ```ts
-const { engine, store } = createAgentGate(config);
+const { engine, store } = createKey0(config);
 await store.healthCheck(); // throws if Redis is unreachable
 ```
 
 ### Key Naming Convention
 
-All keys use the prefix `agentgate` (configurable via `keyPrefix`).
+All keys use the prefix `key0` (configurable via `keyPrefix`).
 
-### 1. Challenge Record Hash — `agentgate:challenge:{challengeId}`
+### 1. Challenge Record Hash — `key0:challenge:{challengeId}`
 
 Stored as a Redis Hash (`HSET`/`HGETALL`). Each field is a string.
 
@@ -179,32 +179,32 @@ Stored as a Redis Hash (`HSET`/`HGETALL`). Each field is a string.
 
 **TTL**: 7 days (`recordTTLSeconds`, default 604,800s). Shortened to 12 hours (`deliveredTTLSeconds`, default 43,200s) when state reaches DELIVERED.
 
-### 2. Request Index — `agentgate:request:{requestId}`
+### 2. Request Index — `key0:request:{requestId}`
 
 A simple `SET` key mapping `requestId -> challengeId`. Used for **idempotency**: if the same `requestId` is submitted again, the existing challenge is returned instead of creating a new one.
 
 ```
-KEY:   agentgate:request:550e8400-e29b-...
+KEY:   key0:request:550e8400-e29b-...
 VALUE: http-a1b2c3d4-...
 TTL:   900s (challengeTTLSeconds)
 ```
 
-### 3. Seen Transaction Set — `agentgate:seentx:{txHash}`
+### 3. Seen Transaction Set — `key0:seentx:{txHash}`
 
 A simple `SET NX` key for **double-spend prevention**. Maps `txHash -> challengeId`.
 
 ```
-KEY:   agentgate:seentx:0x1234abcd...
+KEY:   key0:seentx:0x1234abcd...
 VALUE: http-a1b2c3d4-...
 TTL:   7 days (604,800s)
 ```
 
-### 4. Paid Set (Sorted Set) — `agentgate:paid`
+### 4. Paid Set (Sorted Set) — `key0:paid`
 
 A Redis Sorted Set tracking PAID records for the refund cron.
 
 ```
-ZADD agentgate:paid <paidAt_epoch_ms> <challengeId>
+ZADD key0:paid <paidAt_epoch_ms> <challengeId>
 ```
 
 
@@ -250,8 +250,8 @@ end
 return 1
 ```
 
-- `KEYS[1]` = `agentgate:challenge:{challengeId}`
-- `KEYS[2]` = `agentgate:paid`
+- `KEYS[1]` = `key0:challenge:{challengeId}`
+- `KEYS[2]` = `key0:paid`
 - `ARGV[1]` = fromState, `ARGV[2]` = toState, `ARGV[3]` = challengeId, `ARGV[4]` = paidAt epoch ms (or ""), `ARGV[5..N]` = field/value pairs.
 
 The `EXPIRE` call that shortens TTL to 12 hours on DELIVERED is done **outside** the Lua script (TTL adjustment is not a correctness invariant).
@@ -308,14 +308,14 @@ POST /api/photos/photo-123
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
-Middleware (`validateAccessToken`) verifies JWT, attaches decoded claims to request as `req.agentGateToken`.
+Middleware (`validateAccessToken`) verifies JWT, attaches decoded claims to request as `req.key0Token`.
 
 ### Redis Example (End to End)
 
 **After Phase 1 (challenge created):**
 
 ```
-agentgate:challenge:http-a1b2c3d4-...  (HASH, TTL 7d)
+key0:challenge:http-a1b2c3d4-...  (HASH, TTL 7d)
   challengeId = http-a1b2c3d4-...
   requestId   = 550e8400-...
   state       = PENDING
@@ -328,14 +328,14 @@ agentgate:challenge:http-a1b2c3d4-...  (HASH, TTL 7d)
   createdAt   = 2025-03-05T12:15:00.000Z
   clientAgentId = x402-http
 
-agentgate:request:550e8400-...  (STRING, TTL 900s)
+key0:request:550e8400-...  (STRING, TTL 900s)
   = http-a1b2c3d4-...
 ```
 
 **After Phase 2 (payment settled, token issued):**
 
 ```
-agentgate:challenge:http-a1b2c3d4-...  (HASH, TTL reset to 12h)
+key0:challenge:http-a1b2c3d4-...  (HASH, TTL reset to 12h)
   state       = DELIVERED
   txHash      = 0xabcdef...
   paidAt      = 2025-03-05T12:16:00.000Z
@@ -344,10 +344,10 @@ agentgate:challenge:http-a1b2c3d4-...  (HASH, TTL reset to 12h)
   deliveredAt = 2025-03-05T12:16:05.000Z
   ... (all original fields unchanged)
 
-agentgate:seentx:0xabcdef...  (STRING, TTL 7d)
+key0:seentx:0xabcdef...  (STRING, TTL 7d)
   = http-a1b2c3d4-...
 
-agentgate:paid  (SORTED SET)
+key0:paid  (SORTED SET)
   (challengeId was added then removed -- net empty for this challenge)
 ```
 
@@ -417,7 +417,7 @@ www-authenticate: Payment realm="...", accept="exact", challenge="http-a1b2c3d4-
   "x402Version": 2,
   "accepts": [ ... ],
   "extensions": {
-    "agentgate": { "inputSchema": { ... }, "outputSchema": { ... }, "description": "..." }
+    "key0": { "inputSchema": { ... }, "outputSchema": { ... }, "description": "..." }
   },
   "challengeId": "http-a1b2c3d4-...",
   "error": "Payment required"
@@ -465,7 +465,7 @@ POST {basePath}/jsonrpc
  x402HttpMiddleware
         │
         ├── Has X-A2A-Extensions header?
-        │       YES → pass through to A2A SDK → AgentGateExecutor (Transport 3)
+        │       YES → pass through to A2A SDK → Key0Executor (Transport 3)
         │
         ├── Not a message/send call?
         │       → pass through
@@ -486,7 +486,7 @@ Same settlement logic as Transport 1, just wrapped in JSON-RPC framing.
 
 ### Transport 3: A2A Executor (via A2A SDK)
 
-When a native A2A client sends `X-A2A-Extensions` header, the middleware passes through to the A2A SDK, which routes to `AgentGateExecutor`.
+When a native A2A client sends `X-A2A-Extensions` header, the middleware passes through to the A2A SDK, which routes to `Key0Executor`.
 
 **Phase 1 — AccessRequest → Task (`input-required`)**
 
@@ -741,19 +741,19 @@ Supports HS256 (shared secret, min 32 chars) and RS256 (PEM private key) JWTs.
 
 Framework-specific wrappers attach decoded token to the request:
 
-- **Express**: `req.agentGateToken`
-- **Hono**: `c.set("agentGateToken", payload)`
-- **Fastify**: `request.agentGateToken`
+- **Express**: `req.key0Token`
+- **Hono**: `c.set("key0Token", payload)`
+- **Fastify**: `request.key0Token`
 
 ---
 
 ## Refund Lifecycle
 
-The refund cron handles PAID records that were never DELIVERED (e.g., `onIssueToken` failed or the client disappeared). The cron is **not built into AgentGate** — the `IChallengeStore.findPendingForRefund()` method and state transitions are provided for external cron implementations.
+The refund cron handles PAID records that were never DELIVERED (e.g., `onIssueToken` failed or the client disappeared). The cron is **not built into Key0** — the `IChallengeStore.findPendingForRefund()` method and state transitions are provided for external cron implementations.
 
 ### How It Works
 
-1. **Query**: `store.findPendingForRefund(minAgeMs)` runs `ZRANGEBYSCORE agentgate:paid 0 <cutoff>` to find PAID records older than `minAgeMs`, filtering for state=PAID, `fromAddress` set, and `accessGrant` NOT set (records with `accessGrant` were successfully issued but the DELIVERED transition failed — they should not be refunded). Ghost entries (sorted set member but expired hash) are cleaned up via `ZREM`. Records without `fromAddress` trigger a warning log for manual intervention.
+1. **Query**: `store.findPendingForRefund(minAgeMs)` runs `ZRANGEBYSCORE key0:paid 0 <cutoff>` to find PAID records older than `minAgeMs`, filtering for state=PAID, `fromAddress` set, and `accessGrant` NOT set (records with `accessGrant` were successfully issued but the DELIVERED transition failed — they should not be refunded). Ghost entries (sorted set member but expired hash) are cleaned up via `ZREM`. Records without `fromAddress` trigger a warning log for manual intervention.
 2. **Batch limit**: Only `batchSize` records (default 50, configurable via `RefundConfig.batchSize`) are processed per cron run to avoid long-running jobs.
 3. **Claim**: For each record, atomically transition PAID → REFUND_PENDING (prevents double-refund from concurrent cron workers)
 4. **Send**: Call `sendUsdc()` to transfer USDC back to `record.fromAddress`
@@ -776,14 +776,14 @@ Both wait for `waitForTransactionReceipt` before returning.
 
 ```
 # After PAID -> REFUND_PENDING claim:
-agentgate:paid (SORTED SET)
+key0:paid (SORTED SET)
   (challengeId removed via ZREM -- inside Lua script)
 
-agentgate:challenge:{challengeId}
+key0:challenge:{challengeId}
   state = REFUND_PENDING
 
 # After successful refund:
-agentgate:challenge:{challengeId}
+key0:challenge:{challengeId}
   state        = REFUNDED
   refundTxHash = 0xRefund...
   refundedAt   = 2025-03-05T12:21:00.000Z
@@ -793,7 +793,7 @@ agentgate:challenge:{challengeId}
 
 ## Error Codes Reference
 
-### AgentGateErrorCode (thrown by ChallengeEngine)
+### Key0ErrorCode (thrown by ChallengeEngine)
 
 
 | Code                      | HTTP    | When                                                   |
@@ -850,7 +850,7 @@ agentgate:challenge:{challengeId}
 ### Invariants
 
 1. **State transitions are atomic** — Lua script checks current state before writing; concurrent transitions are rejected
-2. **Double-spend is impossible** — `SET NX` on `agentgate:seentx:{txHash}` ensures one txHash maps to exactly one challenge; if `markUsed` fails, the PAID state is rolled back to PENDING
+2. **Double-spend is impossible** — `SET NX` on `key0:seentx:{txHash}` ensures one txHash maps to exactly one challenge; if `markUsed` fails, the PAID state is rolled back to PENDING
 3. **JWT security** — minimum 32-char secret, supports HS256/RS256, fallback secrets for rotation
 4. **Refunds cannot double-fire** — atomic PAID→REFUND_PENDING transition ensures only one cron worker processes each record
 5. **Nonce serialization for gas wallet** — Redis distributed lock (with 30s max-wait timeout) or in-process queue prevents nonce conflicts during settlement

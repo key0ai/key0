@@ -1,6 +1,6 @@
 # MCP Integration
 
-`src/integrations/mcp.ts` exposes AgentGate's payment-gated products as MCP tools. Any MCP client — Claude Desktop, Cursor, Claude Code, or custom agents — can discover products and purchase access tokens through the x402 payment protocol.
+`src/integrations/mcp.ts` exposes Key0's payment-gated products as MCP tools. Any MCP client — Claude Desktop, Cursor, Claude Code, or custom agents — can discover products and purchase access tokens through the x402 payment protocol.
 
 Reference spec: https://github.com/coinbase/x402/blob/main/specs/transports-v2/mcp.md
 
@@ -181,11 +181,11 @@ For clients implementing the x402 MCP transport spec (e.g. Cloudflare `withX402C
 
 | Error | Response |
 |-------|----------|
-| Malformed `_meta["x402/payment"]` (`INVALID_REQUEST`) | `isError: true` + `AgentGateError` JSON (Zod validation failure) |
-| Resource not found (`RESOURCE_NOT_FOUND`) | `isError: true` + `AgentGateError` JSON (checked before settlement) |
+| Malformed `_meta["x402/payment"]` (`INVALID_REQUEST`) | `isError: true` + `Key0Error` JSON (Zod validation failure) |
+| Resource not found (`RESOURCE_NOT_FOUND`) | `isError: true` + `Key0Error` JSON (checked before settlement) |
 | Payment failed / settlement error | `isError: true` + `structuredContent` with error message and `accepts[]` (client can retry) |
 | Already redeemed (`PROOF_ALREADY_REDEEMED`) | Returns cached `AccessGrant` (idempotent) |
-| Tier not found | `isError: true` + `AgentGateError` JSON |
+| Tier not found | `isError: true` + `Key0Error` JSON |
 | Unknown error | Re-thrown (MCP SDK returns JSON-RPC error) |
 
 ---
@@ -242,7 +242,7 @@ Each tool call is an independent HTTP POST. No WebSocket, no keep-alive. The cli
 
 ### Object Allocation Per Request
 
-Every POST creates ~2 objects (server + transport) and ~2 `registerTool` calls. This is trivial — AgentGate's MCP flow is 2-3 requests per purchase. The expensive work (on-chain settlement, Redis) happens in the shared `ChallengeEngine`.
+Every POST creates ~2 objects (server + transport) and ~2 `registerTool` calls. This is trivial — Key0's MCP flow is 2-3 requests per purchase. The expensive work (on-chain settlement, Redis) happens in the shared `ChallengeEngine`.
 
 ---
 

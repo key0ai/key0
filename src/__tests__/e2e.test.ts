@@ -7,7 +7,7 @@ import type {
 } from "@a2a-js/sdk/server";
 import { v4 as uuidv4 } from "uuid";
 import { AccessTokenIssuer } from "../core/access-token.js";
-import { createAgentGate } from "../factory.js";
+import { createKey0 } from "../factory.js";
 import { MockPaymentAdapter, TestChallengeStore, TestSeenTxStore } from "../test-utils";
 import type { SellerConfig } from "../types";
 import { X402_METADATA_KEYS } from "../types";
@@ -147,11 +147,11 @@ function extractMetadata(events: any[]): Record<string, unknown> {
 	return task?.status?.message?.metadata ?? {};
 }
 
-describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
+describe("E2E: Full Key0 lifecycle (x402 Extension)", () => {
 	test("1. AccessRequest → input-required Task with x402 metadata", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
-		const { executor, agentCard } = createAgentGate({
+		const { executor, agentCard } = createKey0({
 			config,
 			adapter,
 			store: new TestChallengeStore(),
@@ -205,7 +205,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 	test("2. Idempotent access request returns same challenge", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
-		const { executor } = createAgentGate({
+		const { executor } = createKey0({
 			config,
 			adapter,
 			store: new TestChallengeStore(),
@@ -232,7 +232,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 	test("3. Resource not found returns failed task", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
-		const { executor } = createAgentGate({
+		const { executor } = createKey0({
 			config,
 			adapter,
 			store: new TestChallengeStore(),
@@ -257,7 +257,7 @@ describe("E2E: Full AgentGate lifecycle (x402 Extension)", () => {
 	test("4. Default resourceId when not provided", async () => {
 		const adapter = new MockPaymentAdapter();
 		const config = makeConfig();
-		const { executor } = createAgentGate({
+		const { executor } = createKey0({
 			config,
 			adapter,
 			store: new TestChallengeStore(),

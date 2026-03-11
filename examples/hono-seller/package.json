@@ -7,7 +7,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@riklr/agentgate": "file:../..",
+		"@riklr/key0": "file:../..",
 		"hono": "^4.6.0"
 	}
 }

@@ -1,4 +1,4 @@
-export type AgentGateErrorCode =
+export type Key0ErrorCode =
 	| "RESOURCE_NOT_FOUND"
 	| "TIER_NOT_FOUND"
 	| "CHALLENGE_NOT_FOUND"
@@ -17,19 +17,19 @@ export type AgentGateErrorCode =
 	| "TOKEN_ISSUE_TIMEOUT"
 	| "INTERNAL_ERROR";
 
-export class AgentGateError extends Error {
-	readonly code: AgentGateErrorCode;
+export class Key0Error extends Error {
+	readonly code: Key0ErrorCode;
 	readonly httpStatus: number;
 	readonly details?: Record<string, unknown> | undefined;
 
 	constructor(
-		code: AgentGateErrorCode,
+		code: Key0ErrorCode,
 		message: string,
 		httpStatus = 400,
 		details?: Record<string, unknown>,
 	) {
 		super(message);
-		this.name = "AgentGateError";
+		this.name = "Key0Error";
 		this.code = code;
 		this.httpStatus = httpStatus;
 		this.details = details;

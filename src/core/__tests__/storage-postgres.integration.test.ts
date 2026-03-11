@@ -5,18 +5,18 @@ import { PostgresChallengeStore, PostgresSeenTxStore } from "../storage/postgres
 // ─── Environment ──────────────────────────────────────────────────────────────
 //
 // These tests talk to a REAL Postgres instance via postgres.js.
-// They use AGENTGATE_TEST_PG_URL when set, otherwise fall back to the local
+// They use KEY0_TEST_PG_URL when set, otherwise fall back to the local
 // development URL you provided:
-//   postgresql://localhost:5432/agentgate
+//   postgresql://localhost:5432/key0
 //
-// In CI, point AGENTGATE_TEST_PG_URL at a dedicated throwaway database or a
+// In CI, point KEY0_TEST_PG_URL at a dedicated throwaway database or a
 // Testcontainers-managed instance.
 
-const PG_URL = process.env["AGENTGATE_TEST_PG_URL"] ?? "postgresql://localhost:5432/agentgate";
+const PG_URL = process.env["KEY0_TEST_PG_URL"] ?? "postgresql://localhost:5432/key0";
 
 // Use a distinct prefix so we never collide with production tables even if the
 // same database is (mis)configured.
-const TABLE_PREFIX = "agentgate_it";
+const TABLE_PREFIX = "key0_it";
 
 // Helper to generate a minimal ChallengeRecord for integration tests.
 function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRecord {
@@ -34,6 +34,7 @@ function makeChallengeRecord(overrides?: Partial<ChallengeRecord>): ChallengeRec
 		state: "PENDING",
 		expiresAt: new Date("2025-01-01T12:00:00.000Z"),
 		createdAt: new Date("2025-01-01T11:45:00.000Z"),
+		updatedAt: new Date("2025-01-01T11:45:00.000Z"),
 		...overrides,
 	};
 }
@@ -189,5 +190,5 @@ describeIfPg("PostgresChallengeStore (real Postgres)", () => {
 // If PG_URL is not set, surface a single skipped test so the reason is visible
 // in test output instead of the file being silently ignored.
 if (!PG_URL) {
-	test.skip("Postgres integration tests (AGENTGATE_TEST_PG_URL not set)", () => {});
+	test.skip("Postgres integration tests (KEY0_TEST_PG_URL not set)", () => {});
 }

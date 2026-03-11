@@ -74,7 +74,7 @@ Publishes to npm under the `canary` dist-tag. `--provenance` attaches a signed S
 
 ### Docker job (`docker`, needs: canary)
 
-Runs after the npm publish job succeeds. Builds and pushes a multi-arch Docker image (`linux/amd64`, `linux/arm64`) to DockerHub as `riklr/agentgate:canary`. Uses GitHub Actions cache (`type=gha`) for faster layer rebuilds.
+Runs after the npm publish job succeeds. Builds and pushes a multi-arch Docker image (`linux/amd64`, `linux/arm64`) to DockerHub as `riklr/key0:canary`. Uses GitHub Actions cache (`type=gha`) for faster layer rebuilds.
 
 **`NODE_AUTH_TOKEN`**
 Set from the `NPM_TOKEN` repository secret. The `.npmrc` at the root of the repo wires this into the npm registry auth automatically.
@@ -111,12 +111,12 @@ Same as canary — required for git tagging and OIDC provenance.
 
 ### Docker job (`docker`, needs: publish)
 
-Runs after the npm publish job succeeds. Builds and pushes a multi-arch Docker image (`linux/amd64`, `linux/arm64`) to DockerHub as `riklr/agentgate` with the following tags derived from the git tag via `docker/metadata-action`:
+Runs after the npm publish job succeeds. Builds and pushes a multi-arch Docker image (`linux/amd64`, `linux/arm64`) to DockerHub as `riklr/key0` with the following tags derived from the git tag via `docker/metadata-action`:
 
-- `riklr/agentgate:<full semver>` (e.g. `1.2.3`)
-- `riklr/agentgate:<major>.<minor>` (e.g. `1.2`)
-- `riklr/agentgate:<major>` (e.g. `1`)
-- `riklr/agentgate:latest`
+- `riklr/key0:<full semver>` (e.g. `1.2.3`)
+- `riklr/key0:<major>.<minor>` (e.g. `1.2`)
+- `riklr/key0:<major>` (e.g. `1`)
+- `riklr/key0:latest`
 
 Uses GitHub Actions cache (`type=gha`) for faster layer rebuilds.
 

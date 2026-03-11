@@ -3,7 +3,7 @@ import { ChallengeEngine } from "../core/challenge-engine.js";
 import { buildHttpPaymentRequirements } from "../integrations/settlement.js";
 import { MockPaymentAdapter } from "../test-utils/index.js";
 import { TestChallengeStore, TestSeenTxStore } from "../test-utils/stores.js";
-import { AgentGateError } from "../types/errors.js";
+import { Key0Error } from "../types/errors.js";
 import type { SellerConfig, X402PaymentPayload } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -311,13 +311,13 @@ describe("createMcpServer — extractPaymentFromMeta (via request_access)", () =
 		expect(result.isError).toBe(true);
 	});
 
-	test("_meta with malformed x402/payment object → propagates INVALID_REQUEST AgentGateError", async () => {
+	test("_meta with malformed x402/payment object → propagates INVALID_REQUEST Key0Error", async () => {
 		const { engine, config } = makeEngine();
 		const server = createMcpServer(engine, config);
 
 		// Object present but fails Zod schema (x402Version must be a number, payload required)
 		// extractPaymentFromMeta is called OUTSIDE the try/catch in the tool handler,
-		// so AgentGateError propagates directly as a thrown error.
+		// so Key0Error propagates directly as a thrown error.
 		const err = await callTool(
 			server,
 			"request_access",
@@ -329,9 +329,9 @@ describe("createMcpServer — extractPaymentFromMeta (via request_access)", () =
 			},
 		).catch((e: unknown) => e);
 
-		expect(err).toBeInstanceOf(AgentGateError);
-		expect((err as AgentGateError).code).toBe("INVALID_REQUEST");
-		expect((err as AgentGateError).httpStatus).toBe(400);
+		expect(err).toBeInstanceOf(Key0Error);
+		expect((err as Key0Error).code).toBe("INVALID_REQUEST");
+		expect((err as Key0Error).httpStatus).toBe(400);
 	});
 
 	test("_meta with valid but missing optional fields is accepted", async () => {
@@ -631,7 +631,7 @@ describe("createMcpServer — PROOF_ALREADY_REDEEMED handling", () => {
 describe("createMcpServer — payment-failed error re-wrapping", () => {
 	test("PAYMENT_FAILED error returns isError:true with structuredContent overriding error field", async () => {
 		settlePaymentImpl = async () => {
-			throw new AgentGateError("PAYMENT_FAILED", "insufficient_funds", 402);
+			throw new Key0Error("PAYMENT_FAILED", "insufficient_funds", 402);
 		};
 
 		const { engine, config } = makeEngine();
@@ -664,7 +664,7 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 
 	test("402 httpStatus error (non-PAYMENT_FAILED code) is also re-wrapped as payment-required", async () => {
 		settlePaymentImpl = async () => {
-			throw new AgentGateError("PAYMENT_FAILED", "nonce_consumed", 402);
+			throw new Key0Error("PAYMENT_FAILED", "nonce_consumed", 402);
 		};
 
 		const { engine, config } = makeEngine();
@@ -688,7 +688,7 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 
 	test("structuredContent is a plain object spread (not nested under error key)", async () => {
 		settlePaymentImpl = async () => {
-			throw new AgentGateError("PAYMENT_FAILED", "signature_mismatch", 402);
+			throw new Key0Error("PAYMENT_FAILED", "signature_mismatch", 402);
 		};
 
 		const { engine, config } = makeEngine();
@@ -711,9 +711,9 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 		);
 	});
 
-	test("non-PAYMENT_FAILED AgentGateError is returned as generic isError result with toJSON", async () => {
+	test("non-PAYMENT_FAILED Key0Error is returned as generic isError result with toJSON", async () => {
 		settlePaymentImpl = async () => {
-			throw new AgentGateError("CHAIN_MISMATCH", "Chain mismatch on settlement", 400);
+			throw new Key0Error("CHAIN_MISMATCH", "Chain mismatch on settlement", 400);
 		};
 
 		const { engine, config } = makeEngine();
@@ -736,7 +736,7 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 		expect(body.message).toBe("Chain mismatch on settlement");
 	});
 
-	test("non-AgentGateError is re-thrown (not swallowed)", async () => {
+	test("non-Key0Error is re-thrown (not swallowed)", async () => {
 		settlePaymentImpl = async () => {
 			throw new TypeError("unexpected internal error");
 		};

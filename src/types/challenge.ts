@@ -70,6 +70,7 @@ export type ChallengeRecord = {
 	readonly state: ChallengeState;
 	readonly expiresAt: Date;
 	readonly createdAt: Date;
+	readonly updatedAt: Date; // auto-updated on every write
 	readonly paidAt?: Date;
 	readonly txHash?: `0x${string}`;
 	readonly accessGrant?: AccessGrant;

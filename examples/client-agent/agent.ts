@@ -1,5 +1,5 @@
 /**
- * Client agent demonstrating the full AgentGate payment flow on Base Sepolia testnet:
+ * Client agent demonstrating the full Key0 payment flow on Base Sepolia testnet:
  *
  *   1. Discover the seller's agent card
  *   2. Request access (receive payment challenge)
@@ -16,8 +16,8 @@
  *   bun run start
  */
 
-import type { AccessGrant, AgentCard, NetworkName, X402Challenge } from "@riklr/agentgate";
-import { CHAIN_CONFIGS, parseDollarToUsdcMicro, USDC_ABI } from "@riklr/agentgate";
+import type { AccessGrant, AgentCard, NetworkName, X402Challenge } from "@riklr/key0";
+import { CHAIN_CONFIGS, parseDollarToUsdcMicro, USDC_ABI } from "@riklr/key0";
 import { createPublicClient, createWalletClient, formatUnits, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
@@ -28,7 +28,7 @@ import { base, baseSepolia } from "viem/chains";
 
 const SELLER_URL = process.env["SELLER_URL"] ?? "http://localhost:3000";
 const PRIVATE_KEY = process.env["WALLET_PRIVATE_KEY"] as `0x${string}` | undefined;
-const NETWORK = (process.env["AGENTGATE_NETWORK"] ?? "testnet") as NetworkName;
+const NETWORK = (process.env["KEY0_NETWORK"] ?? "testnet") as NetworkName;
 
 if (!PRIVATE_KEY) {
 	console.error("ERROR: WALLET_PRIVATE_KEY is required in .env");
@@ -70,7 +70,7 @@ async function getUsdcBalance(address: `0x${string}`): Promise<string> {
 // ---------------------------------------------------------------------------
 
 async function main() {
-	console.log("=== AgentGate Client Agent ===\n");
+	console.log("=== Key0 Client Agent ===\n");
 	console.log(`  Network:  ${NETWORK} (${chain.name})`);
 	console.log(`  Wallet:   ${account.address}`);
 	console.log(`  Seller:   ${SELLER_URL}`);

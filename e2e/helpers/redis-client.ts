@@ -6,13 +6,16 @@
 import Redis from "ioredis";
 
 export const REDIS_URL = "redis://localhost:6380";
-const KEY_PREFIX = "agentgate";
+const KEY_PREFIX = "key0";
 
 let client: Redis | null = null;
 
 export function connectRedis(url = REDIS_URL): Redis {
 	if (client) return client;
 	client = new Redis(url, { lazyConnect: true });
+	client.on("error", (err) => {
+		console.error("[e2e redis] connection error:", err.message);
+	});
 	return client;
 }
 
@@ -78,6 +81,7 @@ export async function writePaidChallengeRecord(
 		state: "PAID",
 		expiresAt: new Date(Date.now() + 3600_000).toISOString(),
 		createdAt: new Date(Date.now() - 60_000).toISOString(),
+		updatedAt: new Date().toISOString(),
 		paidAt: record.paidAt.toISOString(),
 		txHash: record.txHash,
 		fromAddress: record.fromAddress,
