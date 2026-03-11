@@ -1,5 +1,10 @@
 import type { NetworkName } from "@key0ai/key0";
-import { AccessTokenIssuer, RedisChallengeStore, RedisSeenTxStore, X402Adapter } from "@key0ai/key0";
+import {
+	AccessTokenIssuer,
+	RedisChallengeStore,
+	RedisSeenTxStore,
+	X402Adapter,
+} from "@key0ai/key0";
 import { key0Router, validateAccessToken } from "@key0ai/key0/express";
 import express from "express";
 import Redis from "ioredis";
