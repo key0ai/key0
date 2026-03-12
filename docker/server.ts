@@ -59,9 +59,7 @@ const STORAGE_BACKEND_EARLY = (process.env.STORAGE_BACKEND ?? "redis") as "redis
 const isConfigured = Boolean(
 	WALLET_ADDRESS &&
 		ISSUE_TOKEN_API &&
-		(STORAGE_BACKEND_EARLY === "postgres"
-			? postgresUrlUsable && redisUsable
-			: redisUsable),
+		(STORAGE_BACKEND_EARLY === "postgres" ? postgresUrlUsable && redisUsable : redisUsable),
 );
 
 const app = express();
