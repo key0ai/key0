@@ -1,0 +1,176 @@
+---
+title: "Standalone Docker"
+sidebarTitle: "Standalone"
+description: "Run Key0 as a standalone Docker container alongside your existing API. Two options: a visual Setup UI for zero-config start, or environment variables for automation."
+---
+
+# Standalone Docker quickstart
+
+Run Key0 as a standalone service in Docker. It handles agent discovery, payment verification, and credential issuance -- your existing API only needs to expose a single token-issuing endpoint.
+
+<Tabs>
+  <Tab title="Setup UI">
+    ## Option A: Setup UI (zero-config start)
+
+    Start the container with no configuration. The Setup UI walks you through everything visually.
+
+    <Steps>
+      <Step title="Start the container">
+        The `full` profile starts Key0 with managed Redis and Postgres -- batteries included.
+
+        ```bash
+        docker compose -f docker/docker-compose.yml --profile full up
+        ```
+      </Step>
+
+      <Step title="Open the Setup UI">
+        Navigate to [http://localhost:3000](http://localhost:3000). On first launch, you are redirected to `/setup`.
+
+        The Setup UI lets you configure:
+
+        - **Wallet address** -- the USDC-receiving address on Base
+        - **Network** -- mainnet or Base Sepolia testnet
+        - **Pricing plans** -- plan IDs, amounts, and descriptions
+        - **Token issuance API** -- the URL Key0 calls after payment to fetch credentials
+        - **Settlement and refund settings**
+      </Step>
+
+      <Step title="Submit and go">
+        When you submit the form, the server writes the configuration and restarts automatically. Configuration is persisted in a Docker volume (`key0-config`), so it survives container restarts.
+      </Step>
+    </Steps>
+
+    ### Docker Compose profiles
+
+    Choose a profile based on what managed infrastructure you need:
+
+    | Profile | What starts |
+    |---|---|
+    | *(none)* | Key0 only -- bring your own Redis + Postgres via env vars |
+    | `--profile redis` | Key0 + managed Redis |
+    | `--profile postgres` | Key0 + managed Postgres (still needs Redis externally) |
+    | `--profile full` | Key0 + managed Redis + managed Postgres (batteries included) |
+
+    Managed infrastructure is auto-detected at startup. No connection strings to configure when using profiles.
+  </Tab>
+
+  <Tab title="Environment Variables">
+    ## Option B: Environment variables
+
+    Pass configuration directly for scripted or CI/CD deployments.
+
+    <Steps>
+      <Step title="Set the two required variables">
+        Key0 needs two things to start:
+
+        - `KEY0_WALLET_ADDRESS` -- your USDC-receiving wallet address (0x...)
+        - `ISSUE_TOKEN_API` -- the URL that Key0 POSTs to after payment is verified
+
+        ```bash
+        docker run \
+          -e KEY0_WALLET_ADDRESS=0xYourWallet \
+          -e ISSUE_TOKEN_API=https://api.example.com/issue-token \
+          -p 3000:3000 \
+          key0ai/key0:latest
+        ```
+      </Step>
+
+      <Step title="Or use Docker Compose">
+        For production, Docker Compose manages Redis alongside Key0:
+
+        ```bash
+        cp docker/.env.example docker/.env
+        ```
+
+        Edit `docker/.env` and set `KEY0_WALLET_ADDRESS` and `ISSUE_TOKEN_API`, then start:
+
+        ```bash
+        docker compose -f docker/docker-compose.yml --profile redis up
+        ```
+      </Step>
+    </Steps>
+
+    <Info>
+      Even with environment variables pre-configured, the Setup UI is always available at `/setup` for reconfiguration.
+    </Info>
+  </Tab>
+</Tabs>
+
+## ISSUE_TOKEN_API contract
+
+After Key0 verifies an on-chain USDC payment, it POSTs to your `ISSUE_TOKEN_API` endpoint with the payment details:
+
+```json Request body
+{
+  "requestId": "uuid",
+  "challengeId": "uuid",
+  "resourceId": "photo-42",
+  "planId": "basic",
+  "txHash": "0x...",
+  "unitAmount": "$0.10"
+}
+```
+
+Your endpoint returns any credential shape you need. Key0 forwards the response directly to the agent.
+
+<CodeGroup>
+
+```json JWT credential
+{
+  "token": "eyJ...",
+  "expiresAt": "2025-01-01T00:00:00Z",
+  "tokenType": "Bearer"
+}
+```
+
+```json API key credential
+{
+  "apiKey": "sk-123",
+  "apiSecret": "secret",
+  "expiresAt": "2025-06-01T00:00:00Z"
+}
+```
+
+</CodeGroup>
+
+<Note>
+  If your `ISSUE_TOKEN_API` endpoint returns an error or is unreachable, Key0 automatically initiates an on-chain refund to the paying agent. See [Automatic Refunds](/architecture/refunds) for details.
+</Note>
+
+## Test it
+
+Once the container is running, verify the setup:
+
+```bash Check the agent card
+curl http://localhost:3000/.well-known/agent.json
+```
+
+```bash Request access to a plan
+curl -X POST http://localhost:3000/x402/access \
+  -H "Content-Type: application/json" \
+  -d '{"planId": "basic"}'
+```
+
+The access request returns an x402 challenge containing the payment amount and destination wallet. An agent completes the flow by paying on-chain and submitting proof.
+
+## Docker image tags
+
+| Tag | When to use |
+|---|---|
+| `latest` | Latest stable release |
+| `1.2.3` / `1.2` / `1` | Specific version pinning for production |
+| `canary` | Latest main branch build (for testing) |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="gear" href="/deployment/environment-variables">
+    Full reference of all configuration options.
+  </Card>
+  <Card title="Storage Configuration" icon="database" href="/architecture/storage">
+    Redis, Postgres, and custom storage backends.
+  </Card>
+  <Card title="Automatic Refunds" icon="rotate-left" href="/architecture/refunds">
+    How Key0 handles failed deliveries with on-chain refunds.
+  </Card>
+</CardGroup>

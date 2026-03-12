@@ -1,0 +1,242 @@
+---
+title: "Auth Helpers"
+description: "Service-to-service authentication strategies for outbound requests — noAuth, sharedSecretAuth, signedJwtAuth, and oauthClientCredentialsAuth."
+---
+
+# Auth Helpers
+
+Auth helpers provide pluggable authentication strategies for outbound HTTP requests. They are used by `createRemoteTokenIssuer` and any other component that needs to authenticate with an external service.
+
+All strategies implement the `AuthHeaderProvider` type:
+
+```typescript
+type AuthHeaderProvider = () => Promise<Record<string, string>>;
+```
+
+A provider returns a dictionary of HTTP headers to attach to outbound requests. The returned object may be empty (for `noAuth`) or contain one or more headers such as `Authorization`.
+
+---
+
+## Strategy Comparison
+
+| Strategy | Use Case | Headers Returned |
+|---|---|---|
+| `noAuth()` | Local development, trusted networks, public endpoints | None |
+| `sharedSecretAuth(name, secret)` | Internal services with a static API key | `{ [name]: secret }` |
+| `signedJwtAuth(issuer, audience)` | Service-to-service with RS256/HS256 JWT | `{ Authorization: "Bearer <jwt>" }` |
+| `oauthClientCredentialsAuth(config)` | OAuth 2.0 providers (Auth0, Okta, etc.) | `{ Authorization: "Bearer <token>" }` |
+
+---
+
+## noAuth
+
+Returns empty headers. Use for local development, trusted networks, or public endpoints that do not require authentication.
+
+```typescript
+import { noAuth } from "@key0ai/key0";
+
+const auth = noAuth();
+const headers = await auth(); // {}
+```
+
+**Signature:**
+
+```typescript
+function noAuth(): AuthHeaderProvider;
+```
+
+---
+
+## sharedSecretAuth
+
+Returns a static header with a secret value. Use when both services share a pre-configured API key or internal secret.
+
+```typescript
+import { sharedSecretAuth } from "@key0ai/key0";
+
+const auth = sharedSecretAuth("X-Internal-Auth", process.env.INTERNAL_SECRET);
+const headers = await auth(); // { "X-Internal-Auth": "s3cr3t..." }
+```
+
+**Signature:**
+
+```typescript
+function sharedSecretAuth(headerName: string, secret: string): AuthHeaderProvider;
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `headerName` | `string` | The HTTP header name to set (e.g. `"X-Internal-Auth"`, `"X-API-Key"`). |
+| `secret` | `string` | The secret value to send in the header. |
+
+---
+
+## signedJwtAuth
+
+Signs a short-lived JWT using the SDK's `AccessTokenIssuer`. Use when the backend validates JWTs signed by your Key0 instance (particularly useful with RS256 key pairs).
+
+```typescript
+import { signedJwtAuth } from "@key0ai/key0";
+import { AccessTokenIssuer } from "@key0ai/key0";
+
+const issuer = new AccessTokenIssuer({
+  privateKey: process.env.KEY0_PRIVATE_KEY,
+  algorithm: "RS256",
+});
+
+const auth = signedJwtAuth(issuer, "backend-service", 120);
+const headers = await auth(); // { Authorization: "Bearer eyJhbGci..." }
+```
+
+**Signature:**
+
+```typescript
+function signedJwtAuth(
+  issuer: AccessTokenIssuer,
+  audience: string,
+  ttlSeconds?: number,
+): AuthHeaderProvider;
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `issuer` | `AccessTokenIssuer` | -- | The token issuer instance used to sign the JWT. |
+| `audience` | `string` | -- | Mapped to the `resourceId` claim in the signed JWT. |
+| `ttlSeconds` | `number` | `60` | Token lifetime in seconds. Keep short for service-to-service calls. |
+
+The generated JWT includes the following claims:
+
+| Claim | Value |
+|---|---|
+| `sub` | `"key0-service"` |
+| `jti` | Random UUID |
+| `resourceId` | The `audience` parameter |
+| `planId` | `"system"` |
+| `txHash` | `"system-auth"` |
+
+---
+
+## oauthClientCredentialsAuth
+
+Fetches an access token from an OAuth 2.0 provider using the Client Credentials grant. Caches the token in memory and automatically re-fetches when it expires (with a 10-second buffer).
+
+```typescript
+import { oauthClientCredentialsAuth } from "@key0ai/key0";
+
+const auth = oauthClientCredentialsAuth({
+  tokenUrl: "https://auth.example.com/oauth/token",
+  clientId: process.env.CLIENT_ID,
+  clientSecret: process.env.CLIENT_SECRET,
+  scopes: ["api:access"],
+  audience: "https://api.example.com",
+});
+
+const headers = await auth(); // { Authorization: "Bearer eyJhbGci..." }
+```
+
+**Signature:**
+
+```typescript
+function oauthClientCredentialsAuth(config: {
+  tokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+  scopes?: string[];
+  audience?: string;
+}): AuthHeaderProvider;
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `tokenUrl` | `string` | Yes | The OAuth token endpoint URL. |
+| `clientId` | `string` | Yes | OAuth client ID. |
+| `clientSecret` | `string` | Yes | OAuth client secret. |
+| `scopes` | `string[]` | No | OAuth scopes to request. Joined with spaces in the `scope` parameter. |
+| `audience` | `string` | No | Target audience (used by providers like Auth0). |
+
+**Behavior details:**
+
+- Sends a `POST` request with `Content-Type: application/x-www-form-urlencoded`.
+- Expects a JSON response with `access_token` (string) and `expires_in` (number, seconds).
+- Caches the token and re-fetches 10 seconds before expiry.
+- 10-second request timeout via `AbortController`.
+- Throws `Key0Error` with code `INTERNAL_ERROR` and HTTP 500 if the token request fails.
+
+---
+
+## createRemoteTokenIssuer
+
+Creates a `fetchResourceCredentials` callback that delegates token issuance to a remote HTTP endpoint. Use this when your backend (not Key0) is responsible for issuing API keys or custom tokens after payment.
+
+```typescript
+import { createRemoteTokenIssuer } from "@key0ai/key0";
+import { oauthClientCredentialsAuth } from "@key0ai/key0";
+
+const issuer = createRemoteTokenIssuer({
+  url: "https://api.myapp.com/internal/issue-token",
+  timeoutMs: 5000,
+  auth: oauthClientCredentialsAuth({
+    tokenUrl: "https://auth.myapp.com/token",
+    clientId: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+  }),
+});
+```
+
+**Signature:**
+
+```typescript
+function createRemoteTokenIssuer(
+  config: RemoteTokenIssuerConfig,
+): (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+```
+
+### RemoteTokenIssuerConfig
+
+```typescript
+type RemoteTokenIssuerConfig = {
+  url: string;
+  timeoutMs?: number;
+  auth?: AuthHeaderProvider;
+
+  /** @deprecated Use `auth` instead */
+  secret?: string;
+  /** @deprecated Use `auth` instead */
+  headerName?: string;
+};
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `url` | `string` | -- | The backend endpoint to POST to. |
+| `timeoutMs` | `number` | `10000` | Request timeout in milliseconds. |
+| `auth` | `AuthHeaderProvider` | -- | Authentication strategy for outbound requests. |
+| `secret` | `string` | -- | **Deprecated.** Mapped to `sharedSecretAuth(headerName, secret)`. |
+| `headerName` | `string` | `"X-Internal-Auth"` | **Deprecated.** Header name for the legacy `secret` option. |
+
+**Request format:** The callback sends a `POST` with `Content-Type: application/json` and the `IssueTokenParams` as the body.
+
+**Expected response:** A JSON object with `token` (string, required) and optionally `tokenType` (string, defaults to `"Bearer"`).
+
+**Error handling:**
+
+| Scenario | Error Code | HTTP Status |
+|---|---|---|
+| Backend returns non-2xx | `TOKEN_ISSUE_FAILED` | 502 |
+| Response missing `token` field | `TOKEN_ISSUE_FAILED` | 502 |
+| Request times out | `TOKEN_ISSUE_TIMEOUT` | 504 |
+| Network error | `TOKEN_ISSUE_FAILED` | 502 |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Standalone Service Example" icon="server" href="/examples/standalone-service">
+    Deploy Key0 as a standalone service using auth helpers for backend calls.
+  </Card>
+  <Card title="Backend Integration Example" icon="code" href="/examples/backend-integration">
+    Wire up remote token issuance with your existing backend.
+  </Card>
+  <Card title="Factory" icon="industry" href="/sdk-reference/factory">
+    createKey0() — the top-level factory that accepts auth-related config.
+  </Card>
+</CardGroup>

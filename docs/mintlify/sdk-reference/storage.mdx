@@ -1,0 +1,204 @@
+---
+title: "Storage"
+description: "API reference for IChallengeStore, ISeenTxStore, and IAuditStore — the storage interfaces that power atomic state transitions and double-spend prevention."
+---
+
+# Storage Interfaces
+
+Key0 defines three storage interfaces that back the challenge lifecycle. All state mutations go through these interfaces to guarantee atomicity and prevent race conditions.
+
+- **`IChallengeStore`** — Manages challenge records and atomic state transitions.
+- **`ISeenTxStore`** — Prevents double-spend by tracking consumed transaction hashes.
+- **`IAuditStore`** — Optional write-only audit trail for every state transition.
+
+## IChallengeStore
+
+The primary store. Every challenge flows through `create` and one or more `transition` calls.
+
+```typescript
+interface IChallengeStore {
+  get(challengeId: string): Promise<ChallengeRecord | null>;
+  findActiveByRequestId(requestId: string): Promise<ChallengeRecord | null>;
+  create(record: ChallengeRecord, meta?: TransitionMeta): Promise<void>;
+  transition(
+    challengeId: string,
+    fromState: ChallengeState,
+    toState: ChallengeState,
+    updates?: ChallengeTransitionUpdates,
+    meta?: TransitionMeta,
+  ): Promise<boolean>;
+  findPendingForRefund(minAgeMs: number): Promise<ChallengeRecord[]>;
+}
+```
+
+### Methods
+
+<ParamField body="get" type="(challengeId: string) => Promise<ChallengeRecord | null>">
+  Retrieve a challenge by its unique identifier. Returns `null` if the challenge does not exist.
+</ParamField>
+
+<ParamField body="findActiveByRequestId" type="(requestId: string) => Promise<ChallengeRecord | null>">
+  Find a non-expired challenge in the `PENDING` state for the given `requestId`. Used for idempotency: if the same client sends the same `requestId` twice, the engine returns the existing challenge instead of creating a duplicate. Returns `null` when no active challenge exists.
+</ParamField>
+
+<ParamField body="create" type="(record: ChallengeRecord, meta?: TransitionMeta) => Promise<void>">
+  Persist a new challenge record. Implementations must reject with an error if a record with the same `challengeId` already exists. The optional `meta` parameter is forwarded to the audit store when one is configured.
+</ParamField>
+
+<ParamField body="transition" type="(challengeId, fromState, toState, updates?, meta?) => Promise<boolean>">
+  Atomically move a challenge from `fromState` to `toState`, optionally writing additional fields via `updates`. Returns `true` if the transition succeeded, or `false` if the current state did not match `fromState` (optimistic concurrency control). This is the only safe way to change a challenge's state.
+</ParamField>
+
+<ParamField body="findPendingForRefund" type="(minAgeMs: number) => Promise<ChallengeRecord[]>">
+  Return all records in the `PAID` state whose `paidAt` timestamp is older than `minAgeMs` milliseconds and that have a `fromAddress` set. Used by the refund cron to locate undelivered payments eligible for automatic refund.
+</ParamField>
+
+<Warning>
+  Never write to a challenge record directly. Always use `transition()` to change state. Direct writes bypass optimistic concurrency checks and can corrupt the challenge lifecycle.
+</Warning>
+
+## ISeenTxStore
+
+Guards against double-spend attacks by ensuring each on-chain transaction hash is consumed at most once.
+
+```typescript
+interface ISeenTxStore {
+  get(txHash: `0x${string}`): Promise<string | null>;
+  markUsed(txHash: `0x${string}`, challengeId: string): Promise<boolean>;
+}
+```
+
+### Methods
+
+<ParamField body="get" type="(txHash: `0x${string}`) => Promise<string | null>">
+  Check whether a transaction hash has already been claimed. Returns the `challengeId` it was used for, or `null` if the hash is unclaimed.
+</ParamField>
+
+<ParamField body="markUsed" type="(txHash: `0x${string}`, challengeId: string) => Promise<boolean>">
+  Atomically mark a transaction hash as consumed for the given challenge. Returns `true` if the hash was successfully stored, or `false` if it was already claimed (double-spend attempt). Implementations must use an atomic set-if-not-exists operation (e.g., Redis `SET NX`, Postgres `INSERT ... ON CONFLICT DO NOTHING`).
+</ParamField>
+
+## IAuditStore
+
+An optional, write-only audit trail. When configured, every call to `IChallengeStore.create` and `IChallengeStore.transition` also appends an entry here. Implementations must not expose update or delete operations.
+
+```typescript
+interface IAuditStore {
+  append(entry: Omit<AuditEntry, "id">): Promise<void>;
+  getHistory(challengeId: string): Promise<AuditEntry[]>;
+}
+```
+
+### Methods
+
+<ParamField body="append" type="(entry: Omit<AuditEntry, 'id'>) => Promise<void>">
+  Append a single audit entry. The `id` field is omitted from the input and assigned by the store (e.g., `BIGSERIAL` in Postgres, auto-incrementing index in Redis).
+</ParamField>
+
+<ParamField body="getHistory" type="(challengeId: string) => Promise<AuditEntry[]>">
+  Retrieve the full transition history for a challenge, ordered chronologically. Useful for debugging and compliance.
+</ParamField>
+
+## Supporting Types
+
+### TransitionMeta
+
+Metadata attached to `create` and `transition` calls, forwarded to the audit store.
+
+```typescript
+type AuditActor = "engine" | "cron" | "admin" | "system";
+
+type TransitionMeta = {
+  readonly actor: AuditActor;
+  readonly reason?: string;
+};
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `actor` | `AuditActor` | Who or what triggered the state transition. |
+| `reason` | `string` (optional) | Human-readable explanation for the transition. |
+
+### AuditEntry
+
+A single immutable record of a state transition.
+
+```typescript
+type AuditEntry = {
+  readonly id?: string | number;
+  readonly challengeId: string;
+  readonly requestId: string;
+  readonly clientAgentId?: string;
+  readonly fromState: ChallengeState | null;
+  readonly toState: ChallengeState;
+  readonly actor: AuditActor;
+  readonly reason?: string;
+  readonly updates: Record<string, unknown> | null;
+  readonly createdAt: Date;
+};
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string \| number` | Store-assigned identifier (`BIGSERIAL` for Postgres, index for Redis). |
+| `challengeId` | `string` | The challenge this entry belongs to. |
+| `requestId` | `string` | The original request ID. Survives challenge cleanup. |
+| `clientAgentId` | `string` (optional) | The agent that initiated the payment flow. |
+| `fromState` | `ChallengeState \| null` | Previous state. `null` for the initial creation entry. |
+| `toState` | `ChallengeState` | State after the transition. |
+| `actor` | `AuditActor` | Who triggered the transition (`engine`, `cron`, `admin`, or `system`). |
+| `reason` | `string` (optional) | Human-readable reason for the transition. |
+| `updates` | `Record<string, unknown> \| null` | Snapshot of the fields changed alongside the transition. |
+| `createdAt` | `Date` | Timestamp of when the transition occurred. |
+
+### ChallengeTransitionUpdates
+
+Fields that may be written alongside a state transition. Defined as a partial pick from `ChallengeRecord`.
+
+```typescript
+type ChallengeTransitionUpdates = Partial<
+  Pick<
+    ChallengeRecord,
+    | "txHash"
+    | "paidAt"
+    | "accessGrant"
+    | "fromAddress"
+    | "deliveredAt"
+    | "refundTxHash"
+    | "refundedAt"
+    | "refundError"
+  >
+>;
+```
+
+| Field | Type | Written during |
+|---|---|---|
+| `txHash` | `string` | `PENDING` to `PAID` |
+| `paidAt` | `Date` | `PENDING` to `PAID` |
+| `accessGrant` | `object` | `PENDING` to `PAID` |
+| `fromAddress` | `string` | `PENDING` to `PAID` |
+| `deliveredAt` | `Date` | `PAID` to `DELIVERED` |
+| `refundTxHash` | `string` | `REFUND_PENDING` to `REFUNDED` |
+| `refundedAt` | `Date` | `REFUND_PENDING` to `REFUNDED` |
+| `refundError` | `string` | `REFUND_PENDING` to `REFUND_FAILED` |
+
+## Built-in Implementations
+
+Key0 ships with Redis and Postgres implementations for all three interfaces.
+
+| Class | Interface | Backend |
+|---|---|---|
+| `RedisChallengeStore` | `IChallengeStore` | Redis |
+| `RedisSeenTxStore` | `ISeenTxStore` | Redis |
+| `RedisAuditStore` | `IAuditStore` | Redis |
+| `PostgresChallengeStore` | `IChallengeStore` | Postgres |
+| `PostgresSeenTxStore` | `ISeenTxStore` | Postgres |
+| `PostgresAuditStore` | `IAuditStore` | Postgres |
+
+Redis implementations use atomic Lua scripts for `transition` and `markUsed` to guarantee correctness under concurrent access. Postgres implementations rely on row-level locking and `INSERT ... ON CONFLICT` for the same guarantees.
+
+<Note>
+  `IChallengeStore` and `ISeenTxStore` are required. `IAuditStore` is optional. When omitted, state transitions still function correctly but no audit trail is recorded.
+</Note>
+
+For connection setup, environment variables, and deployment guidance, see the [Storage configuration guide](/architecture/storage).

@@ -1,0 +1,258 @@
+---
+title: "SellerConfig"
+description: "Complete reference for the SellerConfig object — identity, payment, plans, credential issuance, hooks, and settlement options."
+---
+
+# SellerConfig
+
+The central configuration object for Key0. Pass it to any framework integration to stand up payment-gated endpoints:
+
+- **Express** — `key0Router(config)`
+- **Hono** — `key0App(config)`
+- **Fastify** — `key0Plugin(config)`
+- **Factory** — `createKey0(config)`
+
+```ts
+import type { SellerConfig } from "@key0ai/key0";
+```
+
+---
+
+## Identity
+
+Fields that populate the A2A agent discovery card.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `agentName` | `string` | Yes | — | Display name shown in the agent card. |
+| `agentDescription` | `string` | Yes | — | Short description of the agent's capabilities. |
+| `agentUrl` | `string` | Yes | — | Public base URL of your server (used for endpoint discovery). |
+| `providerName` | `string` | Yes | — | Organization or developer name. |
+| `providerUrl` | `string` | Yes | — | Organization URL. |
+| `version` | `string` | No | `"1.0.0"` | Semantic version exposed in the agent card. |
+
+## Payment
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `walletAddress` | `` `0x${string}` `` | Yes | — | Address that receives USDC payments. |
+| `network` | `"testnet" \| "mainnet"` | Yes | — | `"testnet"` targets Base Sepolia (chain 84532). `"mainnet"` targets Base (chain 8453). |
+
+## Product Catalog
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `plans` | `readonly Plan[]` | Yes | — | One or more pricing plans. See [Plan](#plan) below. |
+
+## Challenge
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `challengeTTLSeconds` | `number` | No | `900` | How long (in seconds) a challenge remains valid before expiring. |
+
+## Credential Issuance
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `fetchResourceCredentials` | `(params: IssueTokenParams) => Promise<TokenIssuanceResult>` | Yes | — | Called after on-chain payment is verified. Return a token (JWT, API key, etc.) that grants the buyer access to the resource. See [IssueTokenParams](#issuetokenparams) and [TokenIssuanceResult](#tokenissuanceresult). |
+| `tokenIssueTimeoutMs` | `number` | No | `15000` | Maximum time (ms) to wait for `fetchResourceCredentials` before timing out. |
+| `tokenIssueRetries` | `number` | No | `2` | Number of retries on transient failures within `fetchResourceCredentials`. |
+
+## Lifecycle Hooks
+
+Optional callbacks fired during the challenge lifecycle. Both are fire-and-forget — failures are logged but do not affect the payment flow.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `onPaymentReceived` | `(grant: AccessGrant) => Promise<void>` | No | — | Fired after a payment is verified and credentials are issued. |
+| `onChallengeExpired` | `(challengeId: string) => Promise<void>` | No | — | Fired when a challenge passes its TTL without payment. |
+
+## MCP
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `mcp` | `boolean` | No | `false` | When `true`, mounts MCP discovery (`/.well-known/mcp.json`) and Streamable HTTP (`POST /mcp`) endpoints alongside A2A routes. |
+
+## Customization
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `basePath` | `string` | No | `"/a2a"` | Prefix for all A2A endpoints. |
+| `resourceEndpointTemplate` | `string` | No | auto-generated | URL template containing `{resourceId}` that appears in the access grant. Example: `"https://api.example.com/photos/{resourceId}"`. |
+
+## Settlement
+
+Control how on-chain settlement is performed. By default, settlement is routed through the Coinbase Developer Platform facilitator.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `gasWalletPrivateKey` | `` `0x${string}` `` | No | — | Provide a private key to enable self-contained gas wallet settlement instead of the facilitator. |
+| `facilitatorUrl` | `string` | No | CDP default | Override the default facilitator URL from `CHAIN_CONFIGS`. |
+| `redis` | `IRedisLockClient` | No | — | Redis client for distributed locking when using gas wallet settlement across multiple instances. Without this, an in-process serial queue is used (single-instance only). |
+
+---
+
+## Supporting Types
+
+### Plan
+
+Defines a pricing tier that buyers can select.
+
+```typescript
+type Plan = {
+  readonly planId: string;
+  readonly unitAmount: string; // e.g. "$0.10"
+  readonly description?: string;
+};
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `planId` | `string` | Yes | Unique identifier for this plan. |
+| `unitAmount` | `string` | Yes | Dollar-formatted price string (e.g. `"$0.10"`, `"$5.00"`). |
+| `description` | `string` | No | Human-readable label for the plan. |
+
+### IssueTokenParams
+
+Passed to `fetchResourceCredentials` after payment verification.
+
+```typescript
+type IssueTokenParams = {
+  readonly requestId: string;
+  readonly challengeId: string;
+  readonly resourceId: string;
+  readonly planId: string;
+  readonly txHash: string;
+};
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `requestId` | `string` | Original access request ID. |
+| `challengeId` | `string` | Challenge that was fulfilled. |
+| `resourceId` | `string` | Resource the buyer is purchasing access to. |
+| `planId` | `string` | Selected plan from the catalog. |
+| `txHash` | `string` | On-chain transaction hash of the USDC transfer. |
+
+### TokenIssuanceResult
+
+Returned from `fetchResourceCredentials`.
+
+```typescript
+type TokenIssuanceResult = {
+  readonly token: string;
+  readonly tokenType?: string; // Default "Bearer"
+};
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `token` | `string` | Yes | The credential (JWT, API key, etc.) the buyer will use to access the resource. |
+| `tokenType` | `string` | No | Token scheme. Defaults to `"Bearer"`. |
+
+---
+
+## Minimal Example
+
+A working configuration with only the required fields:
+
+```typescript
+import { key0Router } from "@key0ai/key0/express";
+
+const config = {
+  agentName: "Photo API",
+  agentDescription: "High-resolution stock photos via A2A.",
+  agentUrl: "https://photos.example.com",
+  providerName: "Example Inc.",
+  providerUrl: "https://example.com",
+
+  walletAddress: "0x1234567890abcdef1234567890abcdef12345678" as `0x${string}`,
+  network: "mainnet" as const,
+
+  plans: [
+    { planId: "single", unitAmount: "$0.10" },
+  ],
+
+  async fetchResourceCredentials({ resourceId, planId }) {
+    const token = await generateJwt({ resourceId, planId });
+    return { token };
+  },
+};
+
+app.use(key0Router(config));
+```
+
+## Full Example
+
+All optional fields included:
+
+```typescript
+import { key0Router } from "@key0ai/key0/express";
+import Redis from "ioredis";
+
+const redis = new Redis(process.env.REDIS_URL);
+
+const config = {
+  // Identity
+  agentName: "Photo API",
+  agentDescription: "High-resolution stock photos via A2A.",
+  agentUrl: "https://photos.example.com",
+  providerName: "Example Inc.",
+  providerUrl: "https://example.com",
+  version: "2.1.0",
+
+  // Payment
+  walletAddress: "0x1234567890abcdef1234567890abcdef12345678" as `0x${string}`,
+  network: "mainnet" as const,
+
+  // Product catalog
+  plans: [
+    { planId: "single", unitAmount: "$0.10", description: "One photo download" },
+    { planId: "bulk-50", unitAmount: "$3.50", description: "50 photo downloads" },
+  ],
+
+  // Challenge
+  challengeTTLSeconds: 600,
+
+  // Credential issuance
+  async fetchResourceCredentials({ resourceId, planId, txHash }) {
+    const token = await generateJwt({ resourceId, planId, txHash });
+    return { token, tokenType: "Bearer" };
+  },
+  tokenIssueTimeoutMs: 10_000,
+  tokenIssueRetries: 3,
+
+  // Lifecycle hooks
+  async onPaymentReceived(grant) {
+    await analytics.track("payment", { challengeId: grant.challengeId });
+  },
+  async onChallengeExpired(challengeId) {
+    await analytics.track("challenge_expired", { challengeId });
+  },
+
+  // MCP
+  mcp: true,
+
+  // Customization
+  basePath: "/v1/a2a",
+  resourceEndpointTemplate: "https://photos.example.com/api/photos/{resourceId}",
+
+  // Settlement
+  gasWalletPrivateKey: process.env.GAS_WALLET_KEY as `0x${string}`,
+  facilitatorUrl: "https://custom-facilitator.example.com",
+  redis,
+};
+
+app.use(key0Router(config));
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Embedded Quickstart" icon="rocket" href="/quickstart/embedded">
+    Get started with SellerConfig in your existing Express/Hono/Fastify app.
+  </Card>
+  <Card title="Factory" icon="industry" href="/sdk-reference/factory">
+    createKey0() — the factory that wires SellerConfig into the full SDK.
+  </Card>
+</CardGroup>

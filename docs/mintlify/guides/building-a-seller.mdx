@@ -1,0 +1,402 @@
+---
+title: "Building a Seller"
+description: "End-to-end guide to building a payment-gated API with Key0. From install to mainnet in 11 steps."
+---
+
+This guide walks you through building a payment-gated API using the Key0 SDK. By the end, you have an Express server that accepts USDC payments on Base and issues JWT access tokens to paying agents.
+
+<Warning>
+Never use mainnet for testing. Start on Base Sepolia (testnet) where USDC is free. Switch to mainnet only when you are ready to accept real payments.
+</Warning>
+
+<Steps>
+
+<Step title="Install the SDK">
+
+Install the Key0 SDK and its peer dependencies:
+
+```bash
+bun add @key0ai/key0 ioredis express
+bun add -d @types/express
+```
+
+If you use npm or pnpm, replace `bun add` with `npm install` or `pnpm add`.
+
+</Step>
+
+<Step title="Get a wallet">
+
+You need an Ethereum wallet address on Base to receive USDC payments. Any wallet works -- MetaMask, Coinbase Wallet, a hardware wallet, or a programmatically generated address.
+
+For testnet development, get free test USDC from the [Circle faucet](https://faucet.circle.com/) (select Base Sepolia).
+
+Copy your wallet address. You use it as `WALLET_ADDRESS` in your configuration.
+
+</Step>
+
+<Step title="Define plans">
+
+Plans describe what you sell and how much it costs. Each plan has a `planId`, a `unitAmount` (in USD), and an optional `description`.
+
+```typescript
+import type { Plan } from "@key0ai/key0";
+
+const plans: Plan[] = [
+  {
+    planId: "basic",
+    unitAmount: "$0.10",
+    description: "Single API call",
+  },
+  {
+    planId: "pro",
+    unitAmount: "$1.00",
+    description: "100 API calls bundled",
+  },
+];
+```
+
+The `unitAmount` is a string with a dollar sign prefix. The SDK parses it into the correct USDC micro-units on-chain.
+
+</Step>
+
+<Step title="Implement fetchResourceCredentials">
+
+After a payment is verified on-chain, the SDK calls your `fetchResourceCredentials` callback to issue a credential. This is where you mint a JWT, generate an API key, or call another service.
+
+```typescript
+import { AccessTokenIssuer } from "@key0ai/key0";
+import type { IssueTokenParams, TokenIssuanceResult } from "@key0ai/key0";
+
+const issuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
+
+async function fetchResourceCredentials(
+  params: IssueTokenParams
+): Promise<TokenIssuanceResult> {
+  // params contains:
+  //   requestId    - unique request identifier
+  //   challengeId  - the challenge that was paid
+  //   resourceId   - the resource being accessed
+  //   planId       - which plan was purchased
+  //   txHash       - on-chain transaction hash
+
+  const { token } = await issuer.sign(
+    {
+      sub: params.requestId,
+      jti: params.challengeId,
+      resourceId: params.resourceId,
+      planId: params.planId,
+      txHash: params.txHash,
+    },
+    3600 // TTL in seconds (1 hour)
+  );
+
+  return { token, tokenType: "Bearer" };
+}
+```
+
+<Note>
+`ACCESS_TOKEN_SECRET` must be at least 32 characters. Use a cryptographically random string. Generate one with `openssl rand -base64 48`.
+</Note>
+
+</Step>
+
+<Step title="Set up storage">
+
+The SDK needs two stores: a `ChallengeStore` for tracking payment state machines and a `SeenTxStore` for preventing double-spend attacks. Both use Redis in production.
+
+```typescript
+import Redis from "ioredis";
+import { RedisChallengeStore, RedisSeenTxStore } from "@key0ai/key0";
+
+const redis = new Redis(process.env.REDIS_URL!);
+
+const store = new RedisChallengeStore({ redis });
+const seenTxStore = new RedisSeenTxStore({ redis });
+```
+
+Both stores accept an optional `keyPrefix` (default: `"key0"`) if you share a Redis instance with other services.
+
+</Step>
+
+<Step title="Mount the router">
+
+Wire everything together with `key0Router`. This creates an Express router that serves the A2A agent card, the JSON-RPC endpoint, and the x402 HTTP payment endpoint.
+
+```typescript
+import express from "express";
+import { key0Router } from "@key0ai/key0/express";
+import { X402Adapter } from "@key0ai/key0";
+import type { SellerConfig } from "@key0ai/key0";
+
+const config: SellerConfig = {
+  agentName: "My API",
+  agentDescription: "A payment-gated API powered by Key0",
+  agentUrl: "http://localhost:3000",
+  providerName: "My Company",
+  providerUrl: "https://mycompany.com",
+
+  walletAddress: process.env.WALLET_ADDRESS! as `0x${string}`,
+  network: "testnet",
+
+  plans,
+  fetchResourceCredentials,
+};
+
+const adapter = new X402Adapter({ network: config.network });
+
+const app = express();
+app.use(express.json());
+
+app.use(
+  key0Router({
+    config,
+    adapter,
+    store,
+    seenTxStore,
+  })
+);
+
+app.listen(3000, () => {
+  console.log("Seller running on http://localhost:3000");
+});
+```
+
+This mounts the following routes automatically:
+
+| Route | Description |
+|---|---|
+| `GET /.well-known/agent.json` | A2A agent card discovery |
+| `POST /a2a/jsonrpc` | A2A JSON-RPC endpoint with x402 middleware |
+| `POST /x402/access` | Simple x402 HTTP payment endpoint |
+
+</Step>
+
+<Step title="Protect your routes">
+
+Use `validateAccessToken` middleware to protect any route behind a paid JWT. After an agent pays and receives a token, it includes the token as a Bearer header in subsequent requests.
+
+```typescript
+import { validateAccessToken } from "@key0ai/key0/express";
+
+app.use(
+  "/api/photos",
+  validateAccessToken({
+    secret: process.env.ACCESS_TOKEN_SECRET!,
+  })
+);
+
+app.get("/api/photos", (req, res) => {
+  // req.key0Token contains the decoded JWT claims
+  const token = (req as any).key0Token;
+
+  res.json({
+    planId: token.planId,
+    photos: ["photo1.jpg", "photo2.jpg"],
+  });
+});
+```
+
+The middleware rejects requests with missing, expired, or invalid tokens and returns the appropriate HTTP error.
+
+</Step>
+
+<Step title="Set environment variables">
+
+Create a `.env` file in your project root:
+
+```bash
+# Required
+WALLET_ADDRESS=0xYourWalletAddressHere
+ACCESS_TOKEN_SECRET=your-secret-at-least-32-characters-long
+REDIS_URL=redis://localhost:6379
+
+# Optional
+PORT=3000
+```
+
+If you use Bun, environment variables load automatically from `.env`. For Node.js, use `dotenv` or pass them via your process manager.
+
+</Step>
+
+<Step title="Test it">
+
+Start your server and test with curl.
+
+**Discover the agent card:**
+
+```bash
+curl http://localhost:3000/.well-known/agent.json | jq
+```
+
+**Request access (triggers a 402 challenge):**
+
+```bash
+curl -X POST http://localhost:3000/x402/access \
+  -H "Content-Type: application/json" \
+  -d '{"planId": "basic"}' \
+  -w "\nHTTP Status: %{http_code}\n"
+```
+
+You receive a `402 Payment Required` response with the payment requirements: wallet address, chain ID, USDC amount, and a `challengeId`. An x402-compatible agent uses this information to pay on-chain, then replays the request with a `PAYMENT-SIGNATURE` header to receive the access grant.
+
+</Step>
+
+<Step title="Set up refunds">
+
+<Info>
+The refund cron is optional but recommended. Without it, payments that fail during credential issuance remain in the PAID state permanently.
+</Info>
+
+The `processRefunds` function scans for PAID records that were never delivered and refunds them on-chain. Run it on a schedule using BullMQ, node-cron, or any job scheduler.
+
+```typescript
+import { processRefunds } from "@key0ai/key0";
+
+// Run every 5 minutes
+async function refundCron() {
+  const results = await processRefunds({
+    store,
+    walletPrivateKey: process.env.WALLET_PRIVATE_KEY! as `0x${string}`,
+    network: "testnet",
+    minAgeMs: 300_000,  // 5-minute grace period before refund eligibility
+    batchSize: 50,      // max records per run
+  });
+
+  for (const r of results) {
+    if (r.success) {
+      console.log(`Refunded ${r.amount} to ${r.toAddress} (tx: ${r.refundTxHash})`);
+    } else {
+      console.error(`Refund failed for ${r.challengeId}: ${r.error}`);
+    }
+  }
+}
+```
+
+The refund function uses atomic state transitions internally. Concurrent cron runs across multiple instances do not double-refund. If you use a gas wallet for settlement, pass `gasWalletPrivateKey` and optionally `redis` for distributed locking.
+
+</Step>
+
+<Step title="Go to mainnet">
+
+When you are ready to accept real USDC payments, make three changes:
+
+1. **Switch the network** from `"testnet"` to `"mainnet"` in your `SellerConfig` and `X402Adapter`.
+2. **Use your production wallet** -- the address that receives real USDC on Base (chain ID 8453).
+3. **Update the refund cron** network to `"mainnet"`.
+
+```typescript
+// config
+const config: SellerConfig = {
+  // ...same as before
+  network: "mainnet",
+  walletAddress: "0xYourProductionWallet" as `0x${string}`,
+};
+
+// adapter
+const adapter = new X402Adapter({ network: "mainnet" });
+```
+
+No other code changes are needed. The SDK handles the different chain IDs, USDC contract addresses, and RPC endpoints automatically.
+
+</Step>
+
+</Steps>
+
+## Full working example
+
+Here is the complete seller in a single file:
+
+```typescript seller.ts
+import express from "express";
+import Redis from "ioredis";
+import {
+  AccessTokenIssuer,
+  RedisChallengeStore,
+  RedisSeenTxStore,
+  X402Adapter,
+} from "@key0ai/key0";
+import { key0Router, validateAccessToken } from "@key0ai/key0/express";
+import type {
+  IssueTokenParams,
+  Plan,
+  SellerConfig,
+  TokenIssuanceResult,
+} from "@key0ai/key0";
+
+// -- Plans -------------------------------------------------------------------
+
+const plans: Plan[] = [
+  { planId: "basic", unitAmount: "$0.10", description: "Single API call" },
+  { planId: "pro", unitAmount: "$1.00", description: "100 API calls bundled" },
+];
+
+// -- Token issuance ----------------------------------------------------------
+
+const issuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
+
+async function fetchResourceCredentials(
+  params: IssueTokenParams
+): Promise<TokenIssuanceResult> {
+  const { token } = await issuer.sign(
+    {
+      sub: params.requestId,
+      jti: params.challengeId,
+      resourceId: params.resourceId,
+      planId: params.planId,
+      txHash: params.txHash,
+    },
+    3600
+  );
+  return { token, tokenType: "Bearer" };
+}
+
+// -- Storage -----------------------------------------------------------------
+
+const redis = new Redis(process.env.REDIS_URL!);
+const store = new RedisChallengeStore({ redis });
+const seenTxStore = new RedisSeenTxStore({ redis });
+
+// -- Config ------------------------------------------------------------------
+
+const config: SellerConfig = {
+  agentName: "My API",
+  agentDescription: "A payment-gated API powered by Key0",
+  agentUrl: `http://localhost:${process.env.PORT || 3000}`,
+  providerName: "My Company",
+  providerUrl: "https://mycompany.com",
+  walletAddress: process.env.WALLET_ADDRESS! as `0x${string}`,
+  network: "testnet",
+  plans,
+  fetchResourceCredentials,
+};
+
+// -- App ---------------------------------------------------------------------
+
+const adapter = new X402Adapter({ network: config.network });
+const app = express();
+app.use(express.json());
+
+// Mount Key0 routes (agent card, A2A, x402)
+app.use(key0Router({ config, adapter, store, seenTxStore }));
+
+// Protected route -- requires a paid JWT
+app.use(
+  "/api/photos",
+  validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! })
+);
+
+app.get("/api/photos", (_req, res) => {
+  res.json({ photos: ["photo1.jpg", "photo2.jpg"] });
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Seller running on http://localhost:${port}`);
+});
+```
+
+Run it:
+
+```bash
+WALLET_ADDRESS=0x... ACCESS_TOKEN_SECRET=your-32-char-secret REDIS_URL=redis://localhost:6379 bun run seller.ts
+```

@@ -1,0 +1,215 @@
+---
+title: "Storage"
+description: "Configure Redis or Postgres backends for challenge state, transaction dedup, and audit trails. Both provide the same atomic guarantees."
+---
+
+Key0 requires two stores to operate and supports an optional third for auditing:
+
+| Store | Interface | Purpose |
+|---|---|---|
+| **Challenge store** | `IChallengeStore` | Tracks challenge records through their lifecycle (PENDING, PAID, DELIVERED, etc.) |
+| **Seen TX store** | `ISeenTxStore` | Prevents double-spend by deduplicating transaction hashes |
+| **Audit store** (optional) | `IAuditStore` | Append-only log of every state transition with actor, reason, and timestamp |
+
+Both Redis and Postgres backends ship with `@key0ai/key0`. They provide identical atomic guarantees -- Redis via Lua scripts, Postgres via serializable transactions.
+
+## Choosing a backend
+
+<Tabs>
+  <Tab title="Redis">
+    Use Redis when you want:
+    - Sub-millisecond latency on reads and writes
+    - Simple infrastructure (single Redis instance or cluster)
+    - Automatic key expiration via TTLs
+
+    Redis stores challenge records as hashes, uses `SET NX` for transaction dedup, and runs Lua scripts for atomic compare-and-swap state transitions.
+
+    ### Setup
+
+    ```typescript
+    import Redis from "ioredis";
+    import {
+      RedisChallengeStore,
+      RedisSeenTxStore,
+      RedisAuditStore,
+    } from "@key0ai/key0";
+
+    const redis = new Redis(process.env.REDIS_URL!);
+
+    const store = new RedisChallengeStore({ redis });
+    const seenTxStore = new RedisSeenTxStore({ redis });
+    const auditStore = new RedisAuditStore({ redis }); // optional
+    ```
+
+    ### Configuration options
+
+    `RedisChallengeStore` accepts a `RedisStoreConfig` object:
+
+    | Option | Type | Default | Description |
+    |---|---|---|---|
+    | `redis` | `Redis` (ioredis) | **required** | Redis client instance |
+    | `keyPrefix` | `string` | `"key0"` | Prefix for all Redis keys |
+    | `challengeTTLSeconds` | `number` | `900` (15 min) | TTL for the request-index key |
+    | `recordTTLSeconds` | `number` | `604800` (7 days) | TTL for challenge hash keys |
+    | `deliveredTTLSeconds` | `number` | `43200` (12 hours) | TTL applied when a record reaches DELIVERED |
+
+    `RedisSeenTxStore` and `RedisAuditStore` accept only `redis` and `keyPrefix`.
+
+    ### Key naming
+
+    All keys are prefixed with `keyPrefix` (default `key0`):
+
+    | Key pattern | Type | Purpose |
+    |---|---|---|
+    | `key0:challenge:{challengeId}` | Hash | Full challenge record |
+    | `key0:request:{requestId}` | String | Maps requestId to challengeId for lookups |
+    | `key0:seentx:{txHash}` | String | Double-spend prevention (`SET NX`) |
+    | `key0:paid` | Sorted set | PAID records scored by `paidAt` timestamp (for refund queries) |
+    | `key0:audit:{challengeId}` | List | Append-only audit log per challenge |
+
+    ### TTL behavior
+
+    | Key | Default TTL | Applied when |
+    |---|---|---|
+    | Challenge hash | 7 days (`recordTTLSeconds`) | On create |
+    | Request index | 900s (`challengeTTLSeconds`) | On create |
+    | Seen TX | 7 days | On `markUsed` |
+    | Audit list | Matches challenge hash | On create and each transition |
+    | Delivered records | 12h (`deliveredTTLSeconds`) | On PAID to DELIVERED transition |
+
+    ### Atomic transitions
+
+    State transitions use a Lua script that runs entirely within Redis. The script:
+    1. Reads the current state (compare)
+    2. Writes the new state and field updates (swap)
+    3. Maintains the `key0:paid` sorted set (add on PAID, remove on exit from PAID)
+    4. Appends an audit entry to the challenge's audit list
+
+    All four steps execute atomically -- no other command can interleave.
+
+    ### Health check
+
+    Call `healthCheck()` at startup to fail fast on misconfiguration:
+
+    ```typescript
+    await store.healthCheck(); // throws if Redis is unreachable
+    ```
+  </Tab>
+
+  <Tab title="Postgres">
+    Use Postgres when you want:
+    - Durable, queryable storage with SQL
+    - Built-in soft-delete and cleanup lifecycle
+    - No additional infrastructure if you already run Postgres
+
+    Postgres stores use serializable transactions for atomic state transitions, providing the same safety guarantees as the Redis Lua scripts.
+
+    ### Setup
+
+    Key0's Postgres stores use [postgres.js](https://github.com/porsager/postgres) (the `postgres` npm package), not `pg`:
+
+    ```typescript
+    import postgres from "postgres";
+    import {
+      PostgresChallengeStore,
+      PostgresSeenTxStore,
+      PostgresAuditStore,
+    } from "@key0ai/key0";
+
+    const sql = postgres(process.env.DATABASE_URL!);
+
+    const store = new PostgresChallengeStore({ sql });
+    const seenTxStore = new PostgresSeenTxStore({ sql });
+    const auditStore = new PostgresAuditStore({ sql }); // optional
+    ```
+
+    ### Configuration options
+
+    `PostgresChallengeStore` accepts a `PostgresStoreConfig` object:
+
+    | Option | Type | Default | Description |
+    |---|---|---|---|
+    | `sql` | `Sql` (postgres.js) | **required** | postgres.js connection instance |
+    | `tablePrefix` | `string` | `"key0"` | Prefix for all table names |
+    | `autoMigrate` | `boolean` | `true` | Auto-create tables and indexes on first use |
+    | `challengeTTLSeconds` | `number` | `900` (15 min) | Request index TTL for `findActiveByRequestId` |
+    | `recordTTLSeconds` | `number` | `604800` (7 days) | General record lifecycle TTL |
+    | `deliveredTTLSeconds` | `number` | `43200` (12 hours) | TTL for DELIVERED records |
+
+    ### Table naming
+
+    All tables are prefixed with `tablePrefix` (default `key0`):
+
+    | Table | Purpose |
+    |---|---|
+    | `key0_challenges` | Challenge records with state, payment details, and soft-delete support |
+    | `key0_seen_txs` | Transaction hash dedup (PRIMARY KEY constraint) |
+    | `key0_challenge_audit` | Append-only audit log (UPDATE and DELETE revoked) |
+
+    ### Auto-migration
+
+    When `autoMigrate` is `true` (the default), the store creates tables, indexes, enum types, and triggers on first use. This includes:
+
+    - A `key0_challenge_state` enum type for the state column
+    - An `updated_at` trigger that auto-updates on every row change
+    - Indexes on `request_id`, `state`, `deleted_at`, and `created_at`
+    - UPDATE and DELETE privileges revoked on the audit table
+
+    Set `autoMigrate: false` if you manage migrations externally.
+
+    ### Cleanup and soft-delete
+
+    Unlike Redis (which relies on key expiration), Postgres uses a soft-delete pattern:
+
+    ```typescript
+    // Soft-delete records that exceeded their TTL
+    const softDeleted = await store.cleanup();
+
+    // Permanently remove records soft-deleted more than 30 days ago
+    const purged = await store.purgeDeleted(
+      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    );
+    ```
+
+    Call `cleanup()` on a schedule (e.g., daily cron) to soft-delete expired records, then `purgeDeleted()` to permanently remove old soft-deleted rows.
+  </Tab>
+</Tabs>
+
+## IAuditStore
+
+The audit store is optional but recommended for production. Every state transition is logged with:
+
+- `challengeId` and `requestId` for correlation
+- `fromState` and `toState` for the transition
+- `actor` (e.g., `"engine"`, `"cron"`, `"admin"`)
+- `reason` (optional, e.g., `"challenge_created"`, `"payment_verified"`)
+- `updates` (the field changes applied in the transition)
+- `createdAt` timestamp
+
+Both `RedisAuditStore` and `PostgresAuditStore` implement `IAuditStore`. In addition, `RedisChallengeStore` and `PostgresChallengeStore` automatically write audit entries during `create()` and `transition()` calls -- even without a standalone audit store configured.
+
+```typescript
+// Retrieve the full audit trail for a challenge
+const history = await auditStore.getHistory(challengeId);
+```
+
+## Standalone (Docker) storage
+
+When running Key0 as a standalone Docker container, set the `STORAGE_BACKEND` environment variable to select your backend:
+
+```bash
+STORAGE_BACKEND=redis   # Use Redis for all stores
+STORAGE_BACKEND=postgres # Use Postgres for challenge and seen-tx stores
+```
+
+<Note>
+  Redis is always required in standalone mode, even when using Postgres as the primary storage backend. The BullMQ-based refund cron job uses Redis as its queue broker.
+</Note>
+
+## Connection health
+
+<Warning>
+  Always verify your storage connection at startup. A misconfigured or unreachable store causes silent failures -- challenges are created but never persisted, and payments cannot be verified.
+</Warning>
+
+For Redis, call `store.healthCheck()` before accepting traffic. For Postgres, the auto-migration step serves as an implicit health check -- if it fails, the store constructor's internal `ready` promise rejects, and subsequent operations throw.

@@ -1,0 +1,128 @@
+---
+title: "Environment Variables"
+description: "Complete reference of all environment variables for standalone Docker and embedded SDK deployments."
+---
+
+import { Tabs, Tab } from '/snippets/tabs';
+
+Configuration differs depending on whether you run Key0 as a **standalone Docker container** or **embed the SDK** directly in your application.
+
+<Tabs>
+  <Tab title="Standalone (Docker)">
+
+    The standalone Docker image reads all configuration from environment variables. Pass them via `docker run -e` or a `.env` file.
+
+    ### Core
+
+    | Variable | Required | Default | Description |
+    |---|---|---|---|
+    | `KEY0_WALLET_ADDRESS` | Yes | -- | USDC-receiving wallet address (`0x...`). |
+    | `ISSUE_TOKEN_API` | Yes | -- | URL that Key0 POSTs to after payment is verified. Your backend returns a credential (API key, JWT, etc.) from this endpoint. |
+    | `KEY0_NETWORK` | No | `testnet` | `mainnet` (Base, chain 8453) or `testnet` (Base Sepolia, chain 84532). |
+    | `PORT` | No | `3000` | HTTP server listen port. |
+
+    ### Agent Card
+
+    | Variable | Required | Default | Description |
+    |---|---|---|---|
+    | `AGENT_NAME` | No | `Key0 Server` | Display name in the A2A agent card. |
+    | `AGENT_DESCRIPTION` | No | `Payment-gated A2A endpoint` | Description in the agent card. |
+    | `AGENT_URL` | No | `http://localhost:PORT` | Public URL of the server. Set this in production so the agent card advertises the correct address. |
+    | `PROVIDER_NAME` | No | `Key0` | Organization name in the agent card. |
+    | `PROVIDER_URL` | No | `https://key0.ai` | Organization URL in the agent card. |
+
+    ### Plans
+
+    | Variable | Required | Default | Description |
+    |---|---|---|---|
+    | `PLANS` | No | `[{"planId":"basic","unitAmount":"$0.10"}]` | JSON array of pricing plans. Each plan has `planId`, `unitAmount`, and an optional `description`. |
+    | `PLANS_B64` | No | -- | Base64-encoded version of `PLANS`. Used by the Setup UI as an alternative to `PLANS`. If both are set, `PLANS_B64` takes precedence. |
+
+    ### Challenge & Endpoint
+
+    | Variable | Required | Default | Description |
+    |---|---|---|---|
+    | `CHALLENGE_TTL_SECONDS` | No | `900` | How long a payment challenge remains valid, in seconds. |
+    | `BASE_PATH` | No | `/a2a` | Path prefix for the A2A endpoints. |
+    | `MCP_ENABLED` | No | `false` | Set to `true` to mount MCP discovery and Streamable HTTP routes alongside A2A. |
+
+    ### Backend Auth
+
+    | Variable | Required | Default | Description |
+    |---|---|---|---|
+    | `BACKEND_AUTH_STRATEGY` | No | `none` | Authentication strategy for calls to `ISSUE_TOKEN_API`. Options: `none`, `shared-secret`, `jwt`. |
+    | `ISSUE_TOKEN_API_SECRET` | No | -- | Bearer token (when strategy is `shared-secret`) or JWT signing key (when strategy is `jwt`) used to authenticate with `ISSUE_TOKEN_API`. |
+
+    ### Token Issuance
+
+    | Variable | Required | Default | Description |
+    |---|---|---|---|
+    | `TOKEN_ISSUE_TIMEOUT_MS` | No | `15000` | Timeout in milliseconds for the `ISSUE_TOKEN_API` call. |
+    | `TOKEN_ISSUE_RETRIES` | No | `2` | Number of retries for transient `ISSUE_TOKEN_API` failures. |
+
+    ### Storage
+
+    | Variable | Required | Default | Description |
+    |---|---|---|---|
+    | `STORAGE_BACKEND` | No | `redis` | Storage backend: `redis` or `postgres`. |
+    | `REDIS_URL` | No | -- | Redis connection URL (e.g., `redis://localhost:6379`). |
+    | `DATABASE_URL` | No | -- | PostgreSQL connection URL (e.g., `postgresql://user:pass@host:5432/db`). |
+    | `KEY0_MANAGED_INFRA` | No | -- | Auto-detected by Docker Compose profiles. Comma-separated override to specify which infrastructure is managed (e.g., `redis,postgres`). |
+
+    ### Settlement & Refunds
+
+    | Variable | Required | Default | Description |
+    |---|---|---|---|
+    | `GAS_WALLET_PRIVATE_KEY` | No | -- | Private key of an ETH-funded wallet for self-contained on-chain settlement. Alternative to using the CDP facilitator. |
+    | `KEY0_WALLET_PRIVATE_KEY` | No | -- | Private key of the receiving wallet. Required only if you run the refund cron. |
+    | `REFUND_INTERVAL_MS` | No | `60000` | How often the refund cron scans for refundable challenges, in milliseconds. |
+    | `REFUND_MIN_AGE_MS` | No | `300000` | Grace period before a paid-but-undelivered challenge becomes eligible for refund, in milliseconds. |
+    | `REFUND_BATCH_SIZE` | No | `50` | Maximum number of refunds processed per cron tick. |
+
+  </Tab>
+  <Tab title="Embedded (SDK)">
+
+    When you embed Key0 via `createKey0()` or a framework integration, you supply most configuration through the `SellerConfig` object in code. The variables below are commonly read from the environment.
+
+    | Variable | Required | Default | Description |
+    |---|---|---|---|
+    | `KEY0_NETWORK` | Yes | -- | `mainnet` (Base) or `testnet` (Base Sepolia). |
+    | `KEY0_WALLET_ADDRESS` | Yes | -- | USDC-receiving wallet address (`0x...`). |
+    | `ACCESS_TOKEN_SECRET` | Yes | -- | Secret used to sign access-grant JWTs. Must be at least 32 characters. |
+    | `REDIS_URL` | No | -- | Redis connection URL for challenge and seen-tx stores. |
+    | `DATABASE_URL` | No | -- | PostgreSQL connection URL (if using Postgres stores). |
+    | `PORT` | No | `3000` | Server listen port. |
+    | `CDP_API_KEY_ID` | No | -- | Coinbase Developer Platform facilitator API key ID. |
+    | `CDP_API_KEY_SECRET` | No | -- | Coinbase Developer Platform facilitator API key secret. |
+    | `GAS_WALLET_PRIVATE_KEY` | No | -- | Private key of an ETH-funded wallet for self-contained settlement. Alternative to CDP facilitator. |
+    | `KEY0_WALLET_PRIVATE_KEY` | No | -- | Private key of the receiving wallet. Required only if you run the refund cron. |
+
+    <Warning>
+      `ACCESS_TOKEN_SECRET` must be at least **32 characters**. Shorter values cause JWT signing to fail at startup.
+    </Warning>
+
+  </Tab>
+</Tabs>
+
+## Notes
+
+- **`KEY0_WALLET_PRIVATE_KEY`** is only needed if you enable the refund cron. For normal operation, only the public wallet address is required.
+- **`GAS_WALLET_PRIVATE_KEY`** provides an alternative to the CDP facilitator for on-chain settlement. The wallet must hold enough ETH on Base to cover gas fees.
+
+<Note>
+  Redis is required even when you select Postgres as the storage backend. The BullMQ-based refund cron and distributed gas-wallet lock both depend on Redis.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Run Key0 as a standalone container with these environment variables.
+  </Card>
+  <Card title="SellerConfig" icon="sliders" href="/sdk-reference/seller-config">
+    The code-level configuration object that maps to many of these variables.
+  </Card>
+  <Card title="Storage" icon="hard-drive" href="/architecture/storage">
+    Redis and Postgres setup for challenge stores, seen-tx, and audit logs.
+  </Card>
+</CardGroup>

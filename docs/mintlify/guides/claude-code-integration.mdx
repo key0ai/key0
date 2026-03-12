@@ -1,0 +1,122 @@
+---
+title: "Claude Code Integration"
+description: "Connect Claude Code to a Key0-protected API. Discover plans, pay with USDC, and access protected endpoints — all from the CLI."
+---
+
+Connect Claude Code to any Key0-powered service in two steps: add the seller's MCP server and set up a payment wallet.
+
+## What You Need
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed
+- The seller's URL (e.g. `https://my-service.example.com`)
+- A funded wallet with USDC on Base (testnet or mainnet)
+
+<Note>
+  For testnet, get free USDC from [faucet.circle.com](https://faucet.circle.com).
+</Note>
+
+## Step 1: Install Payments MCP
+
+[`@coinbase/payments-mcp`](https://github.com/coinbase/payments-mcp) handles wallet signing and on-chain settlement. Install it with the interactive setup:
+
+```bash
+npx @coinbase/payments-mcp
+```
+
+The installer walks you through:
+1. Select **Claude Code** as your MCP client
+2. Choose automatic or manual configuration
+3. Complete the wallet login flow
+
+Once installed, files are saved to `~/.payments-mcp/` and the server is registered in your MCP config automatically.
+
+<Info>
+  See the [Coinbase Payments MCP docs](https://docs.cdp.coinbase.com/payments-mcp/welcome) for detailed wallet setup and authentication.
+</Info>
+
+## Step 2: Add the Key0 Seller
+
+Add the seller's MCP server to your `.mcp.json` (project root) or use the CLI:
+
+<Tabs>
+  <Tab title=".mcp.json">
+    ```json .mcp.json
+    {
+      "mcpServers": {
+        "my-service": {
+          "type": "http",
+          "url": "https://my-service.example.com/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    claude mcp add my-service --transport http --url https://my-service.example.com/mcp
+    ```
+  </Tab>
+</Tabs>
+
+### Finding the MCP URL
+
+If the seller has MCP enabled, the URL is their base URL + `/mcp`:
+
+```
+https://my-service.example.com/mcp
+```
+
+Verify by checking the discovery endpoint:
+
+```bash
+curl https://my-service.example.com/.well-known/mcp.json
+```
+
+## How It Works
+
+Once configured, just ask Claude to use the service. Claude handles the payment flow automatically:
+
+```
+You: "Get me the latest satellite photo of Tokyo"
+```
+
+Claude will:
+
+1. Call `discover_plans` — see available plans and pricing
+2. Call `request_access` — get a payment challenge
+3. Use `payments-mcp` to sign and submit the USDC payment
+4. Receive an access token (JWT)
+5. Call the protected API with the token
+
+All of this happens in a single conversation turn.
+
+## Try It Locally
+
+<Steps>
+  <Step title="Start a Key0 seller">
+    ```bash
+    cd examples/express-seller
+    bun install && bun run start
+    ```
+
+    The server starts at `http://localhost:3000` with MCP enabled.
+  </Step>
+  <Step title="Set up payments-mcp">
+    ```bash
+    npx @coinbase/payments-mcp
+    ```
+
+    Follow the interactive setup and complete the wallet login.
+  </Step>
+  <Step title="Add the local seller">
+    ```bash
+    claude mcp add local-seller --transport http --url http://localhost:3000/mcp
+    ```
+  </Step>
+  <Step title="Fund your wallet">
+    Get Base Sepolia USDC from [faucet.circle.com](https://faucet.circle.com) for your wallet address.
+  </Step>
+  <Step title="Use Claude Code">
+    Open Claude Code in the same directory. Ask it to interact with the seller — it discovers the plans, pays, and accesses the API.
+  </Step>
+</Steps>

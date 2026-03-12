@@ -1,0 +1,282 @@
+---
+title: "Express Seller"
+description: "A Photo Gallery Agent built with Express that sells photo access to AI agents via USDC payments."
+---
+
+A production-ready seller built with Express that monetizes a photo gallery API. AI agents discover pricing via the A2A agent card, pay USDC on Base, and receive a JWT to access protected endpoints -- all without human intervention.
+
+## What it demonstrates
+
+- Mounting `key0Router` on an Express app to handle the full A2A payment flow
+- Defining multiple pricing plans with variable access durations
+- Issuing JWTs via `AccessTokenIssuer` after on-chain payment verification
+- Protecting routes with `validateAccessToken` middleware
+- Using Redis for challenge storage and double-spend prevention
+
+## Architecture
+
+```
+Agent                         Express Seller
+  |                                |
+  |-- GET /.well-known/agent.json -|  Discover capabilities + pricing
+  |-- POST /a2a/jsonrpc ---------->|  Request access (planId, resourceId)
+  |<-------- X402Challenge --------|  Amount, destination wallet, chainId
+  |                                |
+  |  ... pays USDC on-chain ...    |
+  |                                |
+  |-- POST /a2a/jsonrpc ---------->|  Submit payment proof (txHash)
+  |<-------- AccessGrant ----------|  JWT + resource endpoint URL
+  |                                |
+  |-- GET /api/photos/:id -------->|  Bearer token in Authorization header
+  |<-------- photo data -----------|
+```
+
+## Prerequisites
+
+- **Node.js 18+** or **Bun** runtime
+- **Redis** running locally or accessible via URL
+- A **wallet address** on Base to receive USDC payments
+
+## Directory structure
+
+```
+examples/express-seller/
+├── server.ts          # Complete seller implementation
+├── package.json       # Dependencies and scripts
+└── tsconfig.json      # TypeScript configuration
+```
+
+## Environment variables
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `KEY0_WALLET_ADDRESS` | Yes | `0x0000...0000` | Your USDC receive address (0x-prefixed) |
+| `KEY0_ACCESS_TOKEN_SECRET` | Yes | `dev-secret-...` | Secret for signing JWTs. Minimum 32 characters. |
+| `KEY0_NETWORK` | No | `testnet` | `testnet` (Base Sepolia) or `mainnet` (Base) |
+| `KEY0_RPC_URL` | No | Auto-detected | Override the default RPC endpoint for Base |
+| `REDIS_URL` | No | `redis://localhost:6379` | Redis connection string |
+| `PORT` | No | `3000` | HTTP server port |
+| `PUBLIC_URL` | No | `http://localhost:3000` | Public-facing URL for agent card and resource endpoints |
+
+<Warning>
+  Never use the default `KEY0_ACCESS_TOKEN_SECRET` in production. Generate a random string of at least 32 characters.
+</Warning>
+
+## Code walkthrough
+
+### 1. Imports and configuration
+
+```typescript server.ts
+import type { NetworkName } from "@key0ai/key0";
+import {
+  AccessTokenIssuer,
+  RedisChallengeStore,
+  RedisSeenTxStore,
+  X402Adapter,
+} from "@key0ai/key0";
+import { key0Router, validateAccessToken } from "@key0ai/key0/express";
+import express from "express";
+import Redis from "ioredis";
+
+const PORT = Number(process.env["PORT"] ?? 3000);
+const PUBLIC_URL = process.env["PUBLIC_URL"] ?? `http://localhost:${PORT}`;
+const NETWORK = (process.env["KEY0_NETWORK"] ?? "testnet") as NetworkName;
+const WALLET = (process.env["KEY0_WALLET_ADDRESS"] ??
+  "0x0000000000000000000000000000000000000000") as `0x${string}`;
+const SECRET =
+  process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
+const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
+```
+
+All configuration is driven by environment variables with sensible defaults for local development. The `@key0ai/key0/express` subpath export provides the Express-specific router and middleware.
+
+### 2. Payment adapter and storage
+
+```typescript server.ts
+const adapter = new X402Adapter({
+  network: NETWORK,
+  rpcUrl: process.env["KEY0_RPC_URL"],
+});
+
+const redis = new Redis(REDIS_URL);
+const store = new RedisChallengeStore({ redis });
+const seenTxStore = new RedisSeenTxStore({ redis });
+
+const tokenIssuer = new AccessTokenIssuer(SECRET);
+```
+
+Three components wire together the payment infrastructure:
+
+- **`X402Adapter`** -- verifies ERC-20 Transfer events on Base by reading on-chain transaction receipts via viem.
+- **`RedisChallengeStore`** -- manages the challenge state machine (PENDING, PAID, DELIVERED, EXPIRED) with atomic Lua-script transitions.
+- **`RedisSeenTxStore`** -- prevents double-spend by tracking used transaction hashes with atomic `SET NX`.
+
+Both stores share a single Redis connection.
+
+### 3. Seller config and pricing plans
+
+```typescript server.ts
+app.use(
+  key0Router({
+    config: {
+      agentName: "Photo Gallery Agent",
+      agentDescription: "Purchase access to premium photos via USDC payments on Base",
+      agentUrl: PUBLIC_URL,
+      providerName: "Example Corp",
+      providerUrl: "https://example.com",
+      walletAddress: WALLET,
+      network: NETWORK,
+      challengeTTLSeconds: 900,
+      plans: [
+        { planId: "single-photo", unitAmount: "$0.10", description: "Single photo access." },
+        { planId: "full-album", unitAmount: "$1.00", description: "Full album access (24h)." },
+      ],
+```
+
+The `plans` array defines your pricing. Each plan has a unique `planId`, a `unitAmount` in USD, and a human-readable `description`. These are exposed in the auto-generated agent card so AI agents can discover what you sell and how much it costs.
+
+`challengeTTLSeconds` controls how long an agent has to complete payment before the challenge expires (15 minutes here).
+
+### 4. Credential issuance callback
+
+```typescript server.ts
+      fetchResourceCredentials: async (params) => {
+        const ttl = params.planId === "single-photo" ? 3600 : 86400;
+        return tokenIssuer.sign(
+          {
+            sub: params.requestId,
+            jti: params.challengeId,
+            resourceId: params.resourceId,
+            planId: params.planId,
+            txHash: params.txHash,
+          },
+          ttl,
+        );
+      },
+```
+
+This is the core monetization hook. After Key0 verifies the on-chain payment, it calls `fetchResourceCredentials` and returns whatever credential you issue. Here, the callback mints a JWT with plan-dependent expiry:
+
+- **single-photo**: 1-hour token
+- **full-album**: 24-hour token
+
+The JWT payload includes the transaction hash and plan ID for downstream auditing.
+
+<Info>
+  `fetchResourceCredentials` can return any string -- a JWT, an API key, an OAuth token, or a signed URL. Key0 passes it through to the agent as-is.
+</Info>
+
+### 5. Payment lifecycle hook
+
+```typescript server.ts
+      onPaymentReceived: async (grant) => {
+        console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.planId})`);
+        console.log(`  TX: ${grant.explorerUrl}`);
+      },
+      resourceEndpointTemplate: `${PUBLIC_URL}/api/photos/{resourceId}`,
+    },
+    adapter,
+    store,
+    seenTxStore,
+  }),
+);
+```
+
+`onPaymentReceived` fires after payment verification and credential issuance succeed. Use it for logging, analytics, webhooks, or notifying downstream systems.
+
+`resourceEndpointTemplate` tells agents where to use their token. The `{resourceId}` placeholder is replaced with the actual resource identifier in the `AccessGrant` response.
+
+### 6. Protecting routes
+
+```typescript server.ts
+app.use("/api", validateAccessToken({ secret: SECRET }));
+
+app.get("/api/photos/:id", (req, res) => {
+  const photoId = req.params["id"];
+  res.json({
+    id: photoId,
+    url: `https://cdn.example.com/photos/${photoId}.jpg`,
+    title: `Premium Photo ${photoId}`,
+    resolution: "4K",
+  });
+});
+```
+
+A single middleware call gates all `/api/*` routes behind JWT validation. This is decoupled from the payment flow -- it only verifies the token signature and expiry. Your route handlers stay clean and focused on business logic.
+
+## Running the example
+
+<Steps>
+  <Step title="Clone and install">
+    ```bash
+    git clone https://github.com/key0ai/key0.git
+    cd key0/examples/express-seller
+    bun install
+    ```
+  </Step>
+  <Step title="Configure environment">
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `.env` and set your wallet address and a strong token secret:
+
+    ```bash .env
+    KEY0_NETWORK=testnet
+    KEY0_WALLET_ADDRESS=0xYourWalletAddressHere
+    KEY0_ACCESS_TOKEN_SECRET=change-me-to-a-random-string-at-least-32-chars
+    ```
+  </Step>
+  <Step title="Start Redis">
+    <CodeGroup>
+    ```bash Docker
+    docker run -d --name redis -p 6379:6379 redis:7-alpine
+    ```
+
+    ```bash macOS (Homebrew)
+    brew services start redis
+    ```
+
+    ```bash Linux
+    sudo systemctl start redis
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Start the server">
+    <CodeGroup>
+    ```bash Bun
+    bun run start
+    ```
+
+    ```bash Node.js
+    npx tsx server.ts
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Expected output
+
+```
+Photo Gallery Agent running on http://localhost:3000
+  Agent card: http://localhost:3000/.well-known/agent.json
+  A2A endpoint: http://localhost:3000/a2a/jsonrpc
+  Network: testnet
+  Wallet: 0xYour...Address
+```
+
+## Verify the agent card
+
+```bash
+curl http://localhost:3000/.well-known/agent.json | jq .
+```
+
+The agent card is auto-generated from your `SellerConfig`. It describes the seller's capabilities, pricing plans, and A2A endpoint URL -- everything an agent needs to initiate a purchase.
+
+## Complete the payment flow
+
+To run a full end-to-end payment, start this seller and point an agent at it. The agent will discover the seller, select a plan, pay USDC on Base Sepolia, and retrieve the protected photo data.
+
+<Card title="Source code" icon="github" href="https://github.com/key0ai/key0/tree/main/examples/express-seller">
+  View `examples/express-seller` on GitHub
+</Card>

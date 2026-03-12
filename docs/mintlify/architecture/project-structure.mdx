@@ -1,0 +1,145 @@
+---
+title: "Project Structure"
+description: "Source directory layout, core layers, and entry points for the Key0 SDK."
+---
+
+## Overview
+
+The Key0 SDK is organized into five distinct layers inside `src/`. Each layer has a single responsibility and depends only on the layers below it. Types sit at the bottom (no runtime logic), core business logic builds on top, and integrations sit at the top -- wiring everything into your framework of choice.
+
+---
+
+## Directory Tree
+
+```
+src/
+├── types/                        # Protocol-agnostic interfaces and message types
+│   ├── adapter.ts                # IPaymentAdapter, VerificationResult
+│   ├── agent-card.ts             # AgentCard, AgentSkill
+│   ├── challenge.ts              # AccessRequest, X402Challenge, PaymentProof, AccessGrant, ChallengeRecord
+│   ├── config.ts                 # SellerConfig, Plan, NetworkConfig
+│   ├── errors.ts                 # Key0Error, Key0ErrorCode
+│   ├── storage.ts                # IChallengeStore, ISeenTxStore, IAuditStore
+│   └── x402-extension.ts         # x402 protocol types
+│
+├── core/                         # Business logic
+│   ├── challenge-engine.ts       # State machine, lifecycle orchestration
+│   ├── access-token.ts           # JWT issuance (HS256 / RS256)
+│   ├── agent-card.ts             # Auto-generates agent card from config
+│   ├── refund.ts                 # processRefunds() batch job
+│   └── storage/                  # Redis + Postgres implementations
+│       ├── redis-challenge.ts
+│       ├── redis-seen-tx.ts
+│       ├── redis-audit.ts
+│       ├── pg-challenge.ts
+│       ├── pg-seen-tx.ts
+│       └── pg-audit.ts
+│
+├── adapter/                      # On-chain interaction
+│   ├── adapter.ts                # X402Adapter (implements IPaymentAdapter)
+│   ├── verify-transfer.ts        # On-chain verification (6 checks)
+│   ├── send-usdc.ts              # USDC transfer for refunds
+│   └── usdc.ts                   # USDC ABI + contract constants
+│
+├── integrations/                 # Framework adapters + settlement
+│   ├── express.ts                # key0Router, validateAccessToken
+│   ├── hono.ts                   # key0App, honoValidateAccessToken
+│   ├── fastify.ts                # key0Plugin, fastifyValidateAccessToken
+│   ├── mcp.ts                    # createMcpServer, mountMcpRoutes
+│   ├── settlement.ts             # Facilitator + gas wallet settlement
+│   └── x402-http-middleware.ts   # x402 HTTP middleware
+│
+├── helpers/                      # Auth strategies and remote issuance
+│   ├── auth.ts                   # noAuth, sharedSecretAuth, signedJwtAuth, oauthClientCredentialsAuth
+│   └── remote.ts                 # createRemoteTokenIssuer
+│
+├── validator/                    # Lightweight token validation
+│   └── index.ts                  # validateKey0Token
+│
+├── executor.ts                   # Key0Executor (A2A protocol)
+├── factory.ts                    # createKey0() wires all layers together
+├── middleware.ts                 # validateToken (framework-agnostic)
+└── index.ts                      # Main entry point -- re-exports everything
+```
+
+---
+
+## Core Layers
+
+The SDK is composed of five layers. Dependencies flow downward only.
+
+```
+  Integrations   (Express, Hono, Fastify, MCP)
+       |
+    Helpers       (auth strategies, remote issuance)
+       |
+     Core         (ChallengeEngine, AccessTokenIssuer, storage)
+       |
+    Adapter       (X402Adapter, verifyTransfer, sendUsdc)
+       |
+     Types        (interfaces, message types, error codes)
+```
+
+### 1. Types
+
+All interfaces and message types live in `src/types/`. This layer contains zero runtime logic -- it defines the contracts that every other layer depends on. Key interfaces include `IPaymentAdapter`, `IChallengeStore`, `ISeenTxStore`, and `IAuditStore`.
+
+### 2. Core
+
+Business logic that is independent of any HTTP framework or blockchain client. The `ChallengeEngine` owns the full payment lifecycle state machine. `AccessTokenIssuer` handles JWT creation and verification. The `storage/` subdirectory provides Redis and Postgres implementations of the store interfaces.
+
+### 3. Adapter
+
+On-chain interaction through `X402Adapter`, which implements `IPaymentAdapter`. The adapter verifies ERC-20 Transfer events on Base (mainnet chain ID 8453, testnet chain ID 84532) using viem. It also provides `sendUsdc` for processing refunds.
+
+### 4. Integrations
+
+Framework-specific adapters that mount the challenge and proof endpoints. Each integration exports a router/plugin and a `validateAccessToken` middleware for protecting downstream routes. The `settlement.ts` module handles on-chain settlement through either the Coinbase facilitator or a gas wallet.
+
+### 5. Helpers
+
+Auth strategies for outbound requests from client agents (`noAuth`, `sharedSecretAuth`, `signedJwtAuth`, `oauthClientCredentialsAuth`) and `createRemoteTokenIssuer` for delegating token issuance to a remote Key0 instance.
+
+---
+
+## Entry Points
+
+The SDK exposes framework-specific subpath imports so you only pull in the dependencies you need.
+
+| Import path | Exports |
+| --- | --- |
+| `@key0ai/key0` | Everything -- types, core, adapter, helpers, factory |
+| `@key0ai/key0/express` | `key0Router`, `validateAccessToken` |
+| `@key0ai/key0/hono` | `key0App`, `honoValidateAccessToken` |
+| `@key0ai/key0/fastify` | `key0Plugin`, `fastifyValidateAccessToken` |
+| `@key0ai/key0/mcp` | `createMcpServer`, `mountMcpRoutes` |
+
+The main entry point (`src/index.ts`) re-exports from all layers. Framework subpaths are defined in the `exports` field of `package.json` and resolve to the corresponding file under `src/integrations/`.
+
+---
+
+## Key Files
+
+| File | Purpose |
+| --- | --- |
+| `src/core/challenge-engine.ts` | State machine governing the full challenge lifecycle (PENDING, PAID, DELIVERED, EXPIRED, CANCELLED, REFUNDED) |
+| `src/core/access-token.ts` | JWT issuance and verification with HS256/RS256 support and fallback secrets for zero-downtime rotation |
+| `src/adapter/verify-transfer.ts` | On-chain verification of ERC-20 Transfer events -- runs 6 checks (tx status, log presence, token address, recipient, sender, amount) |
+| `src/types/config.ts` | `SellerConfig` definition -- the single configuration object that drives the entire SDK |
+| `src/types/storage.ts` | Store interfaces (`IChallengeStore`, `ISeenTxStore`, `IAuditStore`) that all storage backends implement |
+| `src/factory.ts` | `createKey0()` -- the top-level factory that wires adapter, engine, stores, and integration together |
+| `src/executor.ts` | `Key0Executor` -- implements the A2A `AgentExecutor` interface for native agent-to-agent payment flows |
+| `src/integrations/settlement.ts` | Settlement logic for both facilitator-based (EIP-3009) and gas wallet (direct transfer) strategies |
+| `src/integrations/x402-http-middleware.ts` | x402 HTTP middleware that intercepts requests, issues challenges, and processes payment headers |
+| `src/utils/gas-wallet-lock.ts` | Distributed locking for gas wallet settlement -- Redis-based across replicas, in-process queue for single instances |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="SDK Reference Overview" icon="book" href="/sdk-reference/overview">
+    API documentation for every exported module in the SDK.
+  </Card>
+  <Card title="Payment Flow" icon="arrows-repeat" href="/architecture/payment-flow">
+    Sequence diagrams showing how the layers interact during a payment.
+  </Card>
+</CardGroup>

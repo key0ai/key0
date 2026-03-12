@@ -1,0 +1,265 @@
+---
+title: "Hono Seller"
+description: "A Photo Gallery Agent built with Hono that sells photo access to AI agents via USDC payments."
+---
+
+A lightweight seller agent built with [Hono](https://hono.dev) that monetizes a photo gallery API. AI agents discover the seller via its A2A agent card, pay USDC on Base, and receive a JWT to access protected photo endpoints.
+
+<Warning>
+  This example uses the **legacy product/tier API** (`products`, `tierId`, `onIssueToken`) rather than the current `plans`/`planId`/`fetchResourceCredentials` API. The payment flow is identical -- only the configuration shape differs. See the [Hono integration guide](/integrations/hono) and the [Express Seller example](/examples/express-seller) for the current API.
+</Warning>
+
+## What It Demonstrates
+
+- Mounting the Key0 payment gateway on a Hono app with `key0App`
+- Defining multiple product tiers with different prices and access durations
+- Issuing JWTs with tier-specific TTLs via `AccessTokenIssuer`
+- Protecting downstream routes with `honoValidateAccessToken` middleware
+
+## Architecture
+
+```
+Agent                          Hono Seller
+  |                                |
+  |-- GET /.well-known/agent.json -|  (discover capabilities)
+  |-- POST /a2a/jsonrpc ---------->|  (request access)
+  |<-------- X402Challenge --------|  (amount, destination, chainId)
+  |                                |
+  |  ... pays USDC on-chain ...    |
+  |                                |
+  |-- POST /a2a/jsonrpc ---------->|  (submit payment proof)
+  |<-------- AccessGrant ----------|  (JWT + resource endpoint)
+  |                                |
+  |-- GET /api/photos/:id -------->|  (Bearer token)
+  |<-------- photo data -----------|
+```
+
+## Prerequisites
+
+- [Bun](https://bun.sh) v1.0+
+- A wallet address to receive USDC payments
+
+<Note>
+  This example uses in-memory storage by default, so no Redis or Postgres is required. For production use, swap in `RedisChallengeStore` and `RedisSeenTxStore`.
+</Note>
+
+## Key Files
+
+The entire example is a single file:
+
+```
+examples/hono-seller/
+├── server.ts          # Hono app with Key0 payment gateway
+├── package.json
+└── .env.example
+```
+
+## Code Walkthrough
+
+### 1. Imports and configuration
+
+```typescript
+import type { NetworkName } from "@key0ai/key0";
+import { AccessTokenIssuer, X402Adapter } from "@key0ai/key0";
+import { honoValidateAccessToken, key0App } from "@key0ai/key0/hono";
+import { Hono } from "hono";
+
+const PORT = Number(process.env["PORT"] ?? 3001);
+const NETWORK = (process.env["KEY0_NETWORK"] ?? "testnet") as NetworkName;
+const WALLET = (process.env["KEY0_WALLET_ADDRESS"] ??
+	"0x0000000000000000000000000000000000000000") as `0x${string}`;
+const SECRET =
+	process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
+```
+
+All configuration comes from environment variables with safe defaults for local development. The `@key0ai/key0/hono` subpath export provides Hono-specific helpers.
+
+### 2. Payment adapter and token issuer
+
+```typescript
+const adapter = new X402Adapter({
+	network: NETWORK,
+	rpcUrl: process.env["KEY0_RPC_URL"],
+});
+
+const tokenIssuer = new AccessTokenIssuer(SECRET);
+```
+
+`X402Adapter` handles on-chain verification of USDC transfers on Base. `AccessTokenIssuer` signs and verifies JWTs using the shared secret.
+
+### 3. Payment gateway
+
+```typescript
+const gate = key0App({
+	config: {
+		agentName: "Photo Gallery Agent",
+		agentDescription: "Purchase access to premium photos via USDC payments on Base",
+		agentUrl: `http://localhost:${PORT}`,
+		providerName: "Example Corp",
+		providerUrl: "https://example.com",
+		walletAddress: WALLET,
+		network: NETWORK,
+		challengeTTLSeconds: 900,
+		products: [
+			{
+				tierId: "single-photo",
+				label: "Single Photo",
+				amount: "$0.10",
+				resourceType: "photo",
+				accessDurationSeconds: 3600,
+			},
+			{
+				tierId: "full-album",
+				label: "Full Album Access",
+				amount: "$1.00",
+				resourceType: "album",
+				accessDurationSeconds: 86400,
+			},
+		],
+		// ...callbacks shown below
+		resourceEndpointTemplate: `http://localhost:${PORT}/api/photos/{resourceId}`,
+	},
+	adapter,
+});
+```
+
+`key0App` returns a Hono sub-app that mounts the A2A agent card at `/.well-known/agent.json` and the JSON-RPC endpoint at `/a2a/jsonrpc`. The `products` array defines two tiers -- a single photo for \$0.10 and a full album for \$1.00.
+
+### 4. Token issuance
+
+```typescript
+onIssueToken: async (params) => {
+	const ttl = params.tierId === "single-photo" ? 3600 : 86400;
+	return tokenIssuer.sign(
+		{
+			sub: params.requestId,
+			jti: params.challengeId,
+			resourceId: params.resourceId,
+			tierId: params.tierId,
+			txHash: params.txHash,
+		},
+		ttl,
+	);
+},
+```
+
+`onIssueToken` runs after payment verification succeeds, minting a JWT with a tier-appropriate lifetime -- 1 hour for single photos, 24 hours for full albums.
+
+<Info>
+  This example uses the legacy `onIssueToken` pattern. In the current API, it is replaced by `fetchResourceCredentials`. See the [Express Seller example](/examples/express-seller) for the current approach.
+</Info>
+
+### 5. Payment lifecycle hook
+
+The optional `onPaymentReceived` callback fires after a payment is verified and a credential is issued. Use it for logging, analytics, or notifying downstream systems:
+
+```typescript
+onPaymentReceived: async (grant) => {
+	console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.tierId})`);
+	console.log(`  TX: ${grant.explorerUrl}`);
+},
+```
+
+### 6. Protecting routes with JWT middleware
+
+```typescript
+const app = new Hono();
+app.route("/", gate);
+
+const api = new Hono();
+api.use("/*", honoValidateAccessToken({ secret: SECRET }));
+
+api.get("/photos/:id", (c) => {
+	const photoId = c.req.param("id");
+	return c.json({
+		id: photoId,
+		url: `https://cdn.example.com/photos/${photoId}.jpg`,
+		title: `Premium Photo ${photoId}`,
+		resolution: "4K",
+	});
+});
+
+app.route("/api", api);
+```
+
+The `/api` sub-router is gated by `honoValidateAccessToken`. Any request without a valid Bearer token receives a `401`. The middleware is independent of the payment flow -- it only verifies JWTs signed by the same secret.
+
+### 7. Server export
+
+```typescript
+export default {
+	port: PORT,
+	fetch: app.fetch,
+};
+```
+
+Bun picks up the default export automatically. No explicit `serve()` call needed.
+
+## Running the Example
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    cd examples/hono-seller
+    bun install
+    ```
+  </Step>
+  <Step title="Configure environment">
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit `.env` and set your wallet address:
+
+    ```bash .env
+    KEY0_WALLET_ADDRESS=0xYourWalletAddress
+    KEY0_ACCESS_TOKEN_SECRET=your-secret-at-least-32-characters-long
+    KEY0_NETWORK=testnet
+    ```
+  </Step>
+  <Step title="Start the server">
+    ```bash
+    bun run start
+    ```
+  </Step>
+</Steps>
+
+## Expected Output
+
+```
+Photo Gallery Agent (Hono) running on http://localhost:3001
+```
+
+### Verify the agent card
+
+```bash
+curl http://localhost:3001/.well-known/agent.json | jq .
+```
+
+This returns the auto-generated A2A agent card describing the seller's capabilities, product tiers, and A2A endpoint.
+
+### Complete a payment flow
+
+Run an agent against this seller to execute a full discovery, payment, and resource access cycle. When a payment completes, you will see:
+
+```
+[Payment] Received payment for photo-1 (single-photo)
+  TX: https://sepolia.basescan.org/tx/0x...
+```
+
+## Hono vs Express
+
+The Key0 integration surface is nearly identical across frameworks. The main differences:
+
+| | Hono | Express |
+|---|---|---|
+| Gateway mount | `key0App()` returns a Hono sub-app | `key0Router()` returns an Express router |
+| Token middleware | `honoValidateAccessToken()` | `validateAccessToken()` |
+| Import path | `@key0ai/key0/hono` | `@key0ai/key0/express` |
+| Server | `export default { fetch }` | `app.listen(port)` |
+
+For full integration documentation, see the [Hono integration guide](/integrations/hono).
+
+<Card title="Source code" icon="github" href="https://github.com/key0ai/key0/tree/main/examples/hono-seller">
+  `examples/hono-seller/server.ts`
+</Card>

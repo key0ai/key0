@@ -1,0 +1,219 @@
+---
+title: "Token Issuance"
+description: "How Key0 issues and validates JWTs after payment. Covers AccessTokenIssuer, HS256/RS256 algorithms, timeout behavior, and the validateAccessToken middleware."
+---
+
+# Token issuance
+
+After an agent pays for access, Key0 issues a signed JWT that the agent uses to call your protected endpoints. This page covers the classes and functions involved in creating, signing, and verifying those tokens.
+
+## Token issuance flow
+
+<Steps>
+  <Step title="Challenge transitions to PAID">
+    The `ChallengeEngine` verifies the on-chain payment and transitions the challenge from `PENDING` to `PAID`.
+  </Step>
+  <Step title="fetchResourceCredentials is called">
+    Your callback receives the payment context:
+    ```typescript
+    {
+      requestId: string;
+      challengeId: string;
+      resourceId: string;
+      planId: string;
+      txHash: string;
+      unitAmount: string;
+    }
+    ```
+  </Step>
+  <Step title="Callback returns credentials">
+    Your callback returns `{ token: string }` (or any credential shape you define).
+  </Step>
+  <Step title="Challenge transitions to DELIVERED">
+    The engine atomically transitions the challenge to `DELIVERED`.
+  </Step>
+  <Step title="AccessGrant is returned">
+    The agent receives the signed JWT and uses it as a `Bearer` token on subsequent requests.
+  </Step>
+</Steps>
+
+## AccessTokenIssuer
+
+The `AccessTokenIssuer` class handles JWT creation and verification. It supports two signing algorithms: HS256 (shared secret) and RS256 (RSA key pair).
+
+### Constructor
+
+The constructor accepts either a plain string (backward-compatible) or a config object:
+
+```typescript
+import { AccessTokenIssuer } from "@key0ai/key0";
+
+// Option 1: string shorthand (HS256)
+const issuer = new AccessTokenIssuer("your-secret-at-least-32-characters-long");
+
+// Option 2: config object (HS256)
+const issuer = new AccessTokenIssuer({
+  secret: "your-secret-at-least-32-characters-long",
+  algorithm: "HS256",
+});
+
+// Option 3: config object (RS256)
+const issuer = new AccessTokenIssuer({
+  privateKey: process.env.RSA_PRIVATE_KEY, // PEM format
+  algorithm: "RS256",
+});
+```
+
+<Note>
+  HS256 secrets must be at least 32 characters. The constructor throws immediately if the secret is shorter.
+</Note>
+
+### Config type
+
+```typescript
+type AccessTokenIssuerConfig = {
+  /** Shared secret for HS256 (required if algorithm is HS256) */
+  secret?: string;
+  /** Private key in PEM format for RS256 (required if algorithm is RS256) */
+  privateKey?: string;
+  /** Algorithm to use (default: HS256) */
+  algorithm?: "HS256" | "RS256";
+};
+```
+
+### Methods
+
+#### sign
+
+Creates a signed JWT with the given claims and TTL.
+
+```typescript
+const { token } = await issuer.sign(
+  {
+    sub: requestId,
+    jti: challengeId,
+    resourceId: "weather-api",
+    planId: "basic",
+    txHash: "0xabc...",
+  },
+  3600, // TTL in seconds (1 hour)
+);
+```
+
+#### verify
+
+Verifies a token using the primary secret. HS256 only -- RS256 tokens should be verified with `validateKey0Token` using the public key.
+
+```typescript
+const claims = await issuer.verify(token);
+// { sub, jti, resourceId, planId, txHash, iat, exp }
+```
+
+#### verifyWithFallback
+
+Tries the primary secret first, then falls back to a list of previous secrets. Use this during secret rotation.
+
+```typescript
+const claims = await issuer.verifyWithFallback(token, [
+  "old-secret-that-was-recently-rotated",
+]);
+```
+
+## TokenClaims
+
+Every Key0 JWT contains these custom claims alongside the standard `iat` and `exp`:
+
+| Claim | Type | Description |
+|---|---|---|
+| `sub` | `string` | The `requestId` that initiated the payment flow |
+| `jti` | `string` | The `challengeId` for this specific challenge |
+| `resourceId` | `string` | The resource the agent paid to access |
+| `planId` | `string` | The pricing plan the agent selected |
+| `txHash` | `string` | The on-chain transaction hash proving payment |
+| `iat` | `number` | Issued-at timestamp (seconds since epoch) |
+| `exp` | `number` | Expiration timestamp (seconds since epoch) |
+
+```typescript
+type TokenClaims = {
+  readonly sub: string;
+  readonly jti: string;
+  readonly resourceId: string;
+  readonly planId: string;
+  readonly txHash: string;
+};
+```
+
+## validateToken middleware
+
+The `validateToken` function is a framework-agnostic utility that extracts and verifies a Bearer token from an `Authorization` header. The framework integrations (Express, Hono, Fastify) wrap this function into middleware.
+
+```typescript
+import { validateToken } from "@key0ai/key0";
+
+const payload = await validateToken(
+  req.headers.authorization,
+  { secret: process.env.ACCESS_TOKEN_SECRET },
+);
+// payload: { sub, jti, resourceId, planId, txHash, iat, exp }
+```
+
+### Error handling
+
+`validateToken` throws a `Key0Error` with the following codes:
+
+| Condition | Error code | HTTP status |
+|---|---|---|
+| Missing or malformed `Authorization` header | `INVALID_REQUEST` | 401 |
+| Expired token | `CHALLENGE_EXPIRED` | 401 |
+| Invalid signature or tampered token | `INVALID_REQUEST` | 401 |
+
+## validateKey0Token (lightweight validator)
+
+If your backend service only needs to verify tokens and does not need the full SDK, use the standalone validator from `@key0ai/key0/validator`. It supports both HS256 and RS256 and has no blockchain dependencies.
+
+```typescript
+import { validateKey0Token } from "@key0ai/key0/validator";
+
+// HS256
+const payload = await validateKey0Token(req.headers.authorization, {
+  secret: process.env.KEY0_SECRET,
+});
+
+// RS256
+const payload = await validateKey0Token(req.headers.authorization, {
+  publicKey: process.env.RSA_PUBLIC_KEY,
+  algorithm: "RS256",
+});
+```
+
+The validator checks all required claims (`sub`, `jti`, `resourceId`, `planId`, `txHash`) and throws if any are missing.
+
+## HS256 vs RS256
+
+| | HS256 | RS256 |
+|---|---|---|
+| **Key type** | Shared secret (>= 32 chars) | RSA private/public key pair |
+| **Sign with** | Secret | Private key (PEM) |
+| **Verify with** | Same secret | Public key (PEM) |
+| **Use case** | Single service, or services that share the same secret | Distributed verification -- sign on one server, verify on many without sharing the private key |
+| **Rotation** | `verifyWithFallback` with old secrets | Publish new public key, keep old key in rotation |
+
+## Token issuance timeout
+
+The `ChallengeEngine` wraps your `fetchResourceCredentials` callback in a `Promise.race` with a configurable timeout.
+
+```typescript
+const engine = createKey0({
+  tokenIssueTimeoutMs: 15_000, // default: 15 seconds
+  tokenIssueRetries: 2,        // default: 2 retry attempts
+  // ...
+});
+```
+
+<Warning>
+  **Timeouts are never retried.** When `fetchResourceCredentials` times out, the engine throws `TOKEN_ISSUE_TIMEOUT` (HTTP 504) immediately and does not retry. This is intentional: `Promise.race` does not cancel the losing promise, so the original call may still be in flight. Retrying would risk spawning concurrent calls that could issue duplicate credentials.
+</Warning>
+
+For transient (non-timeout) errors, the engine retries up to `tokenIssueRetries` times with exponential backoff (500ms base delay -- 500ms, 1s, 2s, and so on).
+
+If token issuance fails permanently, the challenge stays in the `PAID` state. The [refund cron](/architecture/refunds) can pick it up and settle an on-chain refund automatically.

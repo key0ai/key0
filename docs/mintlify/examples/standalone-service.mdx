@@ -1,0 +1,434 @@
+---
+title: "Standalone Service"
+description: "A production-ready Key0 standalone service with configurable storage, auth strategies, token modes, gas wallet support, and automatic refunds."
+---
+
+The standalone service example is the most comprehensive Key0 deployment pattern. It runs Key0 as its own microservice, decoupled from your backend, handling the full payment lifecycle: agent discovery, challenge issuance, on-chain verification, token delivery, payment notifications, and automatic refunds.
+
+This is the recommended architecture for production deployments where you want to isolate payment infrastructure from your application logic.
+
+## Architecture
+
+```
+                  ┌─────────────────────────────┐
+                  │         AI Agent             │
+                  └──────┬───────────┬───────────┘
+                         │           │
+            1. Discover  │           │  5. Use token
+            + Pay (A2A)  │           │     (Bearer JWT)
+                         ▼           ▼
+              ┌──────────────┐   ┌──────────────────┐
+              │ Key0 Service │   │  Your Backend     │
+              │              │──>│                   │
+              │ - Challenge  │ 3.│  - Protected APIs │
+              │ - Verify tx  │   │  - /internal/*    │
+              │ - Issue JWT  │   │                   │
+              │ - Refund     │   │                   │
+              └──────────────┘   └──────────────────┘
+                     │  ▲              ▲
+                  2. │  │ 4.           │
+                     ▼  │              │
+              ┌──────────────┐         │
+              │  Base (USDC) │         │
+              └──────────────┘         │
+                                       │
+              ┌──────────────┐         │
+              │ Redis/Postgres├────────┘
+              └──────────────┘
+```
+
+**Flow:**
+1. Agent discovers the Key0 service via `/.well-known/agent.json` and requests access via A2A
+2. Key0 issues an x402 challenge; agent pays USDC on Base
+3. Key0 verifies the on-chain transfer and notifies your backend
+4. Key0 issues a JWT (locally or via your backend) and returns it to the agent
+5. Agent uses the JWT to call your protected API directly
+
+## What This Example Demonstrates
+
+| Capability | Options |
+| --- | --- |
+| **Storage backend** | Redis or Postgres, selected at startup |
+| **Auth strategies** | `noAuth`, `sharedSecretAuth`, `signedJwtAuth` for backend communication |
+| **Token issuance** | Native (local JWT) or remote (delegates to backend) |
+| **Gas wallet** | Optional self-contained settlement mode |
+| **MCP support** | `mcp: true` enables MCP tool discovery alongside A2A |
+| **Automatic refunds** | BullMQ cron processes refunds for failed deliveries |
+| **Multi-plan pricing** | Pay-as-you-go, monthly, and yearly plans |
+
+---
+
+## Configuration Reference
+
+### Core Settings
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `KEY0_PORT` | No | `3001` | Port the service listens on |
+| `KEY0_NETWORK` | No | `testnet` | `testnet` (Base Sepolia) or `mainnet` (Base) |
+| `KEY0_ACCESS_TOKEN_SECRET` | Yes | -- | Secret for JWT signing. Must be at least 32 characters. |
+| `KEY0_WALLET_ADDRESS` | Yes | -- | Wallet address to receive USDC payments |
+| `KEY0_PUBLIC_URL` | No | `http://localhost:{port}` | Public URL for agent card and endpoint URLs |
+| `CHALLENGE_TTL_SECONDS` | No | `900` | How long a payment challenge remains valid |
+
+### Backend Communication
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `BACKEND_API_URL` | Yes | -- | Base URL of your backend service |
+| `BACKEND_AUTH_STRATEGY` | No | `none` | Auth strategy: `none`, `shared-secret`, or `jwt` |
+| `INTERNAL_AUTH_SECRET` | Conditional | -- | Required when `BACKEND_AUTH_STRATEGY=shared-secret` |
+| `TOKEN_MODE` | No | `native` | `native` (local JWT) or `remote` (call backend) |
+
+### Storage
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `STORAGE_BACKEND` | No | `redis` | `redis` or `postgres` |
+| `REDIS_URL` | Conditional | -- | Required when `STORAGE_BACKEND=redis` |
+| `DATABASE_URL` | Conditional | -- | Required when `STORAGE_BACKEND=postgres` |
+
+### Gas Wallet and Refunds
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `USE_GAS_WALLET` | No | `false` | Enable gas wallet settlement mode |
+| `GAS_WALLET_PRIVATE_KEY` | Conditional | -- | Required when `USE_GAS_WALLET=true` |
+| `KEY0_WALLET_PRIVATE_KEY` | No | -- | Private key for sending refunds. Refund cron is disabled without this. |
+| `REFUND_INTERVAL_MS` | No | `15000` | How often the refund cron runs (ms) |
+| `REFUND_MIN_AGE_MS` | No | `30000` | Minimum age before a failed delivery is eligible for refund (ms) |
+
+### Agent Card Metadata
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `AGENT_NAME` | No | `Key0 Service` | Name shown in the A2A agent card |
+| `AGENT_DESCRIPTION` | No | `Payment-gated API access for AI agents` | Description in the agent card |
+| `PROVIDER_NAME` | No | `Example Corp` | Provider name in the agent card |
+| `PROVIDER_URL` | No | `https://example.com` | Provider URL in the agent card |
+
+---
+
+## Code Walkthrough
+
+### Storage Backend Selection
+
+The service selects its storage layer at startup based on a single environment variable. Both backends implement the same `IChallengeStore` and `ISeenTxStore` interfaces, so the rest of the code is storage-agnostic.
+
+<Tabs>
+  <Tab title="Redis">
+    ```typescript
+    const redis = new Redis(process.env.REDIS_URL!);
+    store = new RedisChallengeStore({ redis, challengeTTLSeconds: 900 });
+    seenTxStore = new RedisSeenTxStore({ redis });
+    ```
+
+    Redis uses atomic Lua scripts for state transitions and `SET NX` for double-spend prevention. Best for low-latency, single-region deployments.
+  </Tab>
+  <Tab title="Postgres">
+    ```typescript
+    const postgres = (await import("postgres")).default;
+    const sql = postgres(process.env.DATABASE_URL!);
+    store = new PostgresChallengeStore({ sql });
+    seenTxStore = new PostgresSeenTxStore({ sql });
+    ```
+
+    Postgres uses row-level locking for atomicity. Best when you already run Postgres and want a single data store.
+  </Tab>
+</Tabs>
+
+<Info>
+  Regardless of which storage backend you choose, the BullMQ refund cron always requires a Redis connection. If you use Postgres for storage, set `REDIS_URL` or `BULLMQ_REDIS_URL` separately for the job queue.
+</Info>
+
+### Auth Strategy Configuration
+
+When Key0 communicates with your backend (to notify payments or request token issuance), it authenticates using one of three strategies:
+
+```typescript
+let authProvider: AuthHeaderProvider;
+
+if (BACKEND_AUTH_STRATEGY === "jwt") {
+  authProvider = signedJwtAuth(serviceTokenIssuer, "backend-service");
+} else if (BACKEND_AUTH_STRATEGY === "shared-secret") {
+  authProvider = sharedSecretAuth("X-Internal-Auth", INTERNAL_AUTH_SECRET);
+} else {
+  authProvider = noAuth();
+}
+```
+
+| Strategy | When to use | What it sends |
+| --- | --- | --- |
+| `noAuth()` | Local development, trusted internal networks | No auth headers |
+| `sharedSecretAuth()` | Simple production setups | `X-Internal-Auth: <secret>` header |
+| `signedJwtAuth()` | Zero-trust environments | `Authorization: Bearer <signed-jwt>` header |
+
+<Warning>
+  Never use `noAuth()` in production. Use `shared-secret` as a minimum, or `jwt` for environments where services communicate across network boundaries.
+</Warning>
+
+### Token Issuance Modes
+
+After payment verification, Key0 needs to issue a credential. The standalone service supports two modes:
+
+<Tabs>
+  <Tab title="Native (local JWT)">
+    Key0 signs a JWT locally using `AccessTokenIssuer`. The token includes the challenge ID, resource ID, plan ID, and transaction hash:
+
+    ```typescript
+    const localTokenIssuer = new AccessTokenIssuer(SECRET);
+    fetchResourceCredentials = async (params) => {
+      const ttl = 3600;
+      return localTokenIssuer.sign(
+        {
+          sub: params.requestId,
+          jti: params.challengeId,
+          resourceId: params.resourceId,
+          planId: params.planId,
+          txHash: params.txHash,
+        },
+        ttl,
+      );
+    };
+    ```
+
+    Your backend validates the token using the same `KEY0_ACCESS_TOKEN_SECRET`. Best when Key0 and your backend share a secret.
+  </Tab>
+  <Tab title="Remote (delegate to backend)">
+    Key0 calls your backend's `/internal/issue-token` endpoint, letting your backend control the token format entirely:
+
+    ```typescript
+    const remoteTokenIssuer = createRemoteTokenIssuer({
+      url: `${BACKEND_API_URL}/internal/issue-token`,
+      auth: authProvider,
+      timeoutMs: 10000,
+    });
+    fetchResourceCredentials = remoteTokenIssuer;
+    ```
+
+    Best when your backend already has its own token system (OAuth, API keys, session tokens) and you want Key0 to integrate with it.
+  </Tab>
+</Tabs>
+
+### Plan Catalog
+
+The service defines a multi-tier pricing structure that agents discover via the A2A agent card:
+
+```typescript
+const plans = [
+  {
+    planId: "basic",
+    unitAmount: "$0.015",
+    description: "Pay-as-you-go. 2 concurrent agents, 10 req/min.",
+  },
+  {
+    planId: "starter-monthly",
+    unitAmount: "$15.00",
+    description: "1,650 req/month, 10 concurrent agents, 100 req/min.",
+  },
+  {
+    planId: "starter-yearly",
+    unitAmount: "$168.00",
+    description: "Same as starter-monthly, billed yearly (save 7%).",
+  },
+  {
+    planId: "pro-monthly",
+    unitAmount: "$150.00",
+    description: "16,500 req/month, 50 concurrent agents, 1,000 req/min.",
+  },
+];
+```
+
+Agents select a plan when requesting access. Key0 issues a challenge for the corresponding `unitAmount`, and the entire payment/verification/delivery flow proceeds automatically.
+
+### Payment Notifications
+
+After a payment is verified and a credential is issued, Key0 notifies your backend so you can activate the subscription, update billing records, or trigger downstream workflows:
+
+```typescript
+onPaymentReceived: async (grant) => {
+  const headers = await authProvider();
+  await fetch(`${BACKEND_API_URL}/internal/payment-received`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(grant),
+  });
+},
+```
+
+<Note>
+  The payment notification is fire-and-forget. If the backend is unreachable, the error is logged but the agent still receives their token. Design your backend to handle idempotent replays if needed.
+</Note>
+
+### Refund Cron Setup
+
+The BullMQ-based refund cron automatically processes refunds for challenges that reached the PAID state but failed delivery. It runs on a configurable interval and only processes challenges older than a grace period:
+
+```typescript
+const refundQueue = new Queue("refund-cron", { connection: bullConnection });
+await refundQueue.add("process-refunds", {}, {
+  repeat: { every: REFUND_INTERVAL_MS },
+});
+
+const cronWorker = new Worker("refund-cron", () => runRefundCron(), {
+  connection: bullConnection,
+});
+```
+
+The refund processor transitions challenges through `PAID -> REFUND_PENDING -> REFUNDED` (or `REFUND_FAILED`), sending USDC back to the payer on-chain.
+
+<Warning>
+  The refund cron requires `KEY0_WALLET_PRIVATE_KEY` to sign refund transactions. Without it, the cron starts but skips processing. Never commit private keys to source control -- use a secrets manager.
+</Warning>
+
+---
+
+## Running the Example
+
+<Steps>
+  <Step title="Start infrastructure">
+    You need Redis running (required for BullMQ, and optionally for storage). If using Postgres for storage, start that as well.
+
+    <CodeGroup>
+      ```bash Redis only
+      docker run -d --name redis -p 6379:6379 redis:7-alpine
+      ```
+
+      ```bash Redis + Postgres
+      docker run -d --name redis -p 6379:6379 redis:7-alpine
+      docker run -d --name postgres -p 5432:5432 \
+        -e POSTGRES_PASSWORD=password \
+        -e POSTGRES_DB=key0 \
+        postgres:16-alpine
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Configure environment variables">
+    Create a `.env` file in the `examples/standalone-service` directory:
+
+    ```bash
+    # Core
+    KEY0_PORT=3001
+    KEY0_NETWORK=testnet
+    KEY0_ACCESS_TOKEN_SECRET=your-secret-at-least-32-characters-long
+    KEY0_WALLET_ADDRESS=0xYourWalletAddress
+
+    # Backend
+    BACKEND_API_URL=http://localhost:3000
+    BACKEND_AUTH_STRATEGY=shared-secret
+    INTERNAL_AUTH_SECRET=your-internal-secret
+
+    # Storage
+    STORAGE_BACKEND=redis
+    REDIS_URL=redis://localhost:6379
+
+    # Token mode
+    TOKEN_MODE=native
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    cd examples/standalone-service
+    bun install
+    ```
+  </Step>
+
+  <Step title="Start the service">
+    ```bash
+    bun run start
+    ```
+
+    You should see:
+
+    ```
+    Key0 Standalone Service
+       Port: 3001
+       Network: testnet
+       Storage: REDIS
+       Token Mode: native
+       Facilitation Mode: Standard
+       Backend URL: http://localhost:3000
+       Agent Card: http://localhost:3001/.well-known/agent.json
+       A2A Endpoint: http://localhost:3001/agent
+
+    Refund cron:
+      Interval     : 15s
+      Grace period : 30s
+      Status       : DISABLED (set KEY0_WALLET_PRIVATE_KEY)
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Endpoints
+
+Once running, the service exposes:
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /.well-known/agent.json` | A2A agent card with capabilities and pricing |
+| `POST /agent` | A2A JSON-RPC endpoint for challenge/proof flow |
+| `GET /.well-known/mcp.json` | MCP discovery (when `mcp: true`) |
+| `POST /mcp` | MCP Streamable HTTP endpoint |
+| `GET /health` | Health check with storage, token mode, and network info |
+| `GET /.well-known/token-info` | Token format metadata for backend integration |
+
+---
+
+## Testing
+
+### Verify the agent card
+
+```bash
+curl http://localhost:3001/.well-known/agent.json | jq .
+```
+
+### Check health
+
+```bash
+curl http://localhost:3001/health | jq .
+```
+
+Expected response:
+
+```json
+{
+  "status": "ok",
+  "service": "key0",
+  "storage": "redis",
+  "tokenMode": "native",
+  "network": "testnet"
+}
+```
+
+### Run a full payment flow
+
+Point an agent at this service to run a complete discovery-to-payment-to-access flow.
+
+### Test MCP discovery
+
+```bash
+curl http://localhost:3001/.well-known/mcp.json | jq .
+```
+
+---
+
+## Production Checklist
+
+Before deploying to production:
+
+- [ ] Set `KEY0_NETWORK=mainnet`
+- [ ] Use a strong, randomly generated `KEY0_ACCESS_TOKEN_SECRET` (64+ characters)
+- [ ] Set `BACKEND_AUTH_STRATEGY` to `shared-secret` or `jwt`
+- [ ] Configure `KEY0_PUBLIC_URL` to your actual domain
+- [ ] Set `KEY0_WALLET_PRIVATE_KEY` to enable automatic refunds
+- [ ] Use a managed Redis (e.g., Upstash, ElastiCache) or managed Postgres
+- [ ] Run behind a reverse proxy (nginx, Cloudflare) with TLS
+- [ ] Set `KEY0_WALLET_ADDRESS` to a dedicated payment-receiving wallet
+
+<Card title="Source code" icon="github" href="https://github.com/key0ai/key0/tree/main/examples/standalone-service">
+  `examples/standalone-service/server.ts`
+</Card>

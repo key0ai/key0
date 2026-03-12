@@ -1,0 +1,250 @@
+---
+title: "MCP"
+description: "Expose Key0 payment-gated plans as MCP tools. Agents discover plans and purchase access tokens through the x402 protocol over Streamable HTTP."
+---
+
+# MCP Integration
+
+The MCP integration turns your Key0 seller into an MCP server. Agents connect over [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http), discover your plans, and pay for access tokens using the x402 protocol -- all without leaving the tool-call flow.
+
+## Enable MCP
+
+Set `mcp: true` in your `SellerConfig`. The Express router automatically mounts all MCP routes alongside the existing A2A and x402 HTTP endpoints.
+
+```typescript
+import express from "express";
+import { key0Router } from "@key0ai/key0/express";
+
+const app = express();
+
+const config: SellerConfig = {
+  mcp: true,
+  agentName: "My Service",
+  agentDescription: "A payment-gated API",
+  agentUrl: "https://my-service.example.com",
+  walletAddress: "0x...",
+  network: "mainnet",
+  plans: [
+    { planId: "basic", unitAmount: "1.00", description: "Basic plan" },
+  ],
+  fetchResourceCredentials: async ({ planId }) => {
+    return { apiKey: "sk-..." };
+  },
+};
+
+app.use(key0Router({ config, adapter, store, seenTxStore }));
+app.listen(3000);
+```
+
+## Routes
+
+The integration mounts four routes on the Express router:
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/.well-known/mcp.json` | GET | MCP discovery document (name, description, transport URL) |
+| `/mcp` | POST | Streamable HTTP transport -- handles all tool calls |
+| `/mcp` | GET | Returns 405 (SSE not supported in stateless mode) |
+| `/mcp` | DELETE | Returns 405 (session management not supported in stateless mode) |
+
+## Tools
+
+The MCP server exposes two tools:
+
+| Tool | Gated? | Purpose |
+|---|---|---|
+| `discover_plans` | Free | Browse the plan catalog: plan IDs, prices (USDC), wallet address, chain ID |
+| `request_access` | x402 | Purchase an access token for a plan |
+
+### discover\_plans
+
+Takes no arguments. Returns the full plan catalog as JSON:
+
+```json
+{
+  "agent": "My Service",
+  "description": "A payment-gated API",
+  "network": "mainnet",
+  "chainId": 8453,
+  "walletAddress": "0x...",
+  "asset": "USDC",
+  "plans": [
+    {
+      "planId": "basic",
+      "unitAmount": "1.00",
+      "description": "Basic plan"
+    }
+  ]
+}
+```
+
+### request\_access
+
+Takes `planId` (required) and `resourceId` (optional, defaults to `"default"`).
+
+When called without payment, it returns a PaymentRequired response. When called with a valid x402 payment, it settles on-chain and returns an access grant.
+
+## Payment Flow
+
+There are two paths to complete a payment, depending on the client's capabilities.
+
+<Tabs>
+  <Tab title="Path A: HTTP x402 (Current Clients)">
+    This is the path used by current MCP clients like Claude Desktop, Claude Code, and Cursor. The agent uses a companion payment tool (such as Coinbase's `payments-mcp`) to settle via HTTP.
+
+    **Step-by-step:**
+
+    1. Agent calls `discover_plans` to get the catalog
+    2. Agent calls `request_access({ planId: "basic" })` with no payment attached
+    3. Server returns `isError: true` with a PaymentRequired response containing `x402PaymentUrl` and `paymentInstructions`
+    4. Agent calls `make_http_request_with_x402` (from `payments-mcp`) to POST to the `x402PaymentUrl`
+    5. `payments-mcp` signs an EIP-3009 authorization off-chain and sends it as a `PAYMENT-SIGNATURE` header
+    6. The `/x402/access` endpoint settles the payment on-chain and returns an AccessGrant with a JWT
+
+    **PaymentRequired response:**
+
+    ```json
+    {
+      "isError": true,
+      "structuredContent": {
+        "error": "Payment required to access this resource",
+        "resource": {
+          "url": "https://my-service.example.com/x402/access",
+          "description": "Basic plan",
+          "mimeType": "application/json"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "base-mainnet",
+            "maxAmountRequired": "1000000",
+            "resource": "https://my-service.example.com/x402/access",
+            "description": "Basic plan",
+            "mimeType": "application/json",
+            "payTo": "0x...",
+            "extra": {
+              "planId": "basic",
+              "resourceId": "default"
+            }
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "{ ... x402PaymentUrl, paymentInstructions ... }"
+        }
+      ]
+    }
+    ```
+
+    <Note>
+      The `content[0].text` field contains `x402PaymentUrl` and human-readable `paymentInstructions` so that LLM agents can parse the next step even without structured content support.
+    </Note>
+  </Tab>
+  <Tab title="Path B: Native x402 MCP (Future Clients)">
+    This path is for future x402-aware MCP clients that handle payment natively within the MCP protocol.
+
+    **Step-by-step:**
+
+    1. Agent calls `request_access({ planId: "basic" })` with no payment
+    2. Server returns PaymentRequired with `structuredContent`
+    3. The x402-aware client automatically signs an EIP-3009 authorization
+    4. Client retries `request_access` with the signed payload in `_meta["x402/payment"]`
+    5. Server calls `settlePayment()` to settle on-chain
+    6. Server returns AccessGrant in `content[0].text` and settlement receipt in `_meta["x402/payment-response"]`
+
+    **AccessGrant response:**
+
+    ```json
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"status\": \"access_granted\", \"token\": \"eyJ...\", \"expiresAt\": \"...\"}"
+        }
+      ],
+      "_meta": {
+        "x402/payment-response": {
+          "success": true,
+          "txHash": "0x...",
+          "network": "base-mainnet"
+        }
+      }
+    }
+    ```
+
+    The `_meta["x402/payment"]` payload is validated against a Zod schema. If the payload is present but malformed, the server returns an `isError` response with Zod validation details.
+  </Tab>
+</Tabs>
+
+## Error Handling
+
+| Error | Response |
+|---|---|
+| Plan not found | `isError: true` with Key0Error JSON (`TIER_NOT_FOUND`) |
+| Malformed `_meta["x402/payment"]` | `isError: true` with Key0Error JSON (Zod validation details) |
+| Payment failed / settlement error | `isError: true` with `structuredContent` containing error message and `accepts[]` array for retry |
+| Already redeemed tx | Cached AccessGrant returned (idempotent -- no double-charge) |
+
+<Note>
+  Already-redeemed transactions return the original AccessGrant. The `requestId` is derived deterministically from the payment signature, so retries with the same payment always resolve to the same challenge.
+</Note>
+
+## Connecting from Claude Code
+
+Add your MCP server to `.mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "my-service": {
+      "type": "http",
+      "url": "https://my-service.example.com/mcp"
+    }
+  }
+}
+```
+
+Claude Code connects over Streamable HTTP and discovers the `discover_plans` and `request_access` tools automatically.
+
+## Testing with curl
+
+List available tools:
+
+```bash
+curl -X POST https://my-service.example.com/mcp \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+Call `discover_plans`:
+
+```bash
+curl -X POST https://my-service.example.com/mcp \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "discover_plans",
+      "arguments": {}
+    }
+  }'
+```
+
+<Warning>
+  You must include both `application/json` and `text/event-stream` in the `Accept` header. Without both values, the MCP SDK returns a 406 Not Acceptable response.
+</Warning>
+
+## Why Stateless?
+
+The MCP transport creates a fresh `McpServer` and `StreamableHTTPServerTransport` for every request. This is intentional:
+
+- **Tools are pure request/response.** There is no streaming, subscriptions, or server-initiated messages.
+- **All state lives in external stores.** ChallengeStore and SeenTxStore (Redis or Postgres) hold challenge state and double-spend records.
+- **Horizontal scaling.** No sticky sessions, no in-memory state, no affinity requirements. Put it behind any load balancer.
+- **No memory leaks.** Each server instance is created, used, and closed within a single request lifecycle.

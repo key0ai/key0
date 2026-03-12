@@ -1,0 +1,90 @@
+---
+title: "Two Modes"
+description: "Key0 can run as a standalone Docker service or as middleware embedded in your app. Choose the mode that fits your workflow."
+---
+
+Key0 ships in two deployment modes. Both use the same payment engine, state machine, and security invariants -- the difference is how you integrate and where token issuance lives.
+
+<Tabs>
+  <Tab title="Standalone (Docker)">
+    Run Key0 as a pre-built Docker container alongside your existing API. No code changes required.
+
+    ```bash
+    docker compose -f docker/docker-compose.yml --profile full up
+    ```
+
+    - **Published to Docker Hub** as `key0ai/key0`
+    - **Configure** via the browser-based Setup UI at `/setup`, or through environment variables
+    - **Token issuance** is delegated to your `ISSUE_TOKEN_API` endpoint -- Key0 POSTs to it after a successful payment and forwards the credential back to the agent
+    - **Docker Compose profiles** control which infrastructure is managed for you:
+
+    | Profile | What it includes |
+    |---|---|
+    | _(none)_ | BYO Redis and Postgres |
+    | `redis` | Managed Redis |
+    | `postgres` | Managed Postgres |
+    | `full` | Managed Redis + Postgres (batteries included) |
+
+    Best for teams that want a quick deploy, prefer Docker-native workflows, or want to avoid touching application code.
+  </Tab>
+  <Tab title="Embedded (SDK)">
+    Install the SDK and mount Key0 as middleware inside your existing server.
+
+    <CodeGroup>
+
+    ```bash npm
+    npm install @key0ai/key0
+    ```
+
+    ```bash pnpm
+    pnpm add @key0ai/key0
+    ```
+
+    ```bash bun
+    bun add @key0ai/key0
+    ```
+
+    </CodeGroup>
+
+    - **Framework adapters** for Express, Hono, Fastify, and MCP via subpath imports:
+
+    ```ts
+    import { mountKey0 } from "@key0ai/key0/express";
+    // or "@key0ai/key0/hono", "@key0ai/key0/fastify", "@key0ai/key0/mcp"
+    ```
+
+    - **Token issuance** is handled by your `fetchResourceCredentials` callback -- you have full control over what credential is returned (JWT, API key, signed URL, etc.)
+    - **Configuration** lives in TypeScript as a `SellerConfig` object passed directly to the SDK
+
+    Best for teams that want full programmatic control, are integrating into an existing application, or need custom token issuance logic.
+  </Tab>
+</Tabs>
+
+## Comparison
+
+| | Standalone (Docker) | Embedded (SDK) |
+|---|---|---|
+| **Setup** | `docker compose up` then browser Setup UI | `npm install @key0ai/key0` |
+| **Configuration** | Setup UI or environment variables | TypeScript `SellerConfig` object |
+| **Token issuance** | Delegated to your `ISSUE_TOKEN_API` endpoint | Your `fetchResourceCredentials` callback |
+| **Infrastructure** | Docker Compose manages Redis + Postgres | You provide store instances (Redis, Postgres, or in-memory) |
+| **Best for** | Quick deploy, no code changes, Docker-native workflows | Full control, existing app integration |
+
+## Which should I choose?
+
+**Choose Standalone** if you have an existing API and want to add agent payments without modifying your application code. Key0 runs as a sidecar container and calls back to your token endpoint.
+
+**Choose Embedded** if you want the payment flow to live inside your server process. You get direct access to the `ChallengeEngine`, full control over credential issuance, and no extra container to manage.
+
+Both modes support the same transports (REST x402, A2A, MCP), the same on-chain verification, and the same refund logic. You can start with one and switch later.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart: Standalone" icon="docker" href="/quickstart/standalone">
+    Run Key0 as a Docker service in under 5 minutes.
+  </Card>
+  <Card title="Quickstart: Embedded" icon="bolt" href="/quickstart/embedded">
+    Add Key0 to an existing Express, Hono, or Fastify server.
+  </Card>
+</CardGroup>

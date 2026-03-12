@@ -1,0 +1,207 @@
+---
+title: "Error Codes"
+description: "Complete reference of Key0ErrorCode values, HTTP status codes, and the Key0Error class."
+---
+
+# Error Codes
+
+All errors raised by the Key0 SDK use the `Key0Error` class, which extends the native `Error` with a machine-readable error code, an HTTP status code, and optional structured details.
+
+---
+
+## Key0Error Class
+
+```typescript
+class Key0Error extends Error {
+  readonly code: Key0ErrorCode;
+  readonly httpStatus: number;
+  readonly details?: Record<string, unknown>;
+
+  constructor(
+    code: Key0ErrorCode,
+    message: string,
+    httpStatus?: number,   // default: 400
+    details?: Record<string, unknown>,
+  );
+
+  toJSON(): {
+    type: "Error";
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+}
+```
+
+| Property | Type | Description |
+|---|---|---|
+| `code` | `Key0ErrorCode` | Machine-readable error code (see table below). |
+| `httpStatus` | `number` | Suggested HTTP status code for the response. |
+| `message` | `string` | Human-readable description of the error. |
+| `details` | `Record<string, unknown>` | Optional structured data. Present on `PROOF_ALREADY_REDEEMED` (contains cached `grant`). |
+| `name` | `string` | Always `"Key0Error"`. |
+
+### toJSON()
+
+Returns a serializable object suitable for HTTP response bodies. The `details` field is only included when present.
+
+```typescript
+const err = new Key0Error("TIER_NOT_FOUND", "Plan 'gold' not found", 400);
+console.log(err.toJSON());
+// {
+//   type: "Error",
+//   code: "TIER_NOT_FOUND",
+//   message: "Plan 'gold' not found"
+// }
+```
+
+---
+
+## Error Codes Reference
+
+| Code | HTTP Status | When Thrown |
+|---|---|---|
+| `TIER_NOT_FOUND` | 400 | The `planId` in the request does not match any plan in `SellerConfig.plans`. |
+| `CHALLENGE_NOT_FOUND` | 404 | The `challengeId` does not exist in the challenge store. |
+| `CHALLENGE_EXPIRED` | 401 / 410 | The challenge TTL has elapsed, or the access token `exp` claim is in the past. |
+| `CHAIN_MISMATCH` | 400 | The on-chain transaction was executed on a different chain than expected. |
+| `AMOUNT_MISMATCH` | 400 | The on-chain transfer amount is less than the required `unitAmount`. |
+| `TX_UNCONFIRMED` | 400 | The transaction has not yet been mined (no receipt available). |
+| `TX_ALREADY_REDEEMED` | 409 | The `txHash` has already been used for a different challenge. Prevents double-spend. |
+| `PROOF_ALREADY_REDEEMED` | 409 | The payment proof for this request has already been submitted. The cached `AccessGrant` is returned in `details.grant`. |
+| `INVALID_REQUEST` | 400 / 401 | Malformed request body, missing required fields, or invalid/missing access token. |
+| `INVALID_PROOF` | 400 | The payment proof failed on-chain verification (wrong recipient, wrong token, etc.). |
+| `PAYMENT_FAILED` | 402 | On-chain settlement failed after verification. |
+| `ADAPTER_ERROR` | 500 | The payment adapter (`X402Adapter`) encountered an internal error during verification. |
+| `TOKEN_ISSUE_FAILED` | 502 | The `fetchResourceCredentials` callback threw an error or the remote endpoint returned a non-2xx response. |
+| `TOKEN_ISSUE_TIMEOUT` | 504 | The `fetchResourceCredentials` callback (or remote token endpoint) did not respond within the configured timeout. |
+| `INTERNAL_ERROR` | 500 | An unexpected internal error occurred. Catch-all for unhandled exceptions. |
+
+---
+
+## JSON Error Response
+
+All Key0 HTTP integrations (Express, Hono, Fastify) serialize errors using `Key0Error.toJSON()`. The response body follows this shape:
+
+```json
+{
+  "type": "Error",
+  "code": "TIER_NOT_FOUND",
+  "message": "Plan 'gold' not found"
+}
+```
+
+When `details` is present (e.g., `PROOF_ALREADY_REDEEMED`):
+
+```json
+{
+  "type": "Error",
+  "code": "PROOF_ALREADY_REDEEMED",
+  "message": "Proof already submitted for this request",
+  "details": {
+    "grant": {
+      "accessToken": "eyJhbGci...",
+      "tokenType": "Bearer",
+      "expiresAt": "2025-01-15T12:00:00.000Z",
+      "txHash": "0xabc123...",
+      "explorerUrl": "https://basescan.org/tx/0xabc123..."
+    }
+  }
+}
+```
+
+---
+
+## Handling Errors
+
+### In Client Code
+
+```typescript
+try {
+  const response = await fetch("https://api.example.com/x402/access", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ planId: "pro" }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    switch (error.code) {
+      case "TIER_NOT_FOUND":
+        // Plan does not exist — check available plans
+        break;
+      case "CHALLENGE_EXPIRED":
+        // Retry the flow from the beginning
+        break;
+      case "TX_ALREADY_REDEEMED":
+        // Transaction was already used — do not retry with same txHash
+        break;
+      case "PROOF_ALREADY_REDEEMED":
+        // Use the cached grant from error.details.grant
+        break;
+      default:
+        // Unexpected error
+        break;
+    }
+  }
+} catch (err) {
+  // Network error
+}
+```
+
+### In Server Code
+
+```typescript
+import { Key0Error } from "@key0ai/key0";
+
+try {
+  await engine.submitProof(challengeId, proof);
+} catch (err) {
+  if (err instanceof Key0Error) {
+    console.error(`[${err.code}] ${err.message}`);
+    res.status(err.httpStatus).json(err.toJSON());
+  } else {
+    res.status(500).json({
+      type: "Error",
+      code: "INTERNAL_ERROR",
+      message: "Internal server error",
+    });
+  }
+}
+```
+
+---
+
+## Key0ErrorCode Type
+
+The union type of all valid error codes:
+
+```typescript
+type Key0ErrorCode =
+  | "TIER_NOT_FOUND"
+  | "CHALLENGE_NOT_FOUND"
+  | "CHALLENGE_EXPIRED"
+  | "CHAIN_MISMATCH"
+  | "AMOUNT_MISMATCH"
+  | "TX_UNCONFIRMED"
+  | "TX_ALREADY_REDEEMED"
+  | "PROOF_ALREADY_REDEEMED"
+  | "INVALID_REQUEST"
+  | "INVALID_PROOF"
+  | "PAYMENT_FAILED"
+  | "ADAPTER_ERROR"
+  | "TOKEN_ISSUE_FAILED"
+  | "TOKEN_ISSUE_TIMEOUT"
+  | "INTERNAL_ERROR";
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="ChallengeEngine" icon="gears" href="/sdk-reference/challenge-engine">
+    The state machine that throws most of these error codes.
+  </Card>
+  <Card title="API Reference Overview" icon="book" href="/api-reference/overview">
+    How errors are surfaced across HTTP and JSON-RPC endpoints.
+  </Card>
+</CardGroup>

@@ -1,0 +1,229 @@
+---
+title: "AccessTokenIssuer"
+description: "API reference for AccessTokenIssuer — JWT creation and verification with HS256 or RS256, including zero-downtime secret rotation."
+---
+
+# AccessTokenIssuer
+
+`AccessTokenIssuer` handles JWT creation and verification for the Key0 payment flow. After a client completes an on-chain USDC payment, the engine uses `AccessTokenIssuer` to mint a signed JWT that grants access to the purchased resource.
+
+It supports two signing algorithms:
+
+- **HS256** — symmetric shared secret (default). Suitable for single-service deployments.
+- **RS256** — asymmetric RSA key pair. Suitable for distributed systems where multiple services verify tokens using the public key.
+
+```typescript
+import { AccessTokenIssuer } from "@key0ai/key0";
+```
+
+---
+
+## Constructor
+
+<CodeGroup>
+```typescript String shorthand (HS256)
+const issuer = new AccessTokenIssuer("your-secret-at-least-32-characters-long");
+```
+
+```typescript Config object
+const issuer = new AccessTokenIssuer({
+  secret: "your-secret-at-least-32-characters-long",
+  algorithm: "HS256",
+});
+```
+
+```typescript RS256 with PEM private key
+const issuer = new AccessTokenIssuer({
+  privateKey: process.env.RSA_PRIVATE_KEY, // PEM format
+  algorithm: "RS256",
+});
+```
+</CodeGroup>
+
+### Parameters
+
+<ParamField body="config" type="AccessTokenIssuerConfig | string" required>
+  Either a plain string (interpreted as an HS256 shared secret) or a configuration object.
+</ParamField>
+
+### AccessTokenIssuerConfig
+
+| Property | Type | Required | Description |
+|---|---|---|---|
+| `secret` | `string` | When using HS256 | Shared secret. Must be at least 32 characters. |
+| `privateKey` | `string` | When using RS256 | RSA private key in PEM (PKCS#8) format. |
+| `algorithm` | `"HS256" \| "RS256"` | No | Signing algorithm. Defaults to `"HS256"`. |
+
+### Validation
+
+The constructor throws immediately if:
+
+- An HS256 secret is shorter than 32 characters.
+- RS256 is selected but no `privateKey` is provided.
+- HS256 is selected (or defaulted) but no `secret` is provided.
+
+---
+
+## Methods
+
+### sign
+
+Signs a JWT containing the provided claims.
+
+```typescript
+sign(claims: TokenClaims, ttlSeconds: number): Promise<TokenResult>
+```
+
+<ParamField body="claims" type="TokenClaims" required>
+  The claims to embed in the JWT payload. See [TokenClaims](#tokenclaims) below.
+</ParamField>
+
+<ParamField body="ttlSeconds" type="number" required>
+  Token time-to-live in seconds. The `exp` claim is set to `iat + ttlSeconds`.
+</ParamField>
+
+<ResponseField name="token" type="string">
+  The signed JWT string.
+</ResponseField>
+
+**Returns** `Promise<TokenResult>` — an object with a single `token` property.
+
+---
+
+### verify
+
+Verifies a JWT signed with HS256 and returns the decoded payload.
+
+```typescript
+verify(token: string): Promise<TokenClaims & { iat: number; exp: number }>
+```
+
+<ParamField body="token" type="string" required>
+  The JWT string to verify.
+</ParamField>
+
+**Returns** the decoded payload including standard `iat` and `exp` claims.
+
+<Warning>
+  This method only supports HS256. Calling `verify` on an RS256 issuer throws an error. For RS256 token verification, use `validateKey0Token` from the middleware layer, which accepts a public key.
+</Warning>
+
+---
+
+### verifyWithFallback
+
+Attempts verification with the primary secret first, then iterates through fallback secrets. Designed for zero-downtime secret rotation.
+
+```typescript
+verifyWithFallback(
+  token: string,
+  fallbackSecrets: string[]
+): Promise<TokenClaims & { iat: number; exp: number }>
+```
+
+<ParamField body="token" type="string" required>
+  The JWT string to verify.
+</ParamField>
+
+<ParamField body="fallbackSecrets" type="string[]" required>
+  An ordered list of previous secrets to try if the primary secret fails.
+</ParamField>
+
+**Returns** the decoded payload if any secret succeeds.
+
+**Throws** `"Token verification failed with all secrets"` if the primary and all fallback secrets fail.
+
+---
+
+## Types
+
+### TokenClaims
+
+Claims embedded in every Key0 access token.
+
+| Claim | Type | Description |
+|---|---|---|
+| `sub` | `string` | The `requestId` that initiated the payment flow. |
+| `jti` | `string` | The `challengeId` (used for replay prevention). |
+| `resourceId` | `string` | Identifier of the purchased resource. |
+| `planId` | `string` | Identifier of the purchased plan. |
+| `txHash` | `string` | On-chain USDC transaction hash that funded the access. |
+
+Standard JWT claims `iat` (issued at) and `exp` (expiration) are set automatically by `sign` and included in the return type of `verify` and `verifyWithFallback`.
+
+### TokenResult
+
+```typescript
+type TokenResult = {
+  readonly token: string;
+};
+```
+
+---
+
+## Usage
+
+### Signing and verifying a token
+
+```typescript
+import { AccessTokenIssuer } from "@key0ai/key0";
+
+const issuer = new AccessTokenIssuer("a-secret-that-is-at-least-32-characters");
+
+// Sign a token after successful payment
+const { token } = await issuer.sign(
+  {
+    sub: "req_abc123",
+    jti: "ch_xyz789",
+    resourceId: "weather-api",
+    planId: "plan_basic",
+    txHash: "0x1234...abcd",
+  },
+  3600, // 1 hour TTL
+);
+
+// Verify the token on a subsequent request
+const claims = await issuer.verify(token);
+console.log(claims.resourceId); // "weather-api"
+console.log(claims.exp);        // Unix timestamp
+```
+
+### Zero-downtime secret rotation
+
+When rotating secrets, pass the old secret(s) as fallbacks so that tokens signed with the previous secret remain valid until they expire.
+
+```typescript
+const currentSecret = process.env.ACCESS_TOKEN_SECRET!;
+const previousSecrets = [process.env.ACCESS_TOKEN_SECRET_OLD!];
+
+const issuer = new AccessTokenIssuer(currentSecret);
+
+// New tokens are signed with currentSecret
+const { token } = await issuer.sign(claims, 3600);
+
+// Verification accepts tokens signed with either secret
+const decoded = await issuer.verifyWithFallback(token, previousSecrets);
+```
+
+### RS256 signing
+
+```typescript
+const issuer = new AccessTokenIssuer({
+  privateKey: process.env.RSA_PRIVATE_KEY!,
+  algorithm: "RS256",
+});
+
+const { token } = await issuer.sign(claims, 3600);
+// Distribute the corresponding public key to verifying services
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Token Issuance" icon="key" href="/architecture/token-issuance">
+    Security design behind JWT creation, claims, and verification.
+  </Card>
+  <Card title="Middleware" icon="shield-halved" href="/sdk-reference/middleware">
+    Framework middleware that validates tokens issued by AccessTokenIssuer.
+  </Card>
+</CardGroup>

@@ -1,0 +1,330 @@
+---
+title: "A2A JSON-RPC"
+description: "POST {basePath}/jsonrpc — the Agent-to-Agent protocol endpoint for access requests and payment proofs."
+---
+
+# A2A JSON-RPC
+
+```
+POST {basePath}/jsonrpc
+```
+
+The A2A JSON-RPC endpoint implements the Agent-to-Agent protocol for payment-gated access. The default `basePath` is `/a2a`, making the full path `/a2a/jsonrpc`.
+
+The x402 HTTP middleware sits in front of this endpoint and intercepts `message/send` calls. If the request does not include an `X-A2A-Extensions` header, the middleware handles the payment flow directly via HTTP 402 responses. If the header is present, the request passes through to the standard A2A JSON-RPC handler.
+
+## x402 HTTP Flow (no X-A2A-Extensions header)
+
+When a client sends a `message/send` JSON-RPC call without the `X-A2A-Extensions` header, the x402 middleware intercepts it and implements a two-step payment flow.
+
+### Step 1: Request Access
+
+Send an `AccessRequest` in the message parts to receive an x402 payment challenge.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.example.com/a2a/jsonrpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "message/send",
+    "params": {
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "kind": "data",
+            "data": {
+              "type": "AccessRequest",
+              "requestId": "550e8400-e29b-41d4-a716-446655440000",
+              "planId": "basic",
+              "resourceId": "default",
+              "clientAgentId": "did:example:client-agent"
+            }
+          }
+        ]
+      }
+    }
+  }'
+```
+
+</CodeGroup>
+
+**Response: HTTP 402 Payment Required**
+
+The server responds with payment requirements in both the response body and the `payment-required` header (base64-encoded).
+
+```json
+{
+  "x402Version": 2,
+  "resource": {
+    "url": "https://api.example.com/a2a/jsonrpc",
+    "method": "POST",
+    "description": "Access to default",
+    "mimeType": "application/json"
+  },
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:84532",
+      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "amount": "100000",
+      "payTo": "0xYourSellerWalletAddress",
+      "maxTimeoutSeconds": 900,
+      "extra": {
+        "name": "USDC",
+        "version": "2",
+        "description": "basic — $0.10 USDC"
+      }
+    }
+  ],
+  "challengeId": "http-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "error": "PAYMENT-SIGNATURE header is required"
+}
+```
+
+**Response Headers:**
+
+| Header | Value |
+|--------|-------|
+| `payment-required` | Base64-encoded JSON of the payment requirements |
+| `www-authenticate` | `Payment realm="https://api.example.com", accept="exact", challenge="http-..."` |
+
+### Step 2: Submit Payment
+
+Sign an EIP-3009 `transferWithAuthorization` off-chain, encode the payment payload as base64url, and resend the same request with the `PAYMENT-SIGNATURE` header.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.example.com/a2a/jsonrpc \
+  -H "Content-Type: application/json" \
+  -H "PAYMENT-SIGNATURE: eyJ4NDAyVmVyc2lvbiI6Miwi..." \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "message/send",
+    "params": {
+      "message": {
+        "role": "user",
+        "parts": [
+          {
+            "kind": "data",
+            "data": {
+              "type": "AccessRequest",
+              "requestId": "550e8400-e29b-41d4-a716-446655440000",
+              "planId": "basic",
+              "resourceId": "default",
+              "clientAgentId": "did:example:client-agent"
+            }
+          }
+        ]
+      }
+    }
+  }'
+```
+
+</CodeGroup>
+
+**Response: HTTP 200 OK**
+
+```json
+{
+  "type": "AccessGrant",
+  "challengeId": "http-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "tokenType": "Bearer",
+  "resourceEndpoint": "https://api.example.com/a2a/resources/default",
+  "resourceId": "default",
+  "planId": "basic",
+  "txHash": "0xabc123def456...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0xabc123def456..."
+}
+```
+
+**Response Headers:**
+
+| Header | Value |
+|--------|-------|
+| `payment-response` | Base64-encoded `X402SettleResponse` JSON |
+
+## A2A-Native Flow (with X-A2A-Extensions header)
+
+When a client sends the `X-A2A-Extensions` header, the x402 middleware passes through to the standard A2A JSON-RPC handler. In this mode, two skills are available:
+
+### Skill: request-access
+
+Issues an `X402Challenge` via the A2A protocol.
+
+**Request:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "message/send",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "kind": "data",
+          "data": {
+            "type": "AccessRequest",
+            "requestId": "550e8400-e29b-41d4-a716-446655440000",
+            "planId": "basic",
+            "resourceId": "default",
+            "clientAgentId": "did:example:client-agent"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+**Response (task with X402Challenge):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "id": "task-id",
+    "status": {
+      "state": "completed",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {
+            "kind": "data",
+            "data": {
+              "type": "X402Challenge",
+              "challengeId": "chg-abc123",
+              "requestId": "550e8400-e29b-41d4-a716-446655440000",
+              "planId": "basic",
+              "amount": "$0.10",
+              "asset": "USDC",
+              "chainId": 84532,
+              "destination": "0xYourSellerWalletAddress",
+              "expiresAt": "2025-01-15T12:15:00.000Z",
+              "description": "Send $0.10 USDC to 0xYour... on chain 84532. Then call the \"submit-proof\" skill with a PaymentProof...",
+              "resourceVerified": true
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+### Skill: submit-proof
+
+Submits a `PaymentProof` with the on-chain transaction hash. Returns an `AccessGrant` on success.
+
+**Request:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "message/send",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "kind": "data",
+          "data": {
+            "type": "PaymentProof",
+            "challengeId": "chg-abc123",
+            "requestId": "550e8400-e29b-41d4-a716-446655440000",
+            "chainId": 84532,
+            "txHash": "0xabc123def456789...",
+            "amount": "$0.10",
+            "asset": "USDC",
+            "fromAgentId": "did:example:client-agent"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+**Response (task with AccessGrant):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "id": "task-id",
+    "status": {
+      "state": "completed",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {
+            "kind": "data",
+            "data": {
+              "type": "AccessGrant",
+              "challengeId": "chg-abc123",
+              "requestId": "550e8400-e29b-41d4-a716-446655440000",
+              "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+              "tokenType": "Bearer",
+              "resourceEndpoint": "https://api.example.com/a2a/resources/default",
+              "resourceId": "default",
+              "planId": "basic",
+              "txHash": "0xabc123def456789...",
+              "explorerUrl": "https://sepolia.basescan.org/tx/0xabc123def456789..."
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+## Error Handling
+
+All errors in the x402 HTTP flow return standard JSON error responses:
+
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| 400 | `TIER_NOT_FOUND` | The requested `planId` does not exist in the plan catalog. |
+| 400 | `INVALID_REQUEST` | Malformed request body or missing required fields. |
+| 402 | `PAYMENT_FAILED` | Payment verification or settlement failed. |
+| 409 | `TX_ALREADY_REDEEMED` | The transaction hash has already been used for another challenge. |
+| 410 | `CHALLENGE_EXPIRED` | The challenge has expired or was cancelled. |
+| 500 | `INTERNAL_ERROR` | Unexpected server error or concurrent state transition conflict. |
+
+## Idempotency
+
+The `requestId` field serves as an idempotency key. If a client retries the same `requestId`:
+
+- **PENDING challenge exists**: Returns the same challenge without creating a new one.
+- **DELIVERED grant exists**: Returns the existing `AccessGrant` directly.
+- **EXPIRED or CANCELLED**: Creates a new challenge.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="A2A Payment Flow" icon="arrows-repeat" href="/protocol/a2a-flow">
+    End-to-end walkthrough of the Agent-to-Agent payment protocol.
+  </Card>
+  <Card title="Data Models" icon="database" href="/api-reference/data-models">
+    TypeScript types for AccessRequest, X402Challenge, PaymentProof, and AccessGrant.
+  </Card>
+  <Card title="ChallengeEngine" icon="gears" href="/sdk-reference/challenge-engine">
+    The state machine that powers challenge lifecycle and payment verification.
+  </Card>
+  <Card title="Error Codes" icon="circle-exclamation" href="/sdk-reference/error-codes">
+    Full reference of Key0ErrorCode values and HTTP status codes.
+  </Card>
+</CardGroup>

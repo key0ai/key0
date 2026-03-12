@@ -1,0 +1,285 @@
+---
+title: "Quickstart: Embedded"
+sidebarTitle: "Embedded"
+description: "Add Key0 middleware to an existing Express, Hono, or Fastify server in under 5 minutes. Agents discover your pricing, pay in USDC, and access your protected endpoints."
+---
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+- **Bun v1.3+** (or Node.js 18+)
+- A **wallet address on Base Sepolia** (testnet) -- get testnet USDC from [faucet.circle.com](https://faucet.circle.com) (select Base Sepolia)
+- **Redis** running locally or remotely (Postgres is also supported -- see [Storage](/sdk-reference/storage))
+
+<Warning>
+  Never use mainnet for development or testing. Base Sepolia testnet USDC has no real value and is free from the faucet.
+</Warning>
+
+## Setup
+
+<Steps>
+
+<Step title="Install dependencies">
+
+```bash
+bun add @key0ai/key0
+bun add ioredis  # for Redis storage
+```
+
+</Step>
+
+<Step title="Configure and mount">
+
+Create a `server.ts` file. Key0 mounts as middleware on your existing server -- it adds the discovery endpoint (`/.well-known/agent.json`), the challenge/proof routes (`/x402/access`, `/x402/proof`), and leaves your existing routes untouched.
+
+<CodeGroup>
+
+```typescript Express
+import express from "express";
+import { key0Router, validateAccessToken } from "@key0ai/key0/express";
+import {
+  X402Adapter,
+  AccessTokenIssuer,
+  RedisChallengeStore,
+  RedisSeenTxStore,
+} from "@key0ai/key0";
+import Redis from "ioredis";
+
+const app = express();
+app.use(express.json());
+
+const adapter = new X402Adapter({ network: "testnet" });
+const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
+
+const redis = new Redis(process.env.REDIS_URL!);
+const store = new RedisChallengeStore({ redis });
+const seenTxStore = new RedisSeenTxStore({ redis });
+
+app.use(
+  key0Router({
+    config: {
+      agentName: "My Agent",
+      agentDescription: "A payment-gated API",
+      agentUrl: "https://my-agent.example.com",
+      providerName: "My Company",
+      providerUrl: "https://example.com",
+      walletAddress: "0xYourWalletAddress" as `0x${string}`,
+      network: "testnet",
+      plans: [
+        {
+          planId: "basic",
+          unitAmount: "$0.10",
+          description: "Basic API access.",
+        },
+      ],
+      fetchResourceCredentials: async (params) => {
+        return tokenIssuer.sign(
+          {
+            sub: params.requestId,
+            jti: params.challengeId,
+            resourceId: params.resourceId,
+          },
+          3600,
+        );
+      },
+    },
+    adapter,
+    store,
+    seenTxStore,
+  }),
+);
+
+// Protect your existing routes with the access token middleware
+app.use(
+  "/api",
+  validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }),
+);
+
+app.get("/api/data/:id", (req, res) => {
+  res.json({ data: "premium content" });
+});
+
+app.listen(3000);
+```
+
+```typescript Hono
+import { Hono } from "hono";
+import { key0App, honoValidateAccessToken } from "@key0ai/key0/hono";
+import {
+  X402Adapter,
+  AccessTokenIssuer,
+  RedisChallengeStore,
+  RedisSeenTxStore,
+} from "@key0ai/key0";
+import Redis from "ioredis";
+
+const adapter = new X402Adapter({ network: "testnet" });
+const redis = new Redis(process.env.REDIS_URL!);
+
+const gate = key0App({
+  config: {
+    agentName: "My Agent",
+    agentDescription: "A payment-gated API",
+    agentUrl: "https://my-agent.example.com",
+    providerName: "My Company",
+    providerUrl: "https://example.com",
+    walletAddress: "0xYourWalletAddress" as `0x${string}`,
+    network: "testnet",
+    plans: [
+      {
+        planId: "basic",
+        unitAmount: "$0.10",
+        description: "Basic API access.",
+      },
+    ],
+    fetchResourceCredentials: async (params) => {
+      const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
+      return tokenIssuer.sign(
+        { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
+        3600,
+      );
+    },
+  },
+  adapter,
+  store: new RedisChallengeStore({ redis }),
+  seenTxStore: new RedisSeenTxStore({ redis }),
+});
+
+const app = new Hono();
+app.route("/", gate);
+
+// Protected routes
+const api = new Hono();
+api.use(
+  "/*",
+  honoValidateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }),
+);
+api.get("/data/:id", (c) => c.json({ data: "premium content" }));
+app.route("/api", api);
+
+export default { port: 3000, fetch: app.fetch };
+```
+
+```typescript Fastify
+import Fastify from "fastify";
+import {
+  key0Plugin,
+  fastifyValidateAccessToken,
+} from "@key0ai/key0/fastify";
+import {
+  X402Adapter,
+  AccessTokenIssuer,
+  RedisChallengeStore,
+  RedisSeenTxStore,
+} from "@key0ai/key0";
+import Redis from "ioredis";
+
+const fastify = Fastify();
+const adapter = new X402Adapter({ network: "testnet" });
+const redis = new Redis(process.env.REDIS_URL!);
+
+await fastify.register(key0Plugin, {
+  config: {
+    agentName: "My Agent",
+    agentDescription: "A payment-gated API",
+    agentUrl: "https://my-agent.example.com",
+    providerName: "My Company",
+    providerUrl: "https://example.com",
+    walletAddress: "0xYourWalletAddress" as `0x${string}`,
+    network: "testnet",
+    plans: [
+      {
+        planId: "basic",
+        unitAmount: "$0.10",
+        description: "Basic API access.",
+      },
+    ],
+    fetchResourceCredentials: async (params) => {
+      const tokenIssuer = new AccessTokenIssuer(process.env.ACCESS_TOKEN_SECRET!);
+      return tokenIssuer.sign(
+        { sub: params.requestId, jti: params.challengeId, resourceId: params.resourceId },
+        3600,
+      );
+    },
+  },
+  adapter,
+  store: new RedisChallengeStore({ redis }),
+  seenTxStore: new RedisSeenTxStore({ redis }),
+});
+
+// Protect routes
+fastify.addHook(
+  "onRequest",
+  fastifyValidateAccessToken({
+    secret: process.env.ACCESS_TOKEN_SECRET!,
+  }),
+);
+
+fastify.listen({ port: 3000 });
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Set environment variables">
+
+Create a `.env` file in your project root:
+
+```bash .env
+KEY0_NETWORK=testnet
+KEY0_WALLET_ADDRESS=0xYourWalletAddress
+ACCESS_TOKEN_SECRET=your-secret-min-32-chars
+REDIS_URL=redis://localhost:6379
+PORT=3000
+```
+
+<Note>
+  `ACCESS_TOKEN_SECRET` must be at least 32 characters. This secret is used to sign JWTs issued to agents after payment. Use a cryptographically random string.
+</Note>
+
+</Step>
+
+<Step title="Run and test">
+
+Start your server:
+
+```bash
+bun run server.ts
+# Server starts on http://localhost:3000
+# Agent card at http://localhost:3000/.well-known/agent.json
+```
+
+Test the discovery and access endpoints with curl:
+
+```bash Discovery
+curl http://localhost:3000/.well-known/agent.json
+```
+
+```bash Request access (returns 402 challenge)
+curl -X POST http://localhost:3000/x402/access \
+  -H "Content-Type: application/json" \
+  -d '{"planId": "basic"}'
+```
+
+The first call returns the A2A agent card with your pricing. The second returns an x402 challenge containing the payment amount, destination wallet, and chain ID. A client agent uses this to submit payment on-chain and then prove it.
+
+</Step>
+
+
+</Steps>
+
+## What's next
+
+<CardGroup cols={2}>
+  <Card title="Integrations" icon="puzzle-piece" href="/integrations/express">
+    Detailed integration guides for Express, Hono, Fastify, and MCP.
+  </Card>
+  <Card title="Storage Setup" icon="database" href="/sdk-reference/storage">
+    Configure Redis or Postgres for challenge and transaction storage.
+  </Card>
+  <Card title="Building a Seller" icon="rocket" href="/guides/building-a-seller">
+    End-to-end guide covering plans, storage, mainnet, and production deployment.
+  </Card>
+</CardGroup>

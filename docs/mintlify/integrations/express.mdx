@@ -1,0 +1,225 @@
+---
+title: "Express"
+description: "Mount Key0 as Express middleware. Serves agent discovery, payment endpoints, and optional MCP routes — then protect your own routes with a single middleware."
+---
+
+## Installation
+
+```bash
+npm install @key0ai/key0 express ioredis
+```
+
+```typescript
+import { key0Router, validateAccessToken } from "@key0ai/key0/express";
+```
+
+## Quick start
+
+<Steps>
+  <Step title="Create the Express app and dependencies">
+    ```typescript
+    import {
+      X402Adapter,
+      RedisChallengeStore,
+      RedisSeenTxStore,
+      AccessTokenIssuer,
+    } from "@key0ai/key0";
+    import { key0Router, validateAccessToken } from "@key0ai/key0/express";
+    import express from "express";
+    import Redis from "ioredis";
+
+    const app = express();
+    app.use(express.json());
+
+    const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
+    ```
+  </Step>
+
+  <Step title="Mount the Key0 router">
+    ```typescript
+    const SECRET = process.env.KEY0_ACCESS_TOKEN_SECRET!;
+    const tokenIssuer = new AccessTokenIssuer(SECRET);
+
+    app.use(
+      key0Router({
+        config: {
+          agentName: "Photo Gallery Agent",
+          agentDescription: "Premium photos via USDC payments on Base",
+          agentUrl: "https://api.example.com",
+          providerName: "Example Corp",
+          providerUrl: "https://example.com",
+          walletAddress: "0xYourWalletAddress" as `0x${string}`,
+          network: "mainnet",
+          plans: [
+            { planId: "single-photo", unitAmount: "$0.10", description: "One photo." },
+            { planId: "full-album", unitAmount: "$1.00", description: "Full album (24h)." },
+          ],
+          fetchResourceCredentials: async (params) => {
+            return tokenIssuer.sign(
+              {
+                sub: params.requestId,
+                jti: params.challengeId,
+                resourceId: params.resourceId,
+                planId: params.planId,
+                txHash: params.txHash,
+              },
+              3600,
+            );
+          },
+        },
+        adapter: new X402Adapter({ network: "mainnet" }),
+        store: new RedisChallengeStore({ redis }),
+        seenTxStore: new RedisSeenTxStore({ redis }),
+      }),
+    );
+    ```
+  </Step>
+
+  <Step title="Protect your routes">
+    ```typescript
+    app.use("/api", validateAccessToken({ secret: SECRET }));
+
+    app.get("/api/photos/:id", (req, res) => {
+      res.json({ id: req.params.id, url: `https://cdn.example.com/${req.params.id}.jpg` });
+    });
+
+    app.listen(3000);
+    ```
+  </Step>
+</Steps>
+
+## `key0Router(opts)`
+
+Creates an Express `Router` that serves agent discovery, the A2A JSON-RPC endpoint, and the x402 HTTP payment endpoint.
+
+```typescript
+import { key0Router } from "@key0ai/key0/express";
+
+app.use(key0Router({ config, adapter, store, seenTxStore }));
+```
+
+### Options
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `config` | `SellerConfig` | Agent identity, wallet, plans, and callbacks. See [SellerConfig](/sdk-reference/seller-config). |
+| `adapter` | `X402Adapter` | On-chain payment verification adapter. |
+| `store` | `IChallengeStore` | Challenge state storage (e.g. `RedisChallengeStore`). |
+| `seenTxStore` | `ISeenTxStore` | Double-spend prevention store (e.g. `RedisSeenTxStore`). |
+
+### Routes served
+
+The router mounts the following routes on your Express app:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/.well-known/agent.json` | A2A agent card for discovery. |
+| `POST` | `{basePath}/jsonrpc` | A2A JSON-RPC endpoint with x402 middleware. |
+| `POST` | `{basePath}/rest` | A2A REST endpoint. |
+| `POST` | `/x402/access` | Simple x402 HTTP endpoint (no JSON-RPC wrapping). |
+
+When `mcp: true` is set in `config`, two additional routes are mounted:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/.well-known/mcp.json` | MCP discovery document. |
+| `POST` | `/mcp` | MCP Streamable HTTP endpoint. |
+
+## The `/x402/access` endpoint
+
+This endpoint handles the full x402 payment flow over plain HTTP. It responds differently depending on the request body and headers:
+
+| Case | Request | Response |
+|------|---------|----------|
+| **Discovery** | Empty body (no `planId`) | `402` with all available plans. |
+| **Challenge** | Body with `planId` | `402` with payment requirements and a `challengeId`. |
+| **Settlement** | Body with `planId` + `payment-signature` header | `200` with an `AccessGrant` (JWT + metadata). |
+
+<Note>
+  The `requestId` field is optional. If you omit it, the server generates one automatically.
+  Include it when you need client-side idempotency.
+</Note>
+
+## `validateAccessToken(config)`
+
+Express middleware that verifies the `Bearer` JWT on incoming requests and attaches the decoded payload to `req.key0Token`.
+
+```typescript
+import { validateAccessToken } from "@key0ai/key0/express";
+
+app.use("/api", validateAccessToken({ secret: process.env.KEY0_ACCESS_TOKEN_SECRET! }));
+
+app.get("/api/resource", (req, res) => {
+  const token = (req as Request & { key0Token?: unknown }).key0Token;
+  res.json({ token });
+});
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `secret` | `string` | The same secret used by `AccessTokenIssuer` (or your `fetchResourceCredentials` callback) to sign JWTs. |
+
+The middleware returns a `401` or `403` JSON error if the token is missing, expired, or invalid.
+
+## Customizing `basePath`
+
+By default, A2A routes are mounted under `/a2a`. Set `basePath` in your `SellerConfig` to change this:
+
+```typescript
+app.use(
+  key0Router({
+    config: {
+      // ...
+      basePath: "/payments",
+    },
+    adapter,
+    store,
+    seenTxStore,
+  }),
+);
+```
+
+This changes the JSON-RPC endpoint to `POST /payments/jsonrpc` and the REST endpoint to `POST /payments/rest`. The `/x402/access` and `/.well-known/agent.json` paths are not affected.
+
+## Enabling MCP mode
+
+Set `mcp: true` in your `SellerConfig` to expose MCP (Model Context Protocol) routes alongside the standard A2A and x402 endpoints:
+
+```typescript
+app.use(
+  key0Router({
+    config: {
+      // ...
+      mcp: true,
+    },
+    adapter,
+    store,
+    seenTxStore,
+  }),
+);
+```
+
+This adds `/.well-known/mcp.json` for discovery and `POST /mcp` for Streamable HTTP transport, exposing `discover_plans` and `request_access` as MCP tools.
+
+<Warning>
+  MCP mode requires the `@modelcontextprotocol/sdk` peer dependency. Install it separately if you enable this option.
+</Warning>
+
+See the [MCP protocol guide](/protocol/mcp) for details on how agents interact with these endpoints.
+
+## Full example
+
+A complete working example is available at [`examples/express-seller`](https://github.com/key0ai/key0/tree/main/examples/express-seller). To run it locally:
+
+```bash
+cd examples/express-seller
+bun install
+REDIS_URL=redis://localhost:6379 KEY0_WALLET_ADDRESS=0x... KEY0_ACCESS_TOKEN_SECRET=your-secret bun run start
+```
+
+## Related pages
+
+- [SellerConfig](/sdk-reference/seller-config) -- Configuration reference
+- [Hono integration](/integrations/hono)
+- [Fastify integration](/integrations/fastify)
+- [MCP protocol](/protocol/mcp)

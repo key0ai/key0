@@ -1,0 +1,173 @@
+---
+title: "X402Adapter"
+description: "API reference for X402Adapter — the payment adapter that verifies USDC transfers on Base via on-chain ERC-20 Transfer events."
+---
+
+# X402Adapter
+
+`X402Adapter` is the default implementation of `IPaymentAdapter` for the x402 payment protocol. It issues challenges locally (no on-chain call) and verifies payment proofs by inspecting ERC-20 `Transfer` events on Base or Base Sepolia.
+
+```typescript
+import { X402Adapter } from "@key0ai/key0";
+```
+
+## Constructor
+
+```typescript
+new X402Adapter({
+  network: "testnet" | "mainnet",
+  rpcUrl?: string,  // Override the default RPC URL
+})
+```
+
+<ParamField path="network" type='"testnet" | "mainnet"' required>
+  The Base network to use for on-chain verification. `"testnet"` targets Base Sepolia (chain ID 84532); `"mainnet"` targets Base (chain ID 8453).
+</ParamField>
+
+<ParamField path="rpcUrl" type="string">
+  Optional override for the JSON-RPC endpoint. When omitted, the adapter uses the default public RPC for the selected network.
+</ParamField>
+
+### Example
+
+```typescript
+const adapter = new X402Adapter({ network: "mainnet" });
+```
+
+```typescript
+const adapter = new X402Adapter({
+  network: "testnet",
+  rpcUrl: "https://sepolia.base.org",
+});
+```
+
+## IPaymentAdapter Interface
+
+`X402Adapter` implements the `IPaymentAdapter` interface, which any payment adapter must satisfy:
+
+```typescript
+interface IPaymentAdapter {
+  readonly protocol: string;
+  issueChallenge(params: IssueChallengeParams): Promise<ChallengePayload>;
+  verifyProof(params: VerifyProofParams): Promise<VerificationResult>;
+}
+```
+
+The `protocol` property is always `"x402"` for this adapter.
+
+---
+
+## Methods
+
+### issueChallenge
+
+```typescript
+issueChallenge(params: IssueChallengeParams): Promise<ChallengePayload>
+```
+
+Generates a challenge payload for the client. This is a purely local operation -- no on-chain transaction is required. The returned payload includes the chain ID, USDC contract address, and facilitator URL so the client knows where and how to pay.
+
+**Returns** a `ChallengePayload` with `protocol: "x402"` and a `raw` object containing:
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `string` | Always `"X402Challenge"` |
+| `chainId` | `number` | Target chain ID (8453 or 84532) |
+| `asset` | `string` | Always `"USDC"` |
+| `usdcAddress` | `string` | The USDC contract address for the target network |
+| `facilitatorUrl` | `string` | The x402 facilitator endpoint for settlement |
+
+### verifyProof
+
+```typescript
+verifyProof(params: VerifyProofParams): Promise<VerificationResult>
+```
+
+Verifies a payment proof by performing on-chain checks against the transaction receipt. Returns a `VerificationResult` indicating success or failure with a specific error code.
+
+This method delegates to `verifyTransfer`, which runs the full set of on-chain verification checks described below.
+
+---
+
+## Network Configuration
+
+<Note>
+  Both networks use USDC (6 decimals). The adapter selects the correct contract address and chain configuration automatically based on the `network` parameter.
+</Note>
+
+| Network | Chain ID | USDC Address | Explorer |
+|---|---|---|---|
+| `testnet` (Base Sepolia) | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [sepolia.basescan.org](https://sepolia.basescan.org) |
+| `mainnet` (Base) | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | [basescan.org](https://basescan.org) |
+
+---
+
+## On-Chain Verification
+
+The `verifyProof` method performs six sequential checks against the transaction receipt. If any check fails, it returns immediately with a `verified: false` result and the corresponding error code.
+
+| Step | Check | Error Code |
+|---|---|---|
+| 1 | Transaction receipt exists and is retrievable | `TX_NOT_FOUND` or `RPC_ERROR` |
+| 2 | Transaction was not reverted | `TX_REVERTED` |
+| 3 | At least one USDC `Transfer` event sends funds to the expected destination | `WRONG_RECIPIENT` |
+| 4 | The total transferred amount meets or exceeds the expected amount | `AMOUNT_INSUFFICIENT` |
+| 5 | The block timestamp is before the challenge expiry | `TX_AFTER_EXPIRY` |
+| 6 | Chain ID matches the expected chain | `CHAIN_MISMATCH` |
+
+These checks enforce the security properties required for safe on-chain payment verification.
+
+---
+
+## Related Types
+
+### IssueChallengeParams
+
+| Field | Type | Description |
+|---|---|---|
+| `requestId` | `string` | Unique identifier for the access request |
+| `resourceId` | `string` | The resource being accessed |
+| `planId` | `string` | The pricing plan selected by the client |
+| `amount` | `string` | Human-readable amount (e.g., `"$0.10"`) |
+| `destination` | `` `0x${string}` `` | Seller's wallet address |
+| `expiresAt` | `Date` | When the challenge expires |
+| `metadata` | `Record<string, unknown>` | Arbitrary metadata passed through to the challenge |
+
+### ChallengePayload
+
+| Field | Type | Description |
+|---|---|---|
+| `challengeId` | `string` | Unique identifier for the issued challenge |
+| `protocol` | `string` | Protocol name (`"x402"`) |
+| `raw` | `Record<string, unknown>` | Protocol-specific data exposed to the client |
+| `expiresAt` | `Date` | When the challenge expires |
+
+### VerifyProofParams
+
+| Field | Type | Description |
+|---|---|---|
+| `challengeId` | `string` | The challenge being fulfilled |
+| `proof.txHash` | `` `0x${string}` `` | On-chain transaction hash |
+| `proof.chainId` | `number` | Chain the transaction was submitted on |
+| `proof.amount` | `string` | Claimed payment amount |
+| `proof.asset` | `string` | Claimed asset (e.g., `"USDC"`) |
+| `expected.destination` | `` `0x${string}` `` | Expected recipient address |
+| `expected.amountRaw` | `bigint` | Expected amount in USDC micro-units |
+| `expected.chainId` | `number` | Expected chain ID |
+| `expected.expiresAt` | `Date` | Challenge expiry deadline |
+
+### VerificationResult
+
+| Field | Type | Description |
+|---|---|---|
+| `verified` | `boolean` | Whether the payment proof passed all checks |
+| `txHash` | `` `0x${string}` `` | Transaction hash (present on both success and most failures) |
+| `fromAddress` | `` `0x${string}` `` | Payer's wallet address, extracted from the `Transfer` event |
+| `confirmedAmount` | `bigint` | Total USDC transferred to the destination |
+| `confirmedChainId` | `number` | Chain ID confirmed from network config |
+| `confirmedAt` | `Date` | Block timestamp of the transaction |
+| `blockNumber` | `bigint` | Block number containing the transaction |
+| `error` | `string` | Human-readable error message (present when `verified` is `false`) |
+| `errorCode` | `VerificationErrorCode` | Machine-readable error code (present when `verified` is `false`) |
+
+For full type definitions, see [Data Models](/api-reference/data-models).
