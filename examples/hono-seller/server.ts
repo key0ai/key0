@@ -46,10 +46,6 @@ const gate = key0App({
 				accessDurationSeconds: 86400,
 			},
 		],
-		onVerifyResource: async (resourceId: string, _tierId: string) => {
-			const validResources = ["photo-1", "photo-2", "photo-3", "album-1"];
-			return validResources.includes(resourceId);
-		},
 		onIssueToken: async (params) => {
 			// Generate JWT using the opt-in AccessTokenIssuer utility
 			const ttl = params.tierId === "single-photo" ? 3600 : 86400;

@@ -1,0 +1,209 @@
+---
+title: "Docker"
+description: "Run Key0 as a Docker container. Choose from pre-built profiles with managed Redis and Postgres, or bring your own infrastructure."
+---
+
+# Docker
+
+The `key0ai/key0` image is published to Docker Hub on every release. It bundles the Key0 server, the setup UI, and a health check endpoint -- everything you need to run Key0 without installing Node or Bun.
+
+## Image tags
+
+| Tag | Description |
+|---|---|
+| `latest` | Latest stable release. Safe for production. |
+| `1.2.3` | Exact version pin. Immutable once published. |
+| `1.2` | Latest patch within the `1.2.x` line. |
+| `1` | Latest minor and patch within the `1.x.x` line. |
+| `canary` | Built from the `main` branch on every push. Use for testing only. |
+
+<Note>
+  Pin to a specific semver tag (e.g. `key0ai/key0:1.2.3`) in production to avoid unexpected upgrades.
+</Note>
+
+## Quick start
+
+<Tabs>
+  <Tab title="docker run">
+    Run Key0 with a single command. You provide your own Redis and Postgres URLs.
+
+    ```bash
+    docker run -d \
+      --name key0 \
+      -p 3000:3000 \
+      -e REDIS_URL=redis://your-redis:6379 \
+      -e DATABASE_URL=postgresql://user:pass@your-postgres:5432/key0 \
+      -v key0-config:/app/config \
+      key0ai/key0:latest
+    ```
+
+    The server starts on port 3000. If required configuration is missing, the server redirects to `/setup` — a browser-based UI where you can configure your wallet address, pricing plans, storage, and other settings. Once saved, the server restarts automatically with your configuration applied. You can revisit `/setup` at any time to reconfigure.
+  </Tab>
+  <Tab title="Docker Compose">
+    Clone or create a `docker-compose.yml` (see [full reference below](#compose-file-reference)) and run:
+
+    ```bash
+    # Batteries included -- Key0 + Redis + Postgres
+    docker compose --profile full up
+    ```
+
+    This starts all three services with health checks, persistent volumes, and sensible defaults. No `.env` file is required for local development.
+  </Tab>
+</Tabs>
+
+## Compose profiles
+
+Docker Compose profiles let you choose how much infrastructure Key0 manages for you.
+
+| Command | What starts | When to use |
+|---|---|---|
+| `docker compose up` | Key0 only | You manage Redis and Postgres externally. Set `REDIS_URL` and `DATABASE_URL` in `.env`. |
+| `docker compose --profile redis up` | Key0 + Redis | You manage Postgres externally. Set `DATABASE_URL` in `.env`. |
+| `docker compose --profile postgres up` | Key0 + Postgres | You manage Redis externally. Set `REDIS_URL` in `.env`. |
+| `docker compose --profile full up` | Key0 + Redis + Postgres | Everything managed. No external dependencies needed. |
+
+<Note>
+  Managed infrastructure is auto-detected at startup via DNS resolution. The `KEY0_MANAGED_INFRA` environment variable is optional and only needed as an explicit override.
+</Note>
+
+## Compose file reference
+
+The full `docker-compose.yml` ships in the `docker/` directory of the repository.
+
+```yaml docker-compose.yml
+services:
+  key0:
+    image: key0ai/key0:latest
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    environment:
+      - PORT=${PORT:-3000}
+      - KEY0_MANAGED_INFRA=${KEY0_MANAGED_INFRA:-}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://key0:key0@postgres:5432/key0}
+    env_file:
+      - path: .env
+        required: false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - key0-config:/app/config
+    depends_on:
+      redis:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
+
+  redis:
+    image: redis:7-alpine
+    profiles: [redis, full]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: [postgres, full]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-key0}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-key0}
+      POSTGRES_DB: ${POSTGRES_DB:-key0}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-key0} -d ${POSTGRES_DB:-key0}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  redis-data:
+  key0-config:
+  postgres-data:
+```
+
+### Services
+
+| Service | Image | Purpose |
+|---|---|---|
+| `key0` | `key0ai/key0:latest` | Key0 server and setup UI. Listens on `${PORT:-3000}`. |
+| `redis` | `redis:7-alpine` | Challenge store and seen-tx store. Activated by `redis` or `full` profile. |
+| `postgres` | `postgres:16-alpine` | Persistent storage and audit log. Activated by `postgres` or `full` profile. |
+
+### Volumes
+
+| Volume | Mounted at | Purpose |
+|---|---|---|
+| `key0-config` | `/app/config` | Persists `.env.runtime` (seller config written by the setup UI) across container restarts. |
+| `redis-data` | `/data` | Redis AOF/RDB persistence. |
+| `postgres-data` | `/var/lib/postgresql/data` | Postgres data directory. |
+
+To reset all persisted state and start fresh:
+
+```bash
+docker compose down -v
+```
+
+## Environment variables
+
+Pass environment variables via `-e` flags, an `env_file`, or shell exports that Docker Compose reads automatically.
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `3000` | Port the Key0 server listens on. |
+| `REDIS_URL` | `redis://redis:6379` | Redis connection string. Points to the managed Redis service by default. |
+| `DATABASE_URL` | `postgresql://key0:key0@postgres:5432/key0` | Postgres connection string. Points to the managed Postgres service by default. |
+| `POSTGRES_USER` | `key0` | Username for the managed Postgres instance. |
+| `POSTGRES_PASSWORD` | `key0` | Password for the managed Postgres instance. |
+| `POSTGRES_DB` | `key0` | Database name for the managed Postgres instance. |
+| `KEY0_MANAGED_INFRA` | _(auto-detected)_ | Explicit override for managed infrastructure detection. Normally not needed. |
+
+<Note>
+  For the full list of Key0 application-level environment variables (wallet address, network, JWT secrets, etc.), see the [Environment Variables](/deployment/environment-variables) page.
+</Note>
+
+## Health check
+
+The Key0 container includes a built-in health check that polls `GET /health` every 30 seconds.
+
+```bash
+# Check container health status
+docker inspect --format='{{.State.Health.Status}}' key0
+```
+
+You can also call the endpoint directly:
+
+```bash
+curl http://localhost:3000/health
+```
+
+## Building from source
+
+To build the image locally instead of pulling from Docker Hub:
+
+```bash
+git clone https://github.com/key0ai/key0.git
+cd key0
+docker build -t key0ai/key0 .
+```
+
+The Dockerfile uses a multi-stage build. The first stage compiles the setup UI, and the second stage installs dependencies and copies the server source.
+
+## Networking tips
+
+The Compose file maps `host.docker.internal` to the host gateway. This lets the Key0 container reach services running on your host machine (e.g. a local Redis or Postgres instance) using `host.docker.internal` as the hostname.
+
+```bash
+# Example: Key0 in Docker, Redis on host machine
+docker run -d \
+  --add-host=host.docker.internal:host-gateway \
+  -e REDIS_URL=redis://host.docker.internal:6379 \
+  -p 3000:3000 \
+  key0ai/key0:latest
+```

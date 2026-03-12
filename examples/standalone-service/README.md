@@ -110,13 +110,7 @@ TOKEN_MODE=remote
 
 **Backend Endpoints Required:**
 
-1. `POST /internal/verify-resource` - Verify resource exists
-   ```json
-   { "resourceId": "photo-1", "planId": "basic" }
-   ```
-   Response: `{ "valid": true }`
-
-2. `POST /internal/issue-token` - Issue token
+1. `POST /internal/issue-token` - Issue token
    ```json
    {
      "requestId": "uuid",

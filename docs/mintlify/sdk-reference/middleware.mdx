@@ -1,0 +1,275 @@
+---
+title: "Middleware"
+description: "Access token validation middleware for Express, Hono, and Fastify — plus the standalone validateKey0Token for backend services."
+---
+
+# Middleware
+
+Key0 provides access token validation middleware for every supported framework, plus a standalone validator for backend services that do not run the full SDK.
+
+All middleware functions extract the `Bearer` token from the `Authorization` header, verify it using the configured secret or public key, and attach the decoded payload to the request context. On failure they return a JSON error response and short-circuit the request.
+
+---
+
+## Configuration Types
+
+### ValidateAccessTokenConfig
+
+Used by the framework-specific middleware functions (`validateAccessToken`, `honoValidateAccessToken`, `fastifyValidateAccessToken`).
+
+```typescript
+type ValidateAccessTokenConfig = {
+  readonly secret: string;
+};
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `secret` | `string` | HS256 shared secret. Must match the secret used by the `AccessTokenIssuer`. |
+
+### ValidatorConfig
+
+Used by the standalone `validateKey0Token` function. Supports both HS256 and RS256.
+
+```typescript
+type ValidatorConfig = {
+  secret?: string;
+  publicKey?: string;
+  algorithm?: "HS256" | "RS256";
+};
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `secret` | `string` | -- | Shared secret for HS256. Required when `algorithm` is `"HS256"`. |
+| `publicKey` | `string` | -- | PEM-encoded public key for RS256. Required when `algorithm` is `"RS256"`. |
+| `algorithm` | `"HS256" \| "RS256"` | `"HS256"` | Signing algorithm to expect. |
+
+---
+
+## AccessTokenPayload
+
+All middleware functions resolve to the same decoded JWT payload shape.
+
+```typescript
+type AccessTokenPayload = JWTPayload & {
+  readonly sub: string;        // requestId
+  readonly jti: string;        // challengeId
+  readonly resourceId: string;
+  readonly planId: string;
+  readonly txHash: string;
+};
+```
+
+| Claim | Type | Description |
+|---|---|---|
+| `sub` | `string` | The `requestId` that initiated the payment flow. |
+| `jti` | `string` | The `challengeId` assigned by the challenge engine. |
+| `resourceId` | `string` | Identifier of the protected resource. |
+| `planId` | `string` | The plan the client paid for. |
+| `txHash` | `string` | On-chain transaction hash of the USDC payment. |
+| `iat` | `number` | Issued-at timestamp (seconds since epoch). |
+| `exp` | `number` | Expiration timestamp (seconds since epoch). |
+
+---
+
+## Framework Middleware
+
+<Tabs>
+  <Tab title="Express">
+    ### validateAccessToken
+
+    Express middleware. On success, attaches the decoded payload to `req.key0Token`.
+
+    ```typescript
+    import { validateAccessToken } from "@key0ai/key0/express";
+
+    app.use(
+      "/api/photos",
+      validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET }),
+    );
+
+    app.get("/api/photos", (req, res) => {
+      const token = req.key0Token;
+      res.json({ planId: token.planId, txHash: token.txHash });
+    });
+    ```
+
+    **Signature:**
+
+    ```typescript
+    function validateAccessToken(
+      config: ValidateAccessTokenConfig,
+    ): (req: Request, res: Response, next: NextFunction) => Promise<void>;
+    ```
+
+    **Request property:** `req.key0Token` (`AccessTokenPayload`)
+  </Tab>
+
+  <Tab title="Hono">
+    ### honoValidateAccessToken
+
+    Hono middleware. On success, stores the decoded payload via `c.set("key0Token", payload)`.
+
+    ```typescript
+    import { honoValidateAccessToken } from "@key0ai/key0/hono";
+
+    app.use("/api/photos/*", honoValidateAccessToken({
+      secret: process.env.ACCESS_TOKEN_SECRET,
+    }));
+
+    app.get("/api/photos", (c) => {
+      const token = c.get("key0Token");
+      return c.json({ planId: token.planId, txHash: token.txHash });
+    });
+    ```
+
+    **Signature:**
+
+    ```typescript
+    function honoValidateAccessToken(
+      config: ValidateAccessTokenConfig,
+    ): (c: Context, next: () => Promise<void>) => Promise<void | Response>;
+    ```
+
+    **Context value:** `c.get("key0Token")` (`AccessTokenPayload`)
+  </Tab>
+
+  <Tab title="Fastify">
+    ### fastifyValidateAccessToken
+
+    Fastify `onRequest` hook. On success, attaches the decoded payload to `request.key0Token`.
+
+    ```typescript
+    import { fastifyValidateAccessToken } from "@key0ai/key0/fastify";
+
+    fastify.addHook(
+      "onRequest",
+      fastifyValidateAccessToken({
+        secret: process.env.ACCESS_TOKEN_SECRET,
+      }),
+    );
+
+    fastify.get("/api/photos", async (request, reply) => {
+      const token = request.key0Token;
+      return { planId: token.planId, txHash: token.txHash };
+    });
+    ```
+
+    **Signature:**
+
+    ```typescript
+    function fastifyValidateAccessToken(
+      config: ValidateAccessTokenConfig,
+    ): (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    ```
+
+    **Request property:** `request.key0Token` (`AccessTokenPayload`)
+  </Tab>
+
+  <Tab title="Standalone">
+    ### validateKey0Token
+
+    Lightweight validator for backend services. Does not require a blockchain connection or the full SDK. Supports both HS256 and RS256.
+
+    ```typescript
+    import { validateKey0Token } from "@key0ai/key0";
+
+    // HS256 (shared secret)
+    const payload = await validateKey0Token(
+      req.headers.authorization,
+      { secret: process.env.KEY0_SECRET },
+    );
+
+    // RS256 (public key)
+    const payload = await validateKey0Token(
+      req.headers.authorization,
+      {
+        publicKey: process.env.KEY0_PUBLIC_KEY,
+        algorithm: "RS256",
+      },
+    );
+    ```
+
+    **Signature:**
+
+    ```typescript
+    async function validateKey0Token(
+      authHeader: string | null | undefined,
+      config: ValidatorConfig,
+    ): Promise<AccessTokenPayload>;
+    ```
+
+    Throws a plain `Error` (not `Key0Error`) on failure. Error messages:
+
+    | Message | Cause |
+    |---|---|
+    | `"Missing or malformed Authorization header"` | Header absent or missing `Bearer ` prefix. |
+    | `"Token expired"` | The `exp` claim is in the past. |
+    | `"Invalid token signature"` | Signature verification failed. |
+    | `"Invalid token: missing claim <name>"` | A required claim (`sub`, `jti`, `resourceId`, `planId`, `txHash`) is missing. |
+  </Tab>
+</Tabs>
+
+---
+
+## Internal: validateToken
+
+The framework-agnostic function used by `validateAccessToken`, `honoValidateAccessToken`, and `fastifyValidateAccessToken`. You do not need to call this directly unless you are building a custom integration.
+
+```typescript
+import { validateToken } from "@key0ai/key0";
+
+async function validateToken(
+  authHeader: string | null | undefined,
+  config: ValidateAccessTokenConfig,
+): Promise<AccessTokenPayload>;
+```
+
+Throws `Key0Error` with the following codes:
+
+| Scenario | Error Code | HTTP Status |
+|---|---|---|
+| Missing or malformed `Authorization` header | `INVALID_REQUEST` | 401 |
+| Token signature expired | `CHALLENGE_EXPIRED` | 401 |
+| Invalid signature or malformed token | `INVALID_REQUEST` | 401 |
+
+---
+
+## Error Responses
+
+All framework middleware functions return a consistent JSON error body on failure:
+
+**401 -- Missing, expired, or invalid token:**
+
+```json
+{
+  "type": "Error",
+  "code": "INVALID_REQUEST",
+  "message": "Missing or malformed Authorization header"
+}
+```
+
+**500 -- Internal error (unexpected exception during verification):**
+
+```json
+{
+  "type": "Error",
+  "code": "INTERNAL_ERROR",
+  "message": "Internal error"
+}
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Express Integration" icon="bolt" href="/integrations/express">
+    Full setup guide for mounting Key0 routes and middleware in Express.
+  </Card>
+  <Card title="Backend Integration Example" icon="code" href="/examples/backend-integration">
+    Use validateKey0Token in a separate backend service.
+  </Card>
+  <Card title="AccessTokenIssuer" icon="key" href="/sdk-reference/access-token-issuer">
+    The JWT issuer whose tokens this middleware validates.
+  </Card>
+</CardGroup>

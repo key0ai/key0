@@ -1,0 +1,212 @@
+---
+title: "ChallengeEngine"
+description: "API reference for ChallengeEngine — the core class that manages the challenge lifecycle from access request through payment to credential delivery."
+---
+
+# ChallengeEngine
+
+The `ChallengeEngine` class orchestrates the full challenge lifecycle: creating challenges, verifying payments, transitioning state, and issuing credentials. It is instantiated internally by [`createKey0()`](/sdk-reference/factory) and shared across all transports (Express, Hono, Fastify, MCP).
+
+You rarely construct a `ChallengeEngine` directly. Use the factory unless you need full control over wiring.
+
+## Constructor
+
+```typescript
+import { ChallengeEngine } from "@key0ai/key0";
+
+const engine = new ChallengeEngine({
+  config: SellerConfig,
+  store: IChallengeStore,
+  seenTxStore: ISeenTxStore,
+  adapter: IPaymentAdapter,
+});
+```
+
+| Parameter    | Type              | Description                                                                 |
+| ------------ | ----------------- | --------------------------------------------------------------------------- |
+| `config`     | `SellerConfig`    | Seller configuration including wallet address, network, and plans.          |
+| `store`      | `IChallengeStore` | Persistent store for challenge records. Must support atomic transitions.    |
+| `seenTxStore`| `ISeenTxStore`    | Store for tracking used transaction hashes to prevent double-spend.         |
+| `adapter`    | `IPaymentAdapter` | Payment adapter that verifies on-chain transfer events (e.g. `X402Adapter`). |
+
+## Methods
+
+### requestAccess
+
+Creates a `PENDING` challenge for the A2A protocol flow. Idempotent -- if a challenge with the same `requestId` already exists, the existing challenge is returned.
+
+```typescript
+requestAccess(request: AccessRequest): Promise<X402Challenge>
+```
+
+| Parameter | Type            | Description                                          |
+| --------- | --------------- | ---------------------------------------------------- |
+| `request` | `AccessRequest` | Contains `requestId`, `planId`, and `resourceId`.    |
+
+**Returns:** `Promise<X402Challenge>` -- the challenge object containing `challengeId`, payment `amount`, `destination` wallet, and `chainId`.
+
+---
+
+### requestHttpAccess
+
+Creates a `PENDING` challenge for the x402 HTTP flow. Auto-generates a `requestId` if one is not provided.
+
+```typescript
+requestHttpAccess(
+  requestId: string,
+  planId: string,
+  resourceId: string
+): Promise<{ challengeId: string }>
+```
+
+| Parameter    | Type     | Description                                      |
+| ------------ | -------- | ------------------------------------------------ |
+| `requestId`  | `string` | Unique identifier for the request.               |
+| `planId`     | `string` | The pricing plan to use for the challenge.       |
+| `resourceId` | `string` | Identifier for the resource being accessed.      |
+
+**Returns:** `Promise<{ challengeId: string }>` -- the ID of the created challenge.
+
+---
+
+### submitProof
+
+Verifies a payment on-chain via `adapter.verifyProof()`, transitions the challenge from `PENDING` to `PAID` to `DELIVERED`, and issues credentials. Used by the A2A protocol flow.
+
+```typescript
+submitProof(proof: PaymentProof): Promise<AccessGrant>
+```
+
+| Parameter | Type           | Description                                                       |
+| --------- | -------------- | ----------------------------------------------------------------- |
+| `proof`   | `PaymentProof` | Contains `challengeId` and `txHash` of the on-chain transaction.  |
+
+**Returns:** `Promise<AccessGrant>` -- the grant containing the issued credential (JWT, API key, etc.) from `fetchResourceCredentials`.
+
+<Warning>
+This method performs on-chain verification. It will reject if the transaction does not match the expected amount, destination, or token contract.
+</Warning>
+
+---
+
+### processHttpPayment
+
+Handles payment for the x402 HTTP flow. Unlike `submitProof`, this method skips on-chain verification because the x402 settlement layer has already verified the payment. Creates a challenge if one does not yet exist, then transitions through `PAID` to `DELIVERED`.
+
+```typescript
+processHttpPayment(
+  requestId: string,
+  planId: string,
+  resourceId: string,
+  txHash: string,
+  payer?: string
+): Promise<AccessGrant>
+```
+
+| Parameter    | Type     | Required | Description                                        |
+| ------------ | -------- | -------- | -------------------------------------------------- |
+| `requestId`  | `string` | Yes      | Unique identifier for the request.                 |
+| `planId`     | `string` | Yes      | The pricing plan used for payment.                 |
+| `resourceId` | `string` | Yes      | Identifier for the resource being accessed.        |
+| `txHash`     | `string` | Yes      | Transaction hash from the on-chain settlement.     |
+| `payer`      | `string` | No       | Wallet address of the payer, if known.             |
+
+**Returns:** `Promise<AccessGrant>` -- the grant containing the issued credential.
+
+---
+
+### preSettlementCheck
+
+Returns a cached `AccessGrant` if the challenge has already been delivered. Returns `null` otherwise. Use this to avoid duplicate settlement when a client retries a request that was already fulfilled.
+
+```typescript
+preSettlementCheck(requestId: string): Promise<AccessGrant | null>
+```
+
+| Parameter   | Type     | Description                            |
+| ----------- | -------- | -------------------------------------- |
+| `requestId` | `string` | The request ID to look up.             |
+
+**Returns:** `Promise<AccessGrant | null>` -- the existing grant, or `null` if no delivered grant exists.
+
+---
+
+### cancelChallenge
+
+Transitions a challenge from `PENDING` to `CANCELLED`. Only pending challenges can be cancelled.
+
+```typescript
+cancelChallenge(challengeId: string): Promise<void>
+```
+
+| Parameter     | Type     | Description                          |
+| ------------- | -------- | ------------------------------------ |
+| `challengeId` | `string` | The ID of the challenge to cancel.   |
+
+**Returns:** `Promise<void>`
+
+## State Machine
+
+`ChallengeEngine` enforces a strict state machine for every challenge. Only valid transitions are permitted; invalid transitions throw a `Key0Error`.
+
+```
+PENDING --> PAID --> DELIVERED
+PENDING --> EXPIRED
+PENDING --> CANCELLED
+PAID --> REFUND_PENDING --> REFUNDED
+PAID --> REFUND_PENDING --> REFUND_FAILED
+```
+
+All transitions are atomic and go through `IChallengeStore.transition()` to prevent race conditions under concurrent access. For the full state machine specification, see the [State Machine](/architecture/state-machine) page.
+
+## Error Handling
+
+All methods throw [`Key0Error`](/sdk-reference/error-codes) with typed error codes when a failure occurs. Common scenarios include:
+
+| Error Code              | Cause                                                    |
+| ----------------------- | -------------------------------------------------------- |
+| `CHALLENGE_NOT_FOUND`   | The referenced challenge ID does not exist in the store. |
+| `INVALID_TRANSITION`    | The challenge is not in a valid state for the operation. |
+| `PAYMENT_VERIFICATION_FAILED` | On-chain verification did not match expected parameters. |
+| `DUPLICATE_TX`          | The transaction hash has already been used for another challenge. |
+
+See the full list of error codes at [Error Codes](/sdk-reference/error-codes).
+
+## Usage Example
+
+In most applications, you interact with `ChallengeEngine` indirectly through the framework integration. For direct usage:
+
+```typescript
+import { ChallengeEngine, X402Adapter } from "@key0ai/key0";
+import { RedisChallengeStore, RedisSeenTxStore } from "@key0ai/key0";
+
+const engine = new ChallengeEngine({
+  config: sellerConfig,
+  store: new RedisChallengeStore(redis),
+  seenTxStore: new RedisSeenTxStore(redis),
+  adapter: new X402Adapter("mainnet"),
+});
+
+// A2A flow
+const challenge = await engine.requestAccess({
+  requestId: "req-001",
+  planId: "basic",
+  resourceId: "/api/data",
+});
+
+// After the client pays on-chain...
+const grant = await engine.submitProof({
+  challengeId: challenge.challengeId,
+  txHash: "0xabc...",
+});
+
+console.log(grant.credential); // JWT or API key
+```
+
+## Related
+
+- [SellerConfig](/sdk-reference/seller-config) -- configuration that drives engine behavior
+- [Storage](/sdk-reference/storage) -- challenge and seen-tx store implementations
+- [X402Adapter](/sdk-reference/x402-adapter) -- on-chain payment verification
+- [State Machine](/architecture/state-machine) -- full state transition diagram
+- [Error Codes](/sdk-reference/error-codes) -- typed error codes reference

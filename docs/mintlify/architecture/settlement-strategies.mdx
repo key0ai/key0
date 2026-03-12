@@ -1,0 +1,145 @@
+---
+title: "Settlement Strategies"
+description: "How Key0 settles on-chain payments: facilitator mode vs. gas wallet mode."
+---
+
+The `settlePayment()` function is called by all three transports (REST, A2A JSON-RPC middleware, and A2A Executor). It inspects your `SellerConfig` and routes to one of two settlement strategies: **Facilitator Mode** (the default) or **Gas Wallet Mode**.
+
+Both strategies verify the client's EIP-3009 `transferWithAuthorization` signature and then settle the USDC transfer on-chain. They differ in _who_ broadcasts the transaction and _who_ pays the gas.
+
+## Strategies
+
+<Tabs>
+  <Tab title="Facilitator Mode">
+    Facilitator mode is the **default** strategy. It delegates on-chain settlement to an external facilitator service (Coinbase CDP). Your server never touches a private key or pays gas.
+
+    ### How It Works
+
+    ```
+    Server                          Facilitator (CDP)            Base (L2)
+      │                                   │                        │
+      │── POST /verify ──────────────────>│                        │
+      │   (X402PaymentPayload + reqs)     │                        │
+      │<── { isValid: true } ─────────────│                        │
+      │                                   │                        │
+      │── POST /settle ──────────────────>│                        │
+      │                                   │── transferWithAuth ───>│
+      │                                   │<── txReceipt ──────────│
+      │<── { txHash, settleResponse } ────│                        │
+    ```
+
+    1. `POST {facilitatorUrl}/verify` -- sends the `X402PaymentPayload` and payment requirements to the facilitator.
+    2. Check `isValid` in the response. If `false`, settlement is rejected.
+    3. `POST {facilitatorUrl}/settle` -- the facilitator broadcasts `transferWithAuthorization` on-chain and returns the transaction hash.
+    4. Return `{ txHash, settleResponse, payer }` to the engine for state transition.
+
+    The facilitator executes the EIP-3009 `transferWithAuthorization` call on-chain. The client signs off-chain and never pays gas.
+
+    ### Configuration
+
+    The default facilitator URL for both testnet and mainnet is:
+
+    ```
+    https://api.cdp.coinbase.com/platform/v2/x402
+    ```
+
+    You can override it in your config:
+
+    ```typescript
+    {
+      facilitatorUrl: "https://your-custom-facilitator.example.com"
+    }
+    ```
+
+    **Required environment variables:**
+
+    ```bash
+    CDP_API_KEY_ID=your-cdp-key-id
+    CDP_API_KEY_SECRET=your-cdp-key-secret
+    ```
+
+    ### When to Use
+
+    - Production deployments where you want zero gas management overhead.
+    - The facilitator pays all transaction fees on Base.
+    - You only need Coinbase CDP API credentials.
+  </Tab>
+  <Tab title="Gas Wallet Mode">
+    Gas wallet mode provides **self-contained settlement** with no external dependencies. Your server uses a local private key to broadcast the settlement transaction directly.
+
+    ### How It Works
+
+    ```
+    Server (gas wallet)                  Base (L2)
+      │                                    │
+      │── create wallet client ───────────>│
+      │── ExactEvmScheme.verify() ────────>│
+      │<── signature valid ────────────────│
+      │── ExactEvmScheme.settle() ────────>│
+      │   (transferWithAuthorization)      │
+      │<── { txHash, settleResponse } ─────│
+    ```
+
+    1. Create a viem wallet client using the gas wallet account.
+    2. Instantiate `ExactEvmScheme` from `@x402/evm/exact/facilitator`.
+    3. Call `scheme.verify()` to validate the EIP-3009 signature off-chain.
+    4. Call `scheme.settle()` to broadcast `transferWithAuthorization` on-chain -- the gas wallet pays the transaction fee.
+    5. Return `{ txHash, settleResponse, payer }` to the engine.
+
+    ### Configuration
+
+    Enable gas wallet mode by setting `gasWalletPrivateKey` in your config:
+
+    ```typescript
+    {
+      gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY as `0x${string}`
+    }
+    ```
+
+    <Warning>
+      Your gas wallet must hold ETH on Base to pay transaction fees. If the wallet runs out of ETH, settlement calls will fail. Monitor the balance and top it up before it reaches zero.
+    </Warning>
+
+    ### When to Use
+
+    - Self-contained deployments with no third-party dependencies.
+    - Environments where you prefer full control over the settlement process.
+    - Testing and development setups on Base Sepolia.
+  </Tab>
+</Tabs>
+
+## Nonce Serialization
+
+When using **Gas Wallet Mode**, concurrent settlement requests can cause nonce conflicts because all transactions originate from the same wallet address. Key0 prevents this with automatic nonce serialization.
+
+| Strategy | When | How |
+|---|---|---|
+| **Redis distributed lock** | `config.redis` is provided | `SET NX` with 60-second TTL. Lua-script atomic release. Poll interval: 200ms. Max wait: 30s (throws HTTP 503 on timeout). Lock key is scoped to the gas wallet address. |
+| **In-process queue** | No Redis configured | Promise-based serial queue. Works for single-instance deployments only. |
+
+If your deployment runs multiple replicas with a shared gas wallet, you **must** provide a Redis connection so the distributed lock can coordinate across instances. Without Redis, each instance maintains its own queue and nonce conflicts will occur.
+
+<Note>
+  Facilitator mode does not need nonce serialization because the facilitator service manages its own transaction ordering.
+</Note>
+
+## Comparison
+
+| | Facilitator (default) | Gas Wallet |
+|---|---|---|
+| **External dependency** | Coinbase CDP | None |
+| **Gas costs** | Facilitator pays | Your gas wallet pays ETH |
+| **Setup** | CDP API keys (`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`) | Private key in environment (`GAS_WALLET_PRIVATE_KEY`) |
+| **Multi-replica** | Works out of the box | Requires Redis for nonce serialization |
+| **Best for** | Production -- no gas management | Self-contained -- no third party |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Payment Flow" icon="diagram-project" href="/architecture/payment-flow">
+    Full walkthrough of the two-phase challenge and settlement lifecycle.
+  </Card>
+  <Card title="State Machine" icon="arrows-spin" href="/architecture/state-machine">
+    How challenges transition through PENDING, PAID, DELIVERED, and refund states.
+  </Card>
+</CardGroup>

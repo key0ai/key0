@@ -1,0 +1,189 @@
+---
+title: "Agent Card"
+description: "GET /.well-known/agent.json — the A2A discovery endpoint that describes your agent's capabilities and pricing."
+---
+
+# Agent Card
+
+```
+GET /.well-known/agent.json
+```
+
+Returns the A2A-compliant Agent Card for your Key0 seller agent. This is the entry point for any client agent that wants to discover your agent's capabilities, skills, and payment requirements.
+
+No authentication is required.
+
+## Response
+
+<ResponseField name="name" type="string" required>
+  The agent name, from `SellerConfig.agentName`.
+</ResponseField>
+
+<ResponseField name="description" type="string" required>
+  The agent description, from `SellerConfig.agentDescription`.
+</ResponseField>
+
+<ResponseField name="url" type="string" required>
+  The primary endpoint URL. Points to `/x402/access` by default.
+</ResponseField>
+
+<ResponseField name="version" type="string" required>
+  Agent version. Defaults to `"1.0.0"`.
+</ResponseField>
+
+<ResponseField name="protocolVersion" type="string" required>
+  A2A protocol version. Currently `"0.3.0"`.
+</ResponseField>
+
+<ResponseField name="capabilities" type="object" required>
+  Declares supported capabilities and extensions.
+</ResponseField>
+
+<ResponseField name="skills" type="AgentSkill[]" required>
+  Array of skills the agent exposes. Key0 registers two skills by default.
+</ResponseField>
+
+<ResponseField name="provider" type="object">
+  Organization and URL of the agent provider.
+</ResponseField>
+
+## Example Response
+
+```json
+{
+  "name": "Acme Photo API",
+  "description": "Pay-per-use access to high-resolution stock photos via USDC on Base.",
+  "url": "https://api.acme.com/x402/access",
+  "version": "1.0.0",
+  "protocolVersion": "0.3.0",
+  "capabilities": {
+    "extensions": [
+      {
+        "uri": "https://github.com/google-agentic-commerce/a2a-x402/blob/main/spec/v0.2",
+        "description": "Supports x402 payments with USDC on base-sepolia.",
+        "required": true
+      }
+    ],
+    "pushNotifications": false,
+    "streaming": false,
+    "stateTransitionHistory": false
+  },
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["application/json"],
+  "skills": [
+    {
+      "id": "discover-products",
+      "name": "Discover Products",
+      "description": "Browse available products and pricing for Acme Photo API. Returns the product catalog with plan IDs, prices (USDC on base-sepolia), wallet address, and chain ID. POST to https://api.acme.com/x402/access with an empty body or without planId to discover products.",
+      "tags": ["discovery", "catalog", "x402"],
+      "examples": [
+        "POST https://api.acme.com/x402/access with empty body {}",
+        "Or call without planId to get 402 response with product catalog"
+      ]
+    },
+    {
+      "id": "request-access",
+      "name": "Request Access",
+      "description": "Purchase access to a Acme Photo API product plan via x402 payment on base-sepolia. First call discover-products to get available plans. Then POST to https://api.acme.com/x402/access with planId and requestId to initiate purchase. Server responds with x402 payment challenge. Complete payment on-chain and include PAYMENT-SIGNATURE header to receive access token.",
+      "tags": ["payment", "x402", "purchase"],
+      "examples": [
+        "POST https://api.acme.com/x402/access with { planId: \"<plan-id>\", requestId: \"<uuid>\", resourceId: \"default\" }",
+        "Receive 402 with payment challenge",
+        "Pay USDC on-chain, retry same request with PAYMENT-SIGNATURE header",
+        "Receive 200 with access token"
+      ]
+    }
+  ],
+  "provider": {
+    "organization": "Acme Inc.",
+    "url": "https://acme.com"
+  }
+}
+```
+
+## Skills
+
+Key0 automatically generates two A2A-compliant skills:
+
+### discover-products
+
+A free discovery skill. Clients call this (or POST to `/x402/access` without a `planId`) to browse the plan catalog. Returns plan IDs, prices, wallet address, and chain ID.
+
+### request-access
+
+The payment-gated skill. Clients call this to initiate a purchase flow:
+
+1. POST with `planId` to receive a 402 challenge with payment requirements.
+2. Sign an EIP-3009 authorization off-chain.
+3. Retry the same request with a `PAYMENT-SIGNATURE` header.
+4. Receive a 200 response with an `AccessGrant` containing the bearer token.
+
+## x402 Extension
+
+The Agent Card declares the x402 extension as `required: true` in `capabilities.extensions`:
+
+```json
+{
+  "uri": "https://github.com/google-agentic-commerce/a2a-x402/blob/main/spec/v0.2",
+  "description": "Supports x402 payments with USDC on base-sepolia.",
+  "required": true
+}
+```
+
+This signals to client agents that they must support the x402 payment protocol to interact with this agent. The `uri` follows the A2A x402 extension spec v0.2.
+
+## TypeScript Types
+
+```typescript
+type AgentCard = {
+  name: string;
+  description: string;
+  url: string;
+  version: string;
+  protocolVersion: string;
+  capabilities: {
+    extensions?: AgentExtension[];
+    pushNotifications?: boolean;
+    streaming?: boolean;
+    stateTransitionHistory?: boolean;
+  };
+  defaultInputModes: string[];
+  defaultOutputModes: string[];
+  skills: AgentSkill[];
+  provider?: {
+    organization: string;
+    url: string;
+  };
+};
+
+type AgentSkill = {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  examples?: string[];
+  inputModes?: string[];
+  outputModes?: string[];
+};
+
+type AgentExtension = {
+  uri: string;
+  description?: string;
+  required?: boolean;
+  params?: Record<string, unknown>;
+};
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="SellerConfig" icon="sliders" href="/sdk-reference/seller-config">
+    The configuration object that drives agent card generation.
+  </Card>
+  <Card title="How It Works" icon="diagram-project" href="/introduction/how-it-works">
+    Overview of the Key0 payment flow and agent discovery.
+  </Card>
+  <Card title="API Reference Overview" icon="book" href="/api-reference/overview">
+    Index of all Key0 API endpoints and protocols.
+  </Card>
+</CardGroup>

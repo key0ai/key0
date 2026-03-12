@@ -1,0 +1,142 @@
+/* ─── Key0 Brand Theme ───────────────────────────────────── */
+/* Matches the product website's neumorphic design language  */
+
+/* ─── Light Mode ────────────────────────────────────────── */
+
+:root {
+	--background: #f5f5f5;
+	--foreground: #3a3a3a;
+	--muted: #737373;
+	--accent: #1a1a1a;
+}
+
+/* Card styling — muted surfaces, neumorphic feel */
+[class*="Card"] > div,
+.card {
+	border-radius: 16px;
+	border-color: rgba(0, 0, 0, 0.04);
+	background: #efefef;
+	transition:
+		box-shadow 0.2s ease,
+		transform 0.2s ease;
+}
+
+[class*="Card"] > div:hover,
+.card:hover {
+	box-shadow:
+		6px 6px 12px rgba(0, 0, 0, 0.08),
+		-6px -6px 12px rgba(255, 255, 255, 0.6);
+	transform: translateY(-1px);
+}
+
+/* Code blocks — keep Mintlify defaults, just soften the border */
+pre {
+	border-radius: 12px;
+	border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+/* Inline code — blend with surface */
+:not(pre) > code {
+	background: #e0e0e0;
+}
+
+/* Callout components — softer */
+.callout,
+[class*="Callout"] {
+	border-radius: 12px;
+}
+
+/* Tables — muted header row */
+thead tr {
+	background: #e0e0e0;
+}
+
+/* Table styling */
+table {
+	border-radius: 12px;
+	overflow: hidden;
+}
+
+th {
+	font-family: "Plus Jakarta Sans", sans-serif;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+/* Headings — tighter tracking like the product site */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	letter-spacing: -0.02em;
+	color: #1a1a1a;
+}
+
+/* ─── Dark Mode ─────────────────────────────────────────── */
+
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4,
+.dark h5,
+.dark h6 {
+	color: #e8e8e8;
+}
+
+/* Dark mode — reset light-mode surface overrides */
+.dark [class*="Card"] > div,
+.dark .card {
+	background: inherit;
+	border-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark [class*="Card"] > div:hover,
+.dark .card:hover {
+	box-shadow:
+		6px 6px 12px rgba(0, 0, 0, 0.4),
+		-6px -6px 12px rgba(255, 255, 255, 0.03);
+}
+
+.dark :not(pre) > code {
+	background: rgba(255, 255, 255, 0.08);
+}
+
+.dark thead tr {
+	background: rgba(255, 255, 255, 0.06);
+}
+
+/* ─── Topbar CTA button ─────────────────────────────────── */
+
+a[class*="TopbarCta"],
+.topbar-cta {
+	border-radius: 8px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+/* ─── Anchor cards (NPM, Docker Hub) ────────────────────── */
+
+[class*="Anchor"],
+.anchor-card {
+	border-radius: 12px;
+}
+
+/* ─── Smooth scrolling ──────────────────────────────────── */
+
+html {
+	scroll-behavior: smooth;
+}
+
+/* ─── Focus states (accessibility) ──────────────────────── */
+
+*:focus-visible {
+	outline: 2px solid #1a1a1a;
+	outline-offset: 2px;
+	border-radius: 8px;
+}
+
+.dark *:focus-visible {
+	outline-color: #e8e8e8;
+}

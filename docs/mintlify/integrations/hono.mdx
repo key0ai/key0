@@ -1,0 +1,242 @@
+---
+title: "Hono"
+description: "Mount Key0 as a Hono sub-app for agent discovery and access token validation."
+---
+
+The Hono integration provides two exports from `@key0ai/key0/hono`:
+
+- **`key0App(opts)`** -- a Hono sub-app that serves the agent card and reserves the A2A endpoint.
+- **`honoValidateAccessToken({ secret })`** -- middleware that validates Bearer JWTs issued by Key0.
+
+## Installation
+
+```bash
+bun add @key0ai/key0 hono
+```
+
+## Routes
+
+When you mount `key0App`, the following routes are registered:
+
+| Method | Path                       | Description                        | Status |
+| ------ | -------------------------- | ---------------------------------- | ------ |
+| GET    | `/.well-known/agent.json`  | A2A agent card (discovery)         | Live   |
+| POST   | `{basePath}` (default `/a2a`) | A2A JSON-RPC endpoint           | 501    |
+
+<Note>
+The A2A JSON-RPC endpoint currently returns **501 Not Implemented**. Full A2A support is pending an upstream SDK update. Use the [Express integration](/integrations/express) if you need the complete A2A flow today.
+</Note>
+
+<Warning>
+The x402 HTTP payment endpoint (`/x402/access`) is **not available** in the Hono adapter. Use the Express integration for full x402 support, or use the Hono adapter exclusively for agent card discovery and access token validation.
+</Warning>
+
+## Setup
+
+<Steps>
+
+<Step title="Configure the seller">
+
+Define your `SellerConfig` with wallet address, network, and pricing plans.
+
+```typescript
+import type { SellerConfig } from "@key0ai/key0";
+
+const sellerConfig: SellerConfig = {
+  walletAddress: "0xYourWalletAddress",
+  network: "testnet",
+  basePath: "/a2a",
+  plans: [
+    {
+      planId: "basic",
+      unitAmount: "0.01",
+      description: "Basic API access",
+    },
+  ],
+  fetchResourceCredentials: async (challenge) => {
+    return { token: "your-issued-credential" };
+  },
+};
+```
+
+</Step>
+
+<Step title="Create stores and adapter">
+
+Provide the required `IChallengeStore`, `ISeenTxStore`, and `IPaymentAdapter` instances.
+
+```typescript
+import {
+  RedisChallengeStore,
+  RedisSeenTxStore,
+  X402Adapter,
+} from "@key0ai/key0";
+import Redis from "ioredis";
+
+const redis = new Redis();
+const store = new RedisChallengeStore({ redis });
+const seenTxStore = new RedisSeenTxStore({ redis });
+const adapter = new X402Adapter({ network: "testnet" });
+```
+
+</Step>
+
+<Step title="Mount the sub-app">
+
+Import `key0App` from `@key0ai/key0/hono` and mount it on your main Hono app.
+
+```typescript
+import { Hono } from "hono";
+import { key0App } from "@key0ai/key0/hono";
+
+const app = new Hono();
+
+app.route(
+  "/",
+  key0App({
+    config: sellerConfig,
+    adapter,
+    store,
+    seenTxStore,
+  }),
+);
+```
+
+Your agent card is now available at `GET /.well-known/agent.json`.
+
+</Step>
+
+<Step title="Protect routes with access token validation">
+
+Use `honoValidateAccessToken` as middleware on any route that requires a valid Key0 JWT.
+
+```typescript
+import { honoValidateAccessToken } from "@key0ai/key0/hono";
+
+const guard = honoValidateAccessToken({
+  secret: process.env.KEY0_JWT_SECRET!,
+});
+
+app.get("/protected/data", guard, (c) => {
+  const token = c.get("key0Token");
+  return c.json({
+    message: "Authenticated",
+    challengeId: token.jti,
+    planId: token.planId,
+    txHash: token.txHash,
+  });
+});
+```
+
+</Step>
+
+</Steps>
+
+## Accessing the decoded token
+
+After `honoValidateAccessToken` succeeds, the decoded JWT payload is available via `c.get("key0Token")`. The payload contains:
+
+| Field        | Type     | Description                        |
+| ------------ | -------- | ---------------------------------- |
+| `sub`        | `string` | The original request ID            |
+| `jti`        | `string` | The challenge ID                   |
+| `resourceId` | `string` | The resource that was paid for     |
+| `planId`     | `string` | The plan the client purchased      |
+| `txHash`     | `string` | The on-chain transaction hash      |
+
+On failure, the middleware returns a JSON error response:
+
+| Scenario               | HTTP Status | Error Code          |
+| ---------------------- | ----------- | ------------------- |
+| Missing/malformed header | 401       | `INVALID_REQUEST`   |
+| Expired token          | 401         | `CHALLENGE_EXPIRED` |
+| Invalid signature      | 401         | `INVALID_REQUEST`   |
+| Internal error         | 500         | `INTERNAL_ERROR`    |
+
+## Full example
+
+```typescript
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import {
+  RedisChallengeStore,
+  RedisSeenTxStore,
+  X402Adapter,
+} from "@key0ai/key0";
+import { key0App, honoValidateAccessToken } from "@key0ai/key0/hono";
+import Redis from "ioredis";
+
+const redis = new Redis();
+
+const sellerConfig = {
+  walletAddress: "0xYourWalletAddress",
+  network: "testnet" as const,
+  plans: [
+    {
+      planId: "basic",
+      unitAmount: "0.01",
+      description: "Basic API access",
+    },
+  ],
+  fetchResourceCredentials: async () => ({ token: "credential" }),
+};
+
+const app = new Hono();
+
+// Mount Key0 sub-app (agent card + A2A placeholder)
+app.route(
+  "/",
+  key0App({
+    config: sellerConfig,
+    adapter: new X402Adapter({ network: "testnet" }),
+    store: new RedisChallengeStore({ redis }),
+    seenTxStore: new RedisSeenTxStore({ redis }),
+  }),
+);
+
+// Protected route
+const guard = honoValidateAccessToken({
+  secret: process.env.KEY0_JWT_SECRET!,
+});
+
+app.get("/api/resource", guard, (c) => {
+  const token = c.get("key0Token");
+  return c.json({ resource: "data", plan: token.planId });
+});
+
+serve({ fetch: app.fetch, port: 3000 });
+console.log("Hono server running on http://localhost:3000");
+```
+
+## API reference
+
+### `key0App(opts)`
+
+Creates a Hono sub-app with agent card discovery and an A2A endpoint stub.
+
+```typescript
+function key0App(opts: Key0Config): Hono
+```
+
+**Parameters:**
+
+| Field          | Type               | Description                           |
+| -------------- | ------------------ | ------------------------------------- |
+| `config`       | `SellerConfig`     | Seller configuration (wallet, plans)  |
+| `adapter`      | `IPaymentAdapter`  | On-chain payment verification adapter |
+| `store`        | `IChallengeStore`  | Challenge state storage               |
+| `seenTxStore`  | `ISeenTxStore`     | Double-spend prevention storage       |
+
+### `honoValidateAccessToken(config)`
+
+Returns Hono middleware that validates a `Bearer` token from the `Authorization` header.
+
+```typescript
+function honoValidateAccessToken(config: ValidateAccessTokenConfig): MiddlewareHandler
+```
+
+**Parameters:**
+
+| Field    | Type     | Description                          |
+| -------- | -------- | ------------------------------------ |
+| `secret` | `string` | The JWT secret used to sign tokens   |

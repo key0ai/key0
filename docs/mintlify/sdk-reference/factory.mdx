@@ -1,0 +1,105 @@
+---
+title: "createKey0()"
+description: "API reference for the createKey0 factory function — wires together config, adapter, and storage into a complete Key0 instance."
+---
+
+# createKey0()
+
+The `createKey0()` factory is the main entry point for assembling a Key0 instance. It takes your seller configuration, payment adapter, and storage backends, then returns a fully wired object containing the challenge engine, A2A executor, agent card, and request handler.
+
+## Signature
+
+```typescript
+function createKey0(opts: Key0Config): Key0Instance
+```
+
+## Parameters
+
+### Key0Config
+
+<ParamField body="config" type="SellerConfig" required>
+  Seller configuration defining wallet address, network, pricing plans, and callbacks. See [SellerConfig](/sdk-reference/seller-config) for details.
+</ParamField>
+
+<ParamField body="adapter" type="IPaymentAdapter" required>
+  Payment adapter responsible for on-chain verification of ERC-20 transfers. Use `X402Adapter` for Base mainnet or Base Sepolia. See [X402Adapter](/sdk-reference/x402-adapter).
+</ParamField>
+
+<ParamField body="store" type="IChallengeStore" required>
+  Persistent store for challenge state. Provides atomic state transitions to prevent race conditions. See [Storage](/sdk-reference/storage).
+</ParamField>
+
+<ParamField body="seenTxStore" type="ISeenTxStore" required>
+  Store for tracking used transaction hashes. Prevents double-spend by atomically marking each `txHash` as consumed. See [Storage](/sdk-reference/storage).
+</ParamField>
+
+```typescript
+type Key0Config = {
+  readonly config: SellerConfig;
+  readonly adapter: IPaymentAdapter;
+  readonly store: IChallengeStore;
+  readonly seenTxStore: ISeenTxStore;
+};
+```
+
+## Return value
+
+### Key0Instance
+
+| Property         | Type                    | Description                                      |
+| ---------------- | ----------------------- | ------------------------------------------------ |
+| `requestHandler` | `DefaultRequestHandler` | A2A request handler (from `@a2a-js/sdk`)         |
+| `agentCard`      | `AgentCard`             | Auto-generated A2A discovery card from config     |
+| `engine`         | `ChallengeEngine`       | Challenge lifecycle engine for the payment flow   |
+| `executor`       | `Key0Executor`          | A2A executor implementing the x402 protocol flow |
+
+```typescript
+type Key0Instance = {
+  requestHandler: DefaultRequestHandler;
+  agentCard: AgentCard;
+  engine: ChallengeEngine;
+  executor: Key0Executor;
+};
+```
+
+## What it does
+
+1. **Validates inputs** — throws a descriptive error if `store` or `seenTxStore` is missing.
+2. **Creates a ChallengeEngine** — wires together `config`, `store`, `seenTxStore`, and `adapter` into the state machine that manages the full challenge lifecycle (PENDING, PAID, DELIVERED, EXPIRED, CANCELLED, REFUNDED).
+3. **Creates a Key0Executor** — builds the A2A protocol executor that handles `AccessRequest` and `PaymentProof` messages.
+4. **Builds the agent card** — generates an A2A-compliant discovery card from `SellerConfig`.
+5. **Creates the request handler** — returns a `DefaultRequestHandler` (from `@a2a-js/sdk`) bound to the agent card and executor.
+
+## Usage
+
+```typescript
+import {
+  createKey0,
+  X402Adapter,
+  RedisChallengeStore,
+  RedisSeenTxStore,
+} from "@key0ai/key0";
+
+const { engine, agentCard, requestHandler, executor } = createKey0({
+  config: sellerConfig,
+  adapter: new X402Adapter({ network: "testnet" }),
+  store: new RedisChallengeStore({ redis }),
+  seenTxStore: new RedisSeenTxStore({ redis }),
+});
+```
+
+## When to use createKey0() directly
+
+Most developers should use framework adapters instead of calling `createKey0()` directly:
+
+- **Express** — `key0Router()` from `@key0ai/key0/express`
+- **Hono** — `key0App()` from `@key0ai/key0/hono`
+- **Fastify** — `key0Plugin()` from `@key0ai/key0/fastify`
+
+These adapters call `createKey0()` internally, mount the challenge and proof endpoints, and export `validateAccessToken` middleware for protecting routes.
+
+Use `createKey0()` directly when you need:
+
+- Access to the `engine` for custom challenge lifecycle management
+- Access to the `executor` for a non-standard A2A integration
+- Full control over how endpoints are mounted in your application

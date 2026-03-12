@@ -21,14 +21,6 @@ const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
 const app = express();
 app.use(express.json());
 
-// Mock database
-const resources = new Map<string, { tierId: string }>([
-	["default", { tierId: "basic" }], // Accept general API access
-	["photo-1", { tierId: "basic" }],
-	["photo-2", { tierId: "basic" }],
-	["album-1", { tierId: "premium" }],
-]);
-
 const apiKeys = new Map<string, { expiresAt: Date; resourceId: string; tierId: string }>();
 
 // ============================================================================
@@ -47,21 +39,6 @@ function verifyInternalAuth(
 	}
 	next();
 }
-
-// Verify resource exists
-app.post("/internal/verify-resource", verifyInternalAuth, (req, res) => {
-	const { resourceId, tierId } = req.body;
-
-	// Accept "default" for any tier (general API access)
-	if (resourceId === "default") {
-		return res.json({ valid: true });
-	}
-
-	// Validate specific resources
-	const resource = resources.get(resourceId);
-	const valid = resource !== undefined && resource.tierId === tierId;
-	res.json({ valid });
-});
 
 // Issue token (only used if Key0 tokenMode="remote")
 app.post("/internal/issue-token", (req, res) => {
@@ -147,22 +124,6 @@ app.use("/api", validateToken);
 // Sample protected endpoint
 app.get("/api/photos/:id", (req, res) => {
 	const token = (req as unknown as { key0Token: AccessTokenPayload }).key0Token;
-
-	// If token has "default" resourceId, it grants access to all resources (tier-scoped)
-	// Otherwise, verify specific resource ID matches
-	if (token.resourceId !== "default" && req.params.id !== token.resourceId) {
-		return res.status(403).json({ error: "Token not valid for this resource" });
-	}
-
-	const resource = resources.get(req.params.id);
-	if (!resource) {
-		return res.status(404).json({ error: "Resource not found" });
-	}
-
-	// Verify tier access
-	if (token.tierId !== resource.tierId) {
-		return res.status(403).json({ error: "Token tier does not grant access to this resource" });
-	}
 
 	res.json({
 		id: req.params.id,

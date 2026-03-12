@@ -1,0 +1,291 @@
+---
+title: "MCP Tools"
+description: "discover_plans and request_access — the two MCP tools exposed by Key0 for plan discovery and payment-gated access."
+---
+
+# MCP Tools
+
+Key0 exposes two tools via the Model Context Protocol (MCP) when `mcp: true` is set in `SellerConfig`. These tools are available over the Streamable HTTP transport at `POST /mcp`.
+
+MCP discovery is at `GET /.well-known/mcp.json`.
+
+## Discovery Endpoint
+
+```
+GET /.well-known/mcp.json
+```
+
+Returns the MCP server metadata and transport URL.
+
+```json
+{
+  "name": "Acme Photo API",
+  "description": "Pay-per-use access to high-resolution stock photos via USDC on Base.",
+  "version": "1.0.0",
+  "transport": {
+    "type": "streamable-http",
+    "url": "https://api.example.com/mcp"
+  }
+}
+```
+
+---
+
+## Tool: discover_plans
+
+A free tool that returns the full plan catalog with pricing, wallet address, and chain ID. No payment required.
+
+### Input Schema
+
+This tool takes no input parameters.
+
+### Output
+
+Returns a JSON object with the plan catalog:
+
+```json
+{
+  "agent": "Acme Photo API",
+  "description": "Pay-per-use access to high-resolution stock photos via USDC on Base.",
+  "network": "testnet",
+  "chainId": 84532,
+  "walletAddress": "0xSellerWalletAddress",
+  "asset": "USDC",
+  "plans": [
+    {
+      "planId": "basic",
+      "unitAmount": "$0.10",
+      "description": "Single photo download"
+    },
+    {
+      "planId": "pro",
+      "unitAmount": "$0.50",
+      "description": "Bulk photo pack (10 photos)"
+    }
+  ]
+}
+```
+
+### Example with curl
+
+```bash
+curl -X POST https://api.example.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "discover_plans",
+      "arguments": {}
+    }
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"agent\": \"Acme Photo API\",\n  \"description\": \"Pay-per-use access to high-resolution stock photos via USDC on Base.\",\n  \"network\": \"testnet\",\n  \"chainId\": 84532,\n  \"walletAddress\": \"0xSellerWalletAddress\",\n  \"asset\": \"USDC\",\n  \"plans\": [\n    {\n      \"planId\": \"basic\",\n      \"unitAmount\": \"$0.10\",\n      \"description\": \"Single photo download\"\n    }\n  ]\n}"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## Tool: request_access
+
+The payment-gated tool. When called without a payment in `_meta`, it returns an x402 `PaymentRequired` signal. When called with an `_meta["x402/payment"]` payload, it settles the payment and returns an `AccessGrant`.
+
+### Input Schema
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `planId` | string | Yes | Plan ID from `discover_plans`. |
+| `resourceId` | string | No | Specific resource identifier. Defaults to `"default"`. |
+
+### Case 1: No Payment (PaymentRequired Response)
+
+When called without `_meta["x402/payment"]`, the tool returns `isError: true` with a `structuredContent` object containing x402 payment requirements.
+
+```bash
+curl -X POST https://api.example.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "request_access",
+      "arguments": {
+        "planId": "basic",
+        "resourceId": "default"
+      }
+    }
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "isError": true,
+    "structuredContent": {
+      "x402Version": 2,
+      "resource": {
+        "url": "https://api.example.com/x402/access",
+        "description": "Access to default",
+        "mimeType": "application/json"
+      },
+      "accepts": [
+        {
+          "scheme": "exact",
+          "network": "eip155:84532",
+          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "amount": "100000",
+          "payTo": "0xSellerWalletAddress",
+          "maxTimeoutSeconds": 900,
+          "extra": {
+            "name": "USDC",
+            "version": "2",
+            "description": "basic — $0.10 USDC"
+          }
+        }
+      ],
+      "error": "Payment required to access this resource"
+    },
+    "content": [
+      {
+        "type": "text",
+        "text": "{ ... full JSON with x402PaymentUrl and paymentInstructions ... }"
+      }
+    ]
+  }
+}
+```
+
+The `content[0].text` includes additional fields for MCP clients:
+
+| Field | Description |
+|-------|-------------|
+| `x402PaymentUrl` | The URL to POST to with `PAYMENT-SIGNATURE` header (e.g., `https://api.example.com/x402/access`). |
+| `paymentInstructions` | Human-readable instructions for completing payment via `make_http_request_with_x402`. |
+
+### Case 2: With Payment (AccessGrant Response)
+
+When called with `_meta["x402/payment"]` containing an EIP-3009 signed authorization, the tool settles the payment on-chain and returns the access grant.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "request_access",
+    "arguments": {
+      "planId": "basic",
+      "resourceId": "default"
+    },
+    "_meta": {
+      "x402/payment": {
+        "x402Version": 2,
+        "network": "eip155:84532",
+        "payload": {
+          "signature": "0xabc...",
+          "authorization": {
+            "from": "0xClientAddress",
+            "to": "0xSellerAddress",
+            "value": "100000",
+            "validAfter": "0",
+            "validBefore": "9999999999",
+            "nonce": "0x123"
+          }
+        },
+        "accepted": {
+          "scheme": "exact",
+          "network": "eip155:84532",
+          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "amount": "100000",
+          "payTo": "0xSellerAddress",
+          "maxTimeoutSeconds": 900
+        }
+      }
+    }
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"status\": \"access_granted\",\n  \"type\": \"AccessGrant\",\n  \"challengeId\": \"http-a1b2c3d4-e5f6-7890-abcd-ef1234567890\",\n  \"requestId\": \"mcp-7f9fade1c0d57a7af66ab4ead7c2c2eb\",\n  \"accessToken\": \"eyJhbGciOiJIUzI1NiIs...\",\n  \"tokenType\": \"Bearer\",\n  \"resourceEndpoint\": \"https://api.example.com/a2a/resources/default\",\n  \"resourceId\": \"default\",\n  \"planId\": \"basic\",\n  \"txHash\": \"0x7f9fade1c0d57a7af66ab4ead79fade1c0d57a7af66ab4ead7c2c2eb7b11a91385\",\n  \"explorerUrl\": \"https://sepolia.basescan.org/tx/0x7f9fade1...\"\n}"
+      }
+    ],
+    "_meta": {
+      "x402/payment-response": {
+        "success": true,
+        "transaction": "0x7f9fade1c0d57a7af66ab4ead79fade1c0d57a7af66ab4ead7c2c2eb7b11a91385",
+        "network": "eip155:84532",
+        "payer": "0xClientAddress"
+      }
+    }
+  }
+}
+```
+
+The `_meta["x402/payment-response"]` contains the settlement receipt per the x402 MCP transport spec.
+
+---
+
+## Idempotency
+
+For the `request_access` tool, the `requestId` is deterministically derived from the payment signature using SHA-256. This means retrying the same payment payload produces the same `requestId`, enabling idempotent recovery. If the grant was already delivered, the cached grant is returned without re-settling.
+
+## Error Handling
+
+Errors from `request_access` are returned as `isError: true` results:
+
+- **Plan not found**: Returns a standard Key0 error JSON in `content[0].text`.
+- **Payment failed**: Returns `isError: true` with `structuredContent` containing the original payment requirements plus the specific failure reason.
+- **Already redeemed**: Returns the cached `AccessGrant` directly (not an error).
+
+## Transport Notes
+
+- The MCP server runs in **stateless mode** -- a new server instance is created per request.
+- `GET /mcp` returns HTTP 405 (SSE not supported in stateless mode).
+- `DELETE /mcp` returns HTTP 405 (session management not supported in stateless mode).
+- The `Accept` header should include `application/json, text/event-stream` for compatibility with Streamable HTTP.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="MCP Integration" icon="plug" href="/protocol/mcp">
+    Setup guide for enabling MCP alongside A2A endpoints.
+  </Card>
+  <Card title="Claude Code Integration" icon="robot" href="/guides/claude-code-integration">
+    How to connect Claude Code to a Key0 MCP seller.
+  </Card>
+  <Card title="Data Models" icon="database" href="/api-reference/data-models">
+    TypeScript types for all protocol messages used by MCP tools.
+  </Card>
+</CardGroup>

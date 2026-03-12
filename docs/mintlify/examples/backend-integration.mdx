@@ -1,0 +1,257 @@
+---
+title: "Backend Integration"
+description: "How to integrate an existing backend with the Key0 standalone service — token validation, internal endpoints, and resource-scoped access control."
+---
+
+A backend service that works alongside the [Key0 standalone service](/quickstart/standalone). Instead of embedding Key0 into your app, you keep your existing API and expose a few internal endpoints that the standalone Key0 service calls during the payment lifecycle. Your protected routes validate tokens issued by either Key0 (native JWT) or your own system (custom API keys).
+
+## What it demonstrates
+
+- Using `validateKey0Token()` as a lightweight standalone validator -- no middleware or framework integration required
+- Dual token validation: Key0 JWTs (native mode) with automatic fallback to custom API keys (remote mode)
+- Internal service-to-service endpoints that the Key0 standalone service calls during payment
+- Shared-secret authentication for internal endpoint security
+
+## Architecture
+
+```
+Agent                    Key0 Service                 Your Backend
+  |                          |                              |
+  |-- request access ------->|                              |
+  |<--- X402Challenge -------|                              |
+  |                          |                              |
+  |  ... pays USDC ...       |                              |
+  |                          |                              |
+  |-- payment proof -------->|                              |
+  |                          |-- POST /internal/issue ----->|  Issue API key (remote mode)
+  |                          |<-------- { token } ----------|
+  |                          |-- POST /internal/payment --->|  Notify payment received
+  |<--- AccessGrant ---------|                              |
+  |                          |                              |
+  |-- GET /api/photos/1 ----------------------------------->|  Bearer token
+  |<--- photo data ------------------------------------------|
+```
+
+The Key0 standalone service owns the A2A protocol, agent discovery, and on-chain payment verification. Your backend owns the business logic: validating resources, issuing credentials, and serving protected content.
+
+## Internal endpoints reference
+
+These endpoints are called by the Key0 standalone service, not by agents directly. They must be secured with a shared secret via the `X-Internal-Auth` header.
+
+| Endpoint | Method | Auth | Purpose |
+| --- | --- | --- | --- |
+| `/internal/issue-token` | POST | Body-level trust | Issue a custom API key when Key0 runs in remote token mode |
+| `/internal/payment-received` | POST | `X-Internal-Auth` | Webhook notification after successful on-chain payment verification |
+
+<Info>
+  `/internal/issue-token` is only called when Key0 is configured with `tokenMode: "remote"`. In native mode, Key0 issues JWTs directly and this endpoint is never hit.
+</Info>
+
+## Code walkthrough
+
+### 1. Imports and configuration
+
+```typescript server.ts
+import type { AccessTokenPayload } from "@key0ai/key0";
+import { validateKey0Token } from "@key0ai/key0";
+import express from "express";
+
+const PORT = Number(process.env.PORT ?? 3000);
+const KEY0_SECRET = process.env.KEY0_ACCESS_TOKEN_SECRET!;
+const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET!;
+```
+
+Two secrets drive the security model:
+
+- **`KEY0_ACCESS_TOKEN_SECRET`** -- shared with the Key0 service so your backend can verify the JWTs it issues.
+- **`INTERNAL_AUTH_SECRET`** -- a separate secret for authenticating service-to-service calls from Key0 to your internal endpoints.
+
+<Warning>
+  Use different values for these two secrets. If the JWT secret is compromised, internal endpoints remain protected -- and vice versa.
+</Warning>
+
+### 2. Internal auth middleware
+
+```typescript server.ts
+function verifyInternalAuth(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  const authHeader = req.headers["x-internal-auth"];
+  if (authHeader !== INTERNAL_AUTH_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+}
+```
+
+A simple header check gates all internal endpoints. The Key0 standalone service sends this header automatically when calling your backend. In production, consider running these endpoints on a separate internal port or behind a network-level firewall.
+
+### 3. Custom token issuance (remote mode)
+
+```typescript server.ts
+app.post("/internal/issue-token", (req, res) => {
+  const { requestId, resourceId, tierId, txHash } = req.body;
+
+  const apiKey = `ak_${crypto.randomUUID().replace(/-/g, "")}`;
+  const expiresAt = new Date(Date.now() + 3600 * 1000); // 1 hour
+
+  apiKeys.set(apiKey, { expiresAt, resourceId, tierId });
+
+  res.json({
+    token: apiKey,
+    expiresAt: expiresAt.toISOString(),
+    tokenType: "Bearer",
+  });
+});
+```
+
+When Key0 runs in remote token mode, it calls this endpoint after verifying payment. You issue whatever credential makes sense for your system -- an API key, a signed URL, or a session token. The response is passed through to the agent in the `AccessGrant`.
+
+<Note>
+  The response must include `token` (the credential string) and `tokenType` (typically `"Bearer"`). `expiresAt` is optional but recommended so agents know when to refresh.
+</Note>
+
+### 4. Payment notification webhook
+
+```typescript server.ts
+app.post("/internal/payment-received", verifyInternalAuth, (req, res) => {
+  const grant = req.body;
+  console.log(`[Backend] Payment received: ${grant.resourceId} (${grant.tierId})`);
+  console.log(`  TX: ${grant.explorerUrl}`);
+
+  // Update database, send webhook, trigger fulfillment, etc.
+  res.json({ received: true });
+});
+```
+
+Fires after payment is verified and credentials are issued. Use it for analytics, inventory updates, or triggering downstream workflows. The request body contains the full `AccessGrant` including the transaction hash and block explorer URL.
+
+### 5. Dual token validation
+
+```typescript server.ts
+async function validateToken(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  try {
+    // Try native Key0 JWT first
+    const payload = await validateKey0Token(req.headers.authorization, {
+      secret: KEY0_SECRET,
+    });
+    req.key0Token = payload;
+    next();
+  } catch (err) {
+    // Fallback: check custom API key (remote mode)
+    const apiKey = req.headers.authorization?.slice(7);
+    const keyData = apiKeys.get(apiKey);
+    if (keyData && keyData.expiresAt > new Date()) {
+      req.key0Token = {
+        resourceId: keyData.resourceId,
+        tierId: keyData.tierId,
+        type: "api-key",
+      };
+      return next();
+    }
+    res.status(401).json({ error: "Unauthorized" });
+  }
+}
+```
+
+This middleware supports both token modes transparently:
+
+1. **Native mode** -- `validateKey0Token` verifies the JWT signature and expiry. If valid, the decoded `AccessTokenPayload` is attached to the request.
+2. **Remote mode** -- If JWT validation fails, the middleware checks the `Authorization` header against the in-memory API key store. Expired keys are rejected.
+
+Agents do not need to know which mode is active. They always send `Authorization: Bearer <token>` and the middleware resolves it.
+
+## Environment variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `KEY0_ACCESS_TOKEN_SECRET` | Yes | Shared secret for JWT verification. Must match the Key0 service configuration. |
+| `INTERNAL_AUTH_SECRET` | Yes | Secret for `X-Internal-Auth` header on internal endpoints. |
+| `PORT` | No | HTTP server port. Defaults to `3000`. |
+
+## Running the example
+
+<Steps>
+  <Step title="Clone and install">
+    ```bash
+    git clone https://github.com/key0ai/key0.git
+    cd key0/examples/backend-integration
+    bun install
+    ```
+  </Step>
+  <Step title="Configure environment">
+    Create a `.env` file with both secrets:
+
+    ```bash .env
+    KEY0_ACCESS_TOKEN_SECRET=shared-secret-with-key0-service-min-32-chars
+    INTERNAL_AUTH_SECRET=separate-internal-auth-secret-min-32-chars
+    PORT=3000
+    ```
+  </Step>
+  <Step title="Start the Key0 standalone service">
+    The backend integration requires the Key0 standalone service running alongside it. See the [Standalone quickstart](/quickstart/standalone) for setup instructions. Make sure its `INTERNAL_AUTH_SECRET` and `KEY0_ACCESS_TOKEN_SECRET` match the values in your backend `.env`.
+  </Step>
+  <Step title="Start the backend">
+    <CodeGroup>
+    ```bash Bun
+    bun run start
+    ```
+
+    ```bash Node.js
+    npx tsx server.ts
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Expected output
+
+```
+📦 Backend Service
+   Port: 3000
+   Protected APIs: /api/*
+   Internal endpoints: /internal/*
+```
+
+## Verify the health check
+
+```bash
+curl http://localhost:3000/health | jq .
+```
+
+```json
+{
+  "status": "ok",
+  "service": "backend"
+}
+```
+
+## Test token validation
+
+Once you have a token from the Key0 service (via a direct A2A call), use it to access protected endpoints:
+
+```bash
+curl -H "Authorization: Bearer <your-token>" \
+  http://localhost:3000/api/photos/photo-1 | jq .
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Standalone quickstart" icon="rocket" href="/quickstart/standalone">
+    Set up the Key0 standalone service that calls your backend's internal endpoints.
+  </Card>
+  <Card title="Middleware reference" icon="shield-halved" href="/sdk-reference/middleware">
+    Full API reference for `validateKey0Token`, `validateAccessToken`, and framework-specific middleware.
+  </Card>
+</CardGroup>
+
+<Card title="Source code" icon="github" href="https://github.com/key0ai/key0/tree/main/examples/backend-integration">
+  View `examples/backend-integration` on GitHub
+</Card>

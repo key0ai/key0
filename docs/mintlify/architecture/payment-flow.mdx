@@ -1,0 +1,496 @@
+---
+title: "Payment Flow"
+sidebarTitle: "Payment Flow"
+description: "The full Key0 payment lifecycle: challenge issuance, on-chain settlement, token delivery, and the three transports that feed into the shared ChallengeEngine."
+---
+
+## Overview
+
+All three Key0 transports share a single `ChallengeEngine` that owns the payment lifecycle. The engine exposes two phases -- challenge issuance and settlement -- while each transport handles HTTP framing differently.
+
+```
++-------------------------------------------------------------+
+|                      ChallengeEngine                        |
+|                                                             |
+|   requestAccess() / requestHttpAccess()    Phase 1          |
+|        -> settlePayment() (transport layer)                 |
+|             -> processHttpPayment()        Phase 2          |
++-------------------------------------------------------------+
+             ^               ^               ^
+             |               |               |
+    +--------+---+   +------+-------+   +----+------------+
+    | /x402/     |   | {basePath}/ |   | {basePath}/     |
+    | access     |   | jsonrpc     |   | jsonrpc         |
+    | (REST)     |   | (middleware)|   | (A2A executor)  |
+    +------------+   +-------------+   +-----------------+
+```
+
+The transports differ only in how the HTTP request arrives and how the response is formatted. Under the hood, every payment passes through the same state machine, the same Redis/Postgres stores, and the same settlement logic.
+
+---
+
+## Phase 1 -- Challenge
+
+**Engine method:** `requestAccess()` (A2A) or `requestHttpAccess()` (HTTP transports)
+
+When a client requests access to a resource, the engine creates a payment challenge:
+
+<Steps>
+
+<Step title="Validate requestId">
+  The `requestId` must be a valid UUID. Malformed values are rejected with `INVALID_REQUEST` (400).
+</Step>
+
+<Step title="Extract identifiers">
+  `resourceId` defaults to `"default"` if not provided. `clientAgentId` defaults to `"anonymous"` (A2A) or `"x402-http"` (HTTP transports).
+</Step>
+
+<Step title="Look up plan">
+  The `planId` is matched against `SellerConfig.plans`. If no matching plan exists, the engine throws `TIER_NOT_FOUND` (400).
+</Step>
+
+<Step title="Idempotency check">
+  The engine calls `store.findActiveByRequestId(requestId)` and handles three cases:
+
+  | Existing State | Behavior |
+  | --- | --- |
+  | **PENDING** (not expired) | Return the existing challenge -- no new record created |
+  | **DELIVERED** (with grant) | Throw `PROOF_ALREADY_REDEEMED` (200) with the cached grant in `details` |
+  | **EXPIRED** or **CANCELLED** | Fall through and create a new challenge |
+</Step>
+
+<Step title="Generate challengeId">
+  UUIDs for A2A transport, `http-{uuid}` prefix for HTTP transports.
+</Step>
+
+<Step title="Create PENDING record">
+  A new `ChallengeRecord` is persisted via `store.create()` with state `PENDING`, the plan amount, chain configuration, and an expiration timestamp.
+</Step>
+
+<Step title="Return challenge">
+  The engine returns an `X402Challenge` (A2A) or a challenge response object (HTTP) containing all the information the client needs to authorize payment.
+</Step>
+
+</Steps>
+
+---
+
+## Phase 2 -- Settlement and Token Issuance
+
+**Engine method:** `processHttpPayment(requestId, planId, resourceId, txHash, fromAddress?)`
+
+After the client signs an EIP-3009 authorization and the transport layer settles it on-chain, the engine processes the payment:
+
+<Steps>
+
+<Step title="Look up plan">
+  Verify `planId` exists in `SellerConfig.plans`. Throws `TIER_NOT_FOUND` (400) if missing.
+</Step>
+
+<Step title="Double-spend guard">
+  Call `seenTxStore.get(txHash)`. If the transaction hash has already been claimed, throw `TX_ALREADY_REDEEMED` (409).
+</Step>
+
+<Step title="Find or create PENDING record">
+  Look up the PENDING record by `requestId`. If no record exists (the challenge phase was skipped or the original expired), auto-create one.
+</Step>
+
+<Step title="Atomic PENDING to PAID transition">
+  Transition the record from `PENDING` to `PAID` atomically via a Lua script (Redis) or a conditional UPDATE (Postgres). The transition writes `txHash`, `paidAt`, and `fromAddress` to the record.
+</Step>
+
+<Step title="Mark transaction hash as used">
+  Call `seenTxStore.markUsed(txHash, challengeId)` which executes `SET NX`. If this returns `false` (another challenge claimed the same hash in a race), the engine **rolls back** PAID to PENDING and throws `TX_ALREADY_REDEEMED` (409).
+</Step>
+
+<Step title="Issue token">
+  Call `config.fetchResourceCredentials()` with `{ requestId, challengeId, resourceId, planId, txHash }`. This call has a configurable timeout (`tokenIssueTimeoutMs`, default 15s) and retry policy (`tokenIssueRetries`, default 2 attempts with exponential backoff).
+</Step>
+
+<Step title="Build AccessGrant">
+  Assemble the `AccessGrant` object containing the access token, expiration, resource endpoint, transaction hash, and explorer URL.
+</Step>
+
+<Step title="Persist grant (outbox pattern)">
+  Write the full `AccessGrant` JSON to the record via a PAID to PAID update. This ensures the grant is durable before returning it to the client -- if the next step fails, the grant is not lost.
+</Step>
+
+<Step title="Mark DELIVERED (best-effort)">
+  Transition PAID to DELIVERED with `deliveredAt`. If this fails, the record stays in PAID with `accessGrant` set. The refund cron skips records that already have an `accessGrant`.
+</Step>
+
+<Step title="Fire callback and return">
+  Fire `onPaymentReceived` asynchronously (non-blocking, errors are logged). Return the `AccessGrant` to the client.
+</Step>
+
+</Steps>
+
+---
+
+## Phase 3 -- Access Protected Resource
+
+After receiving an `AccessGrant`, the client uses the `accessToken` as a Bearer token to access protected endpoints:
+
+```http
+POST /api/photos/photo-123
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+The `validateAccessToken` middleware verifies the JWT and attaches decoded claims to the request:
+
+| Framework | Claims location |
+| --- | --- |
+| Express | `req.key0Token` |
+| Hono | `c.get("key0Token")` |
+| Fastify | `request.key0Token` |
+
+---
+
+## Three Transports
+
+<Tabs>
+
+<Tab title="REST (/x402/access)">
+
+A plain REST endpoint mounted at `POST /x402/access` by the Express integration. The request shape determines which of three cases applies.
+
+### Case 1: Discovery (no planId)
+
+The client sends an empty or planId-less body. No PENDING record is created -- the server returns all available pricing plans.
+
+**Request:**
+
+```http
+POST /x402/access
+Content-Type: application/json
+
+{}
+```
+
+**Response:**
+
+```http
+HTTP/1.1 402 Payment Required
+payment-required: eyJ4NDAyVm... (base64)
+www-authenticate: Payment realm="https://api.example.com", accept="exact"
+```
+
+```json
+{
+  "x402Version": 2,
+  "resource": { "url": "...", "method": "POST" },
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:84532",
+      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "amount": "100000",
+      "payTo": "0xSellerWallet...",
+      "maxTimeoutSeconds": 900,
+      "extra": {
+        "name": "USDC",
+        "version": "2",
+        "description": "Basic plan - $0.10 USDC"
+      }
+    }
+  ],
+  "error": "Payment required"
+}
+```
+
+### Case 2: Challenge (planId, no payment-signature)
+
+The client specifies a `planId` but does not include a `payment-signature` header. The engine creates a PENDING record and returns the challenge.
+
+`requestId` is auto-generated as `http-{uuid}` if not provided.
+
+**Request:**
+
+```http
+POST /x402/access
+Content-Type: application/json
+
+{
+  "planId": "basic",
+  "requestId": "550e8400-...",
+  "resourceId": "photo-123"
+}
+```
+
+**Response:**
+
+```http
+HTTP/1.1 402 Payment Required
+payment-required: eyJ4NDAyVm... (base64)
+www-authenticate: Payment realm="...", accept="exact", challenge="http-a1b2c3d4-..."
+```
+
+```json
+{
+  "x402Version": 2,
+  "accepts": [ ... ],
+  "extensions": {
+    "key0": {
+      "inputSchema": { ... },
+      "outputSchema": { ... },
+      "description": "..."
+    }
+  },
+  "challengeId": "http-a1b2c3d4-...",
+  "error": "Payment required"
+}
+```
+
+### Case 3: Settlement (planId + payment-signature header)
+
+The client includes the `payment-signature` header containing a base64-encoded `X402PaymentPayload` with the signed EIP-3009 authorization.
+
+**Request:**
+
+```http
+POST /x402/access
+Content-Type: application/json
+payment-signature: eyJ4NDAyVm... (base64-encoded X402PaymentPayload)
+
+{
+  "planId": "basic",
+  "requestId": "550e8400-...",
+  "resourceId": "photo-123"
+}
+```
+
+**Response:**
+
+```http
+HTTP/1.1 200 OK
+payment-response: eyJzdWNjZXNz... (base64-encoded X402SettleResponse)
+```
+
+```json
+{
+  "type": "AccessGrant",
+  "challengeId": "http-a1b2c3d4-...",
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "tokenType": "Bearer",
+  "expiresAt": "2025-03-05T13:15:00.000Z",
+  "resourceEndpoint": "https://api.example.com/photos/photo-123",
+  "resourceId": "photo-123",
+  "planId": "basic",
+  "txHash": "0xSettledTx...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx..."
+}
+```
+
+</Tab>
+
+<Tab title="JSON-RPC Middleware">
+
+The same JSON-RPC endpoint (`POST {basePath}/jsonrpc`) serves both A2A-native agents and plain HTTP clients. The `createX402HttpMiddleware` sits in front of the A2A handler and routes based on headers and request content.
+
+### Routing logic
+
+```
+POST {basePath}/jsonrpc
+        |
+        v
+ x402HttpMiddleware
+        |
+        +-- Has X-A2A-Extensions header?
+        |       YES -> pass through to A2A SDK -> Key0Executor (Transport 3)
+        |
+        +-- Not a message/send call?
+        |       -> pass through
+        |
+        +-- No AccessRequest in parts?
+        |       -> pass through
+        |
+        +-- No payment-signature header?
+        |       -> engine.requestHttpAccess() -> HTTP 402 + payment-required header
+        |
+        +-- Has payment-signature header?
+                -> settlePayment() -> engine.processHttpPayment() -> HTTP 200 + AccessGrant
+```
+
+The middleware extracts `AccessRequest` from `params.message.parts` -- either a `data` part with `type: "AccessRequest"` or a `text` part containing JSON.
+
+The settlement logic is identical to the REST transport. The only difference is that requests and responses are wrapped in JSON-RPC framing.
+
+</Tab>
+
+<Tab title="A2A Executor">
+
+When a native A2A client sends the `X-A2A-Extensions` header, the middleware passes through to the A2A SDK, which routes to `Key0Executor`.
+
+### Phase 1: AccessRequest to Task (input-required)
+
+The client sends an A2A `message/send` with an `AccessRequest` in message parts:
+
+```json
+{
+  "method": "message/send",
+  "params": {
+    "message": {
+      "parts": [
+        {
+          "kind": "data",
+          "data": {
+            "type": "AccessRequest",
+            "planId": "basic",
+            "requestId": "...",
+            "resourceId": "photo-123",
+            "clientAgentId": "did:web:buyer"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+The executor calls `engine.requestAccess(req)` and publishes a Task with:
+
+- **State:** `input-required`
+- **Metadata:** `x402.payment.status: "payment-required"`, `x402.payment.required: <PaymentRequirements>`
+- **Parts:** challenge description (text) + X402Challenge (data)
+
+### Phase 2: Payment to Task (completed)
+
+The client sends payment metadata in a follow-up `message/send`:
+
+```json
+{
+  "method": "message/send",
+  "params": {
+    "message": {
+      "metadata": {
+        "x402.payment.status": "payment-submitted",
+        "x402.payment.payload": {
+          "x402Version": 2,
+          "payload": { "signature": "0x..." },
+          "accepted": {
+            "extra": { "challengeId": "..." }
+          }
+        }
+      },
+      "parts": [
+        { "kind": "text", "text": "Payment submitted" }
+      ]
+    }
+  }
+}
+```
+
+The executor processes through intermediate working states:
+
+1. Extract `challengeId` from `payload.accepted.extra.challengeId`
+2. Publish working Task: `x402.payment.status: "payment-submitted"`
+3. Call `settlePayment()` to verify and settle on-chain
+4. Publish working Task: `x402.payment.status: "payment-verified"`
+5. Call `engine.processHttpPayment()` (PENDING to PAID to DELIVERED)
+6. Publish final Task:
+   - **State:** `completed`
+   - **Metadata:** `x402.payment.status: "payment-completed"`, `x402.payment.receipts: [receipt]`
+   - **Parts:** confirmation text + AccessGrant data
+   - **Artifacts:** access-grant data part
+
+### x402 Metadata Keys
+
+| Key | Value | Direction |
+| --- | --- | --- |
+| `x402.payment.status` | `"payment-required"` / `"payment-submitted"` / `"payment-verified"` / `"payment-completed"` / `"payment-failed"` | Server to Client |
+| `x402.payment.required` | `PaymentRequirements` object | Server to Client |
+| `x402.payment.payload` | `X402PaymentPayload` object | Client to Server |
+| `x402.payment.receipts` | Array of `X402SettleResponse` | Server to Client |
+| `x402.payment.error` | Error code string | Server to Client |
+
+</Tab>
+
+</Tabs>
+
+---
+
+## HTTP Headers Reference
+
+| Header | Direction | Format | Purpose |
+| --- | --- | --- | --- |
+| `payment-required` | Server to Client (402) | Base64 JSON | PaymentRequirements or discovery response |
+| `www-authenticate` | Server to Client (402) | `Payment realm=..., accept="exact"[, challenge=...]` | HTTP spec compliance |
+| `payment-signature` | Client to Server | Base64 JSON | X402PaymentPayload with EIP-3009 signature |
+| `payment-response` | Server to Client (200) | Base64 JSON | X402SettleResponse with txHash |
+| `x-a2a-extensions` | Client to Server | Presence check | Routes to A2A handler, skips x402 middleware |
+
+---
+
+## Message Types
+
+### X402Challenge (Phase 1 response)
+
+Returned by the engine after creating a PENDING record. Contains everything the client needs to authorize an on-chain payment.
+
+```json
+{
+  "type": "X402Challenge",
+  "challengeId": "a1b2c3d4-...",
+  "requestId": "550e8400-...",
+  "planId": "basic",
+  "amount": "$0.10",
+  "asset": "USDC",
+  "chainId": 84532,
+  "destination": "0xSellerWallet...",
+  "expiresAt": "2025-03-05T12:30:00.000Z",
+  "description": "Send $0.10 USDC to 0xSeller... on chain 84532.",
+  "resourceVerified": true
+}
+```
+
+### AccessGrant (Phase 2 response)
+
+Returned after successful settlement and token issuance. The `accessToken` is used as a Bearer token to access protected endpoints.
+
+```json
+{
+  "type": "AccessGrant",
+  "challengeId": "a1b2c3d4-...",
+  "requestId": "550e8400-...",
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "tokenType": "Bearer",
+  "expiresAt": "2025-03-05T13:15:00.000Z",
+  "resourceEndpoint": "https://api.example.com/photos/photo-123",
+  "resourceId": "photo-123",
+  "planId": "basic",
+  "txHash": "0xabcdef1234567890...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0xabcdef..."
+}
+```
+
+### payment-signature Header (decoded)
+
+The `payment-signature` header carries a base64-encoded `X402PaymentPayload`:
+
+```json
+{
+  "x402Version": 2,
+  "network": "eip155:84532",
+  "scheme": "exact",
+  "payload": {
+    "signature": "0xSignedEIP3009...",
+    "authorization": {
+      "from": "0xBuyer...",
+      "to": "0xSeller...",
+      "value": "100000",
+      "validAfter": "0",
+      "validBefore": "1741180560",
+      "nonce": "0xRandomNonce..."
+    }
+  },
+  "accepted": {
+    "scheme": "exact",
+    "network": "eip155:84532",
+    "asset": "0x036CbD...",
+    "amount": "100000",
+    "payTo": "0xSeller...",
+    "maxTimeoutSeconds": 900,
+    "extra": { "name": "USDC", "version": "2" }
+  }
+}
+```

@@ -1,0 +1,205 @@
+---
+title: "Fastify"
+description: "Register Key0 as a Fastify plugin for agent discovery and access token validation."
+---
+
+## Overview
+
+The `@key0ai/key0/fastify` subpath exports two pieces:
+
+| Export                        | Type              | Purpose                                                   |
+| ----------------------------- | ----------------- | --------------------------------------------------------- |
+| `key0Plugin`                  | Fastify plugin    | Registers agent-card and A2A routes on your Fastify server |
+| `fastifyValidateAccessToken`  | `onRequest` hook  | Validates Bearer JWTs and attaches the decoded token       |
+
+## Installation
+
+```bash
+npm install @key0ai/key0 fastify
+```
+
+## Routes
+
+When you register `key0Plugin`, the following routes are added to your Fastify instance:
+
+| Method | Path                       | Description                              |
+| ------ | -------------------------- | ---------------------------------------- |
+| GET    | `/.well-known/agent.json`  | Returns the auto-generated A2A agent card |
+| POST   | `{basePath}` (default `/a2a`) | A2A JSON-RPC endpoint                 |
+
+<Warning>
+The A2A JSON-RPC endpoint currently returns `501 Not Implemented`. Full A2A support is pending an upstream A2A SDK update for Fastify.
+</Warning>
+
+## Setup
+
+<Steps>
+
+<Step title="Configure SellerConfig and storage">
+
+Create your `SellerConfig`, payment adapter, challenge store, and seen-tx store. These are framework-agnostic and shared across all integrations.
+
+```typescript
+import {
+  X402Adapter,
+  RedisChallengeStore,
+  RedisSeenTxStore,
+} from "@key0ai/key0";
+import type { SellerConfig } from "@key0ai/key0";
+import Redis from "ioredis";
+
+const redis = new Redis();
+
+const sellerConfig: SellerConfig = {
+  agentName: "My API Agent",
+  agentDescription: "Payment-gated API powered by Key0",
+  agentUrl: "https://api.example.com",
+  providerName: "Example Inc.",
+  providerUrl: "https://example.com",
+  walletAddress: "0xYourWalletAddress",
+  network: "mainnet",
+  plans: [
+    { planId: "basic", unitAmount: "$0.01", description: "Single API call" },
+  ],
+  fetchResourceCredentials: async ({ requestId, challengeId, planId, txHash }) => {
+    // Issue a credential after payment is verified
+    return { token: "your-issued-token" };
+  },
+};
+
+const adapter = new X402Adapter({ network: "mainnet" });
+const store = new RedisChallengeStore({ redis });
+const seenTxStore = new RedisSeenTxStore({ redis });
+```
+
+</Step>
+
+<Step title="Register the Key0 plugin">
+
+Pass the config objects as plugin options to `fastify.register`.
+
+```typescript
+import Fastify from "fastify";
+import { key0Plugin } from "@key0ai/key0/fastify";
+
+const fastify = Fastify({ logger: true });
+
+await fastify.register(key0Plugin, {
+  config: sellerConfig,
+  adapter,
+  store,
+  seenTxStore,
+});
+```
+
+After registration, `GET /.well-known/agent.json` returns your agent card.
+
+</Step>
+
+<Step title="Protect routes with access-token validation">
+
+Use `fastifyValidateAccessToken` as an `onRequest` hook on any route that requires a paid access token.
+
+```typescript
+import { fastifyValidateAccessToken } from "@key0ai/key0/fastify";
+
+const validateToken = fastifyValidateAccessToken({
+  secret: process.env.JWT_SECRET!,
+});
+
+fastify.get(
+  "/protected/resource",
+  { onRequest: validateToken },
+  async (request, reply) => {
+    const token = (request as typeof request & { key0Token?: unknown }).key0Token;
+    return { message: "Access granted", token };
+  },
+);
+```
+
+The hook reads the `Authorization: Bearer <jwt>` header, verifies the signature, and attaches the decoded payload to `request.key0Token`. If verification fails, it short-circuits with a `401` or `500` JSON response.
+
+</Step>
+
+<Step title="Start the server">
+
+```typescript
+await fastify.listen({ port: 3000 });
+```
+
+</Step>
+
+</Steps>
+
+## Full working example
+
+```typescript
+import Fastify from "fastify";
+import Redis from "ioredis";
+import {
+  X402Adapter,
+  RedisChallengeStore,
+  RedisSeenTxStore,
+} from "@key0ai/key0";
+import type { SellerConfig } from "@key0ai/key0";
+import { key0Plugin, fastifyValidateAccessToken } from "@key0ai/key0/fastify";
+
+const redis = new Redis();
+
+const sellerConfig: SellerConfig = {
+  agentName: "Photo API",
+  agentDescription: "Pay-per-photo API",
+  agentUrl: "https://api.example.com",
+  providerName: "Example Inc.",
+  providerUrl: "https://example.com",
+  walletAddress: "0xYourWalletAddress",
+  network: "mainnet",
+  plans: [
+    { planId: "single", unitAmount: "$0.05", description: "One photo" },
+  ],
+  fetchResourceCredentials: async ({ requestId }) => {
+    return { token: `access-${requestId}` };
+  },
+};
+
+const fastify = Fastify({ logger: true });
+
+// Register Key0 plugin (agent card + A2A route)
+await fastify.register(key0Plugin, {
+  config: sellerConfig,
+  adapter: new X402Adapter({ network: "mainnet" }),
+  store: new RedisChallengeStore({ redis }),
+  seenTxStore: new RedisSeenTxStore({ redis }),
+});
+
+// Protected route
+const validateToken = fastifyValidateAccessToken({
+  secret: process.env.JWT_SECRET!,
+});
+
+fastify.get(
+  "/photos/:id",
+  { onRequest: validateToken },
+  async (request, reply) => {
+    const token = (request as typeof request & { key0Token?: unknown }).key0Token;
+    return { photo: "data", token };
+  },
+);
+
+await fastify.listen({ port: 3000 });
+console.log("Fastify server running on http://localhost:3000");
+```
+
+## Accessing the decoded token
+
+The `fastifyValidateAccessToken` hook attaches the decoded JWT payload to `request.key0Token`. Because Fastify's `FastifyRequest` type does not include this property by default, you need a type assertion to access it:
+
+```typescript
+const token = (request as typeof request & { key0Token?: unknown }).key0Token;
+```
+
+The payload includes `sub` (request ID), `jti` (challenge ID), `resourceId`, `planId`, and `txHash`.
+
+<Note>
+The x402 HTTP payment endpoints (challenge and proof exchange) are not yet available in the Fastify integration. Use the [Express integration](/integrations/express) for the complete payment flow today. The Fastify plugin currently provides agent discovery and JWT-protected route support.
+</Note>

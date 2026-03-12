@@ -1,0 +1,150 @@
+{
+	"$schema": "https://mintlify.com/schema.json",
+	"name": "Key0",
+	"logo": {
+		"dark": "/images/logo-dark.png",
+		"light": "/images/logo-light.png"
+	},
+	"favicon": "/images/favicon.svg",
+	"colors": {
+		"primary": "#1a1a1a",
+		"light": "#E8E8E8",
+		"dark": "#1a1a1a",
+		"anchors": {
+			"from": "#1a1a1a",
+			"to": "#525252"
+		},
+		"background": {
+			"light": "#E8E8E8",
+			"dark": "#1a1a1a"
+		}
+	},
+	"font": {
+		"headings": {
+			"family": "Plus Jakarta Sans",
+			"weight": 700
+		},
+		"body": {
+			"family": "DM Sans",
+			"weight": 400
+		}
+	},
+	"modeToggle": {
+		"default": "light"
+	},
+	"css": "/custom.css",
+	"rounded": "default",
+	"topbarLinks": [
+		{
+			"name": "GitHub",
+			"url": "https://github.com/key0ai/key0"
+		}
+	],
+	"topbarCtaButton": {
+		"name": "Get Started",
+		"url": "/quickstart/embedded"
+	},
+	"tabs": [
+		{
+			"name": "SDK Reference",
+			"url": "sdk-reference"
+		},
+		{
+			"name": "API Reference",
+			"url": "api-reference"
+		},
+		{
+			"name": "Examples",
+			"url": "examples"
+		}
+	],
+	"anchors": [
+		{
+			"name": "NPM Package",
+			"icon": "npm",
+			"url": "https://www.npmjs.com/package/@key0ai/key0"
+		},
+		{
+			"name": "Docker Hub",
+			"icon": "docker",
+			"url": "https://hub.docker.com/r/key0ai/key0"
+		}
+	],
+	"navigation": [
+		{
+			"group": "Getting Started",
+			"pages": ["introduction/overview", "introduction/how-it-works", "introduction/two-modes"]
+		},
+		{
+			"group": "Quickstart",
+			"pages": ["quickstart/embedded", "quickstart/standalone"]
+		},
+		{
+			"group": "Protocol",
+			"pages": ["protocol/a2a-flow", "protocol/x402-http-flow", "protocol/mcp"]
+		},
+		{
+			"group": "Architecture",
+			"pages": [
+				"architecture/payment-flow",
+				"architecture/state-machine",
+				"architecture/settlement-strategies",
+				"architecture/token-issuance",
+				"architecture/storage",
+				"architecture/refunds",
+				"architecture/project-structure"
+			]
+		},
+		{
+			"group": "Integrations",
+			"pages": ["integrations/express", "integrations/hono", "integrations/fastify"]
+		},
+		{
+			"group": "Guides",
+			"pages": ["guides/building-a-seller", "guides/claude-code-integration"]
+		},
+		{
+			"group": "Deployment",
+			"pages": ["deployment/docker", "deployment/environment-variables"]
+		},
+		{
+			"group": "SDK Reference",
+			"pages": [
+				"sdk-reference/overview",
+				"sdk-reference/seller-config",
+				"sdk-reference/challenge-engine",
+				"sdk-reference/access-token-issuer",
+				"sdk-reference/x402-adapter",
+				"sdk-reference/storage",
+				"sdk-reference/factory",
+				"sdk-reference/middleware",
+				"sdk-reference/auth-helpers",
+				"sdk-reference/error-codes"
+			]
+		},
+		{
+			"group": "API Reference",
+			"pages": [
+				"api-reference/overview",
+				"api-reference/agent-card",
+				"api-reference/a2a-jsonrpc",
+				"api-reference/x402-access",
+				"api-reference/mcp-tools",
+				"api-reference/data-models"
+			]
+		},
+		{
+			"group": "Examples",
+			"pages": [
+				"examples/express-seller",
+				"examples/hono-seller",
+				"examples/standalone-service",
+				"examples/refund-cron",
+				"examples/backend-integration"
+			]
+		}
+	],
+	"footerSocials": {
+		"github": "https://github.com/key0ai/key0"
+	}
+}

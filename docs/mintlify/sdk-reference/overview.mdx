@@ -1,0 +1,150 @@
+---
+title: "Overview"
+description: "Package exports, subpath imports, and install instructions for @key0ai/key0."
+---
+
+# Package Overview
+
+`@key0ai/key0` is a single package that exposes everything you need to add payment-gated endpoints to your API. Import from the main entry point for core functionality, or use framework-specific subpath imports.
+
+## Install
+
+<CodeGroup>
+```bash npm
+npm install @key0ai/key0
+```
+
+```bash pnpm
+pnpm add @key0ai/key0
+```
+
+```bash bun
+bun add @key0ai/key0
+```
+
+```dockerfile Docker
+RUN npm install @key0ai/key0
+```
+</CodeGroup>
+
+## Main Import
+
+Everything below is available from the top-level import:
+
+```ts
+import { createKey0, ChallengeEngine, X402Adapter /* ... */ } from "@key0ai/key0";
+```
+
+### Core Classes
+
+| Export                | Description                                                        |
+| --------------------- | ------------------------------------------------------------------ |
+| `ChallengeEngine`     | State machine that drives the full challenge lifecycle.             |
+| `AccessTokenIssuer`   | Issues and verifies JWTs (HS256 or RS256) with secret rotation.    |
+| `X402Adapter`         | Verifies ERC-20 Transfer events on Base mainnet or Base Sepolia.   |
+
+### Storage
+
+| Export                    | Description                                      |
+| ------------------------- | ------------------------------------------------ |
+| `RedisChallengeStore`     | Redis-backed challenge store with Lua atomics.   |
+| `RedisSeenTxStore`        | Redis-backed seen-transaction store (SET NX).    |
+| `RedisAuditStore`         | Redis-backed append-only audit log.              |
+| `PostgresChallengeStore`  | Postgres-backed challenge store.                 |
+| `PostgresSeenTxStore`     | Postgres-backed seen-transaction store.          |
+| `PostgresAuditStore`      | Postgres-backed append-only audit log.           |
+
+### Factory
+
+| Export       | Description                                                                       |
+| ------------ | --------------------------------------------------------------------------------- |
+| `createKey0` | Wires stores, adapter, and engine together. Returns `{ requestHandler, agentCard, engine, executor }`. |
+
+### Executor
+
+| Export          | Description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| `Key0Executor`  | Implements the A2A `AgentExecutor` interface for protocol flow. |
+
+### Middleware
+
+| Export              | Description                                              |
+| ------------------- | -------------------------------------------------------- |
+| `validateToken`     | Generic token-validation middleware.                     |
+| `validateKey0Token` | Key0-specific token-validation middleware.               |
+
+### Auth Helpers
+
+| Export                        | Description                                     |
+| ----------------------------- | ----------------------------------------------- |
+| `noAuth`                      | Sends no auth headers (local dev / trusted networks). |
+| `sharedSecretAuth`            | Attaches a shared-secret header for service-to-service auth. |
+| `signedJwtAuth`               | Signs outbound requests with a JWT.             |
+| `oauthClientCredentialsAuth`  | Fetches and attaches an OAuth2 client-credentials token. |
+
+### Remote Helpers
+
+| Export                    | Description                                          |
+| ------------------------- | ---------------------------------------------------- |
+| `createRemoteTokenIssuer` | Wraps a remote Key0 endpoint for token issuance.    |
+
+### Error Types
+
+| Export      | Description                              |
+| ----------- | ---------------------------------------- |
+| `Key0Error` | Base error class for all Key0 errors.    |
+
+### Constants
+
+| Export          | Description                                              |
+| --------------- | -------------------------------------------------------- |
+| `CHAIN_CONFIGS` | Network configuration map (mainnet chain 8453, testnet chain 84532). |
+| `USDC_DECIMALS` | USDC token decimal precision (6).                        |
+
+## Subpath Imports
+
+Framework-specific adapters are available as subpath imports. Each exposes a router/plugin and a `validateAccessToken` middleware for protecting routes.
+
+### Express
+
+```ts
+import { key0Router, validateAccessToken } from "@key0ai/key0/express";
+```
+
+| Export                | Description                                          |
+| --------------------- | ---------------------------------------------------- |
+| `key0Router`          | Express router that mounts challenge and proof endpoints. |
+| `validateAccessToken` | Express middleware that validates Bearer JWTs on protected routes. |
+
+### Hono
+
+```ts
+import { key0App, honoValidateAccessToken } from "@key0ai/key0/hono";
+```
+
+| Export                      | Description                                    |
+| --------------------------- | ---------------------------------------------- |
+| `key0App`                   | Hono app that mounts challenge and proof endpoints. |
+| `honoValidateAccessToken`   | Hono middleware that validates Bearer JWTs on protected routes. |
+
+### Fastify
+
+```ts
+import { key0Plugin, fastifyValidateAccessToken } from "@key0ai/key0/fastify";
+```
+
+| Export                          | Description                                      |
+| ------------------------------- | ------------------------------------------------ |
+| `key0Plugin`                    | Fastify plugin that registers challenge and proof routes. |
+| `fastifyValidateAccessToken`    | Fastify hook that validates Bearer JWTs on protected routes. |
+
+### MCP
+
+```ts
+import { createMcpServer, mountMcpRoutes } from "@key0ai/key0/mcp";
+```
+
+| Export            | Description                                                        |
+| ----------------- | ------------------------------------------------------------------ |
+| `createMcpServer` | Creates an MCP server exposing `discover_plans` and `request_access` tools. |
+| `mountMcpRoutes`  | Mounts `/.well-known/mcp.json` discovery and `POST /mcp` Streamable HTTP endpoints on an Express app. |

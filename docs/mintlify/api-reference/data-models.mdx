@@ -1,0 +1,423 @@
+---
+title: "Data Models"
+description: "TypeScript type definitions for all protocol messages — AccessRequest, X402Challenge, PaymentProof, AccessGrant, ChallengeRecord, and ChallengeState."
+---
+
+# Data Models
+
+All types are exported from `@key0ai/key0` and are available as TypeScript imports:
+
+```typescript
+import type {
+  AccessRequest,
+  X402Challenge,
+  PaymentProof,
+  AccessGrant,
+  ChallengeRecord,
+  ChallengeState,
+  NetworkConfig,
+  NetworkName,
+} from "@key0ai/key0";
+```
+
+---
+
+## ChallengeState
+
+The state machine for a challenge record. All transitions are atomic and go through `IChallengeStore.transition()`.
+
+```typescript
+type ChallengeState =
+  | "PENDING"        // Challenge issued, awaiting payment
+  | "PAID"           // Payment verified, access token issued, awaiting delivery confirmation
+  | "DELIVERED"      // Seller confirmed resource was served — final success state
+  | "REFUND_PENDING" // Refund cron claimed this, refund tx being broadcast
+  | "REFUNDED"       // Refund sent on-chain — final state
+  | "REFUND_FAILED"  // Refund tx threw — needs operator attention
+  | "EXPIRED"        // Challenge TTL elapsed without payment
+  | "CANCELLED";     // Client cancelled the challenge
+```
+
+**State transitions:**
+
+```
+PENDING --> PAID --> DELIVERED          (happy path)
+PENDING --> EXPIRED                    (TTL elapsed)
+PENDING --> CANCELLED                  (client cancellation)
+PAID    --> REFUND_PENDING --> REFUNDED (refund cron)
+PAID    --> REFUND_PENDING --> REFUND_FAILED (refund error)
+```
+
+---
+
+## AccessRequest
+
+Sent by the client agent to initiate a payment flow. The `requestId` serves as an idempotency key.
+
+```typescript
+type AccessRequest = {
+  readonly requestId: string;      // UUID, client-generated, idempotency key
+  readonly resourceId: string;     // Seller-defined resource identifier
+  readonly planId: string;         // Must match a Plan.planId in the seller's catalog
+  readonly clientAgentId: string;  // DID or URL of the client agent
+  readonly callbackUrl?: string;   // Optional async webhook for status updates
+};
+```
+
+**Used in:** A2A JSON-RPC `message/send` (as a data part), x402 HTTP middleware request parsing.
+
+**Example:**
+
+```json
+{
+  "type": "AccessRequest",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "planId": "basic",
+  "resourceId": "default",
+  "clientAgentId": "did:example:client-agent"
+}
+```
+
+---
+
+## X402Challenge
+
+Returned by the server after receiving an `AccessRequest`. Contains all information the client needs to make a USDC payment.
+
+```typescript
+type X402Challenge = {
+  readonly type: "X402Challenge";
+  readonly challengeId: string;        // Server-generated UUID
+  readonly requestId: string;          // Echoed from AccessRequest
+  readonly planId: string;
+  readonly amount: string;             // Dollar string, e.g. "$0.10"
+  readonly asset: "USDC";
+  readonly chainId: number;            // e.g. 84532 (Base Sepolia) or 8453 (Base)
+  readonly destination: `0x${string}`; // Seller's wallet address
+  readonly expiresAt: string;          // ISO-8601 timestamp
+  readonly description: string;        // Human-readable payment instructions
+  readonly resourceVerified: boolean;  // Whether the resource was validated
+};
+```
+
+**Used in:** A2A JSON-RPC response, ChallengeEngine.requestAccess() return value.
+
+**Example:**
+
+```json
+{
+  "type": "X402Challenge",
+  "challengeId": "chg-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "planId": "basic",
+  "amount": "$0.10",
+  "asset": "USDC",
+  "chainId": 84532,
+  "destination": "0x1234567890abcdef1234567890abcdef12345678",
+  "expiresAt": "2025-01-15T12:15:00.000Z",
+  "description": "Send $0.10 USDC to 0x1234... on chain 84532. Then call the \"submit-proof\" skill with a PaymentProof containing the txHash, challengeId \"chg-a1b2c3d4-...\", requestId \"550e8400-...\", chainId 84532, amount \"$0.10\", asset \"USDC\", and your fromAgentId.",
+  "resourceVerified": true
+}
+```
+
+---
+
+## PaymentProof
+
+Sent by the client after completing an on-chain USDC transfer. Contains the transaction hash for verification.
+
+```typescript
+type PaymentProof = {
+  readonly type: "PaymentProof";
+  readonly challengeId: string;        // From the X402Challenge
+  readonly requestId: string;          // From the original AccessRequest
+  readonly chainId: number;            // Must match the challenge's chainId
+  readonly txHash: `0x${string}`;      // On-chain transaction hash
+  readonly amount: string;             // Must match the challenge's amount
+  readonly asset: "USDC";
+  readonly fromAgentId: string;        // Client agent identifier
+};
+```
+
+**Used in:** A2A JSON-RPC `message/send` (as a data part), ChallengeEngine.submitProof() input.
+
+**Example:**
+
+```json
+{
+  "type": "PaymentProof",
+  "challengeId": "chg-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "chainId": 84532,
+  "txHash": "0x7f9fade1c0d57a7af66ab4ead79fade1c0d57a7af66ab4ead7c2c2eb7b11a91385",
+  "amount": "$0.10",
+  "asset": "USDC",
+  "fromAgentId": "did:example:client-agent"
+}
+```
+
+---
+
+## AccessGrant
+
+Returned after successful payment verification. Contains the bearer token for accessing protected resources.
+
+```typescript
+type AccessGrant = {
+  readonly type: "AccessGrant";
+  readonly challengeId: string;
+  readonly requestId: string;
+  readonly accessToken: string;          // JWT or API key issued by fetchResourceCredentials
+  readonly tokenType: "Bearer";
+  readonly resourceEndpoint: string;     // URL to access the protected resource
+  readonly resourceId: string;
+  readonly planId: string;
+  readonly txHash: `0x${string}`;        // On-chain transaction hash
+  readonly explorerUrl: string;          // Blockchain explorer link
+};
+```
+
+**Used in:** A2A JSON-RPC response, x402 HTTP 200 response body, MCP tool result.
+
+**Example:**
+
+```json
+{
+  "type": "AccessGrant",
+  "challengeId": "chg-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZXF1ZXN0SWQiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJwbGFuSWQiOiJiYXNpYyJ9.abc123",
+  "tokenType": "Bearer",
+  "resourceEndpoint": "https://api.example.com/a2a/resources/default",
+  "resourceId": "default",
+  "planId": "basic",
+  "txHash": "0x7f9fade1c0d57a7af66ab4ead79fade1c0d57a7af66ab4ead7c2c2eb7b11a91385",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0x7f9fade1c0d57a7af66ab4ead79fade1c0d57a7af66ab4ead7c2c2eb7b11a91385"
+}
+```
+
+---
+
+## ChallengeRecord
+
+The internal record stored in `IChallengeStore`. Contains all challenge state, timestamps, and the access grant once delivered. Not directly exposed in API responses, but useful for understanding the storage layer.
+
+```typescript
+type ChallengeRecord = {
+  readonly challengeId: string;
+  readonly requestId: string;
+  readonly clientAgentId: string;
+  readonly resourceId: string;
+  readonly planId: string;
+  readonly amount: string;              // Dollar string, e.g. "$0.10"
+  readonly amountRaw: bigint;           // USDC micro-units, e.g. 100000n
+  readonly asset: "USDC";
+  readonly chainId: number;
+  readonly destination: `0x${string}`;
+  readonly state: ChallengeState;
+  readonly expiresAt: Date;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;             // Auto-updated on every write
+  readonly paidAt?: Date;               // Set on PENDING -> PAID
+  readonly txHash?: `0x${string}`;      // Set on PENDING -> PAID
+  readonly accessGrant?: AccessGrant;   // Set when token is issued (PAID state)
+  readonly fromAddress?: `0x${string}`; // Payer's wallet, set on PENDING -> PAID
+  readonly deliveredAt?: Date;          // Set on PAID -> DELIVERED
+  readonly refundTxHash?: `0x${string}`;// Set on REFUND_PENDING -> REFUNDED
+  readonly refundedAt?: Date;           // Set on REFUND_PENDING -> REFUNDED
+  readonly refundError?: string;        // Set on REFUND_PENDING -> REFUND_FAILED
+};
+```
+
+**Key invariants:**
+
+- `state` transitions are atomic via `IChallengeStore.transition(id, fromState, toState, updates?, meta?)`.
+- `amountRaw` is the USDC amount in 6-decimal micro-units (e.g., `100000n` = $0.10).
+- `accessGrant` is persisted durably in the PAID state before the DELIVERED transition, using an outbox pattern.
+
+---
+
+## NetworkConfig
+
+Configuration for a supported blockchain network.
+
+```typescript
+type NetworkConfig = {
+  readonly name: NetworkName;
+  readonly chainId: number;
+  readonly rpcUrl: string;
+  readonly usdcAddress: `0x${string}`;
+  readonly facilitatorUrl: string;
+  readonly explorerBaseUrl: string;
+  readonly usdcDomain: {
+    readonly name: string;     // EIP-712 domain name (e.g. "USDC")
+    readonly version: string;  // EIP-712 domain version (e.g. "2")
+  };
+};
+```
+
+**Built-in configurations:**
+
+| Network | Chain ID | USDC Address | Explorer |
+|---------|----------|--------------|----------|
+| `testnet` (Base Sepolia) | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | sepolia.basescan.org |
+| `mainnet` (Base) | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | basescan.org |
+
+---
+
+## NetworkName
+
+The two supported network identifiers.
+
+```typescript
+type NetworkName = "mainnet" | "testnet";
+```
+
+| Value | Chain | Chain ID | Description |
+|-------|-------|----------|-------------|
+| `"testnet"` | Base Sepolia | 84532 | Test network with test USDC. Use for development. |
+| `"mainnet"` | Base | 8453 | Production network with real USDC. |
+
+---
+
+## Plan
+
+Defines a pricing plan in the seller's catalog.
+
+```typescript
+type Plan = {
+  readonly planId: string;        // Unique identifier for this plan
+  readonly unitAmount: string;    // Dollar string, e.g. "$0.10"
+  readonly description?: string;  // Human-readable description
+};
+```
+
+**Example:**
+
+```json
+{
+  "planId": "basic",
+  "unitAmount": "$0.10",
+  "description": "Single photo download"
+}
+```
+
+---
+
+## X402PaymentRequiredResponse
+
+The x402 v2 payment-required response. Sent in 402 response bodies and the `payment-required` header (base64-encoded).
+
+```typescript
+type X402PaymentRequiredResponse = {
+  readonly x402Version: number;                  // Always 2
+  readonly resource: ResourceInfo;
+  readonly accepts: readonly PaymentRequirements[];
+  readonly error?: string;
+  readonly extensions?: {
+    readonly key0?: Key0Extension;
+    [key: string]: unknown;
+  };
+};
+
+type ResourceInfo = {
+  readonly url: string;
+  readonly method: string;
+  readonly description?: string;
+  readonly mimeType?: string;
+};
+
+type PaymentRequirements = {
+  readonly scheme: "exact" | string;
+  readonly network: string;              // CAIP-2 format, e.g. "eip155:84532"
+  readonly asset: string;                // ERC-20 contract address
+  readonly amount: string;               // Smallest unit, e.g. "100000"
+  readonly payTo: string;                // Seller wallet address
+  readonly maxTimeoutSeconds: number;
+  readonly extra?: Record<string, unknown>;
+};
+```
+
+---
+
+## X402PaymentPayload
+
+The payment payload sent by the client, either in the `PAYMENT-SIGNATURE` HTTP header (base64url-encoded) or in MCP `_meta["x402/payment"]`.
+
+```typescript
+type X402PaymentPayload = {
+  readonly x402Version: number;
+  readonly network: string;
+  readonly scheme?: string;
+  readonly payload: {
+    readonly signature?: string;              // EIP-3009 signature
+    readonly authorization?: EIP3009Authorization;
+    readonly txHash?: string;                 // On-chain tx proof (alternative)
+    readonly amount?: string;
+    readonly asset?: string;
+    readonly from?: string;
+  };
+  readonly accepted?: PaymentRequirements;    // Echoed from 402 response
+};
+
+type EIP3009Authorization = {
+  readonly from: string;
+  readonly to: string;
+  readonly value: string;
+  readonly validAfter: string;
+  readonly validBefore: string;
+  readonly nonce: string;
+};
+```
+
+---
+
+## X402SettleResponse
+
+The settlement receipt, returned in the `payment-response` HTTP header (base64-encoded) and in MCP `_meta["x402/payment-response"]`.
+
+```typescript
+type X402SettleResponse = {
+  readonly success: boolean;
+  readonly transaction: string;     // On-chain transaction hash
+  readonly network: string;         // CAIP-2 format
+  readonly payer?: string;          // Payer's wallet address
+  readonly errorReason?: string;    // Present when success is false
+};
+```
+
+---
+
+## Error Codes
+
+All errors use the `Key0Error` class with standardized codes:
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `TIER_NOT_FOUND` | 400 | Plan ID not found in the seller's catalog. |
+| `INVALID_REQUEST` | 400 | Malformed request, missing required fields, or invalid input. |
+| `CHALLENGE_NOT_FOUND` | 404 | Challenge ID not found in the store. |
+| `CHALLENGE_EXPIRED` | 410 | Challenge TTL elapsed or was cancelled. |
+| `TX_ALREADY_REDEEMED` | 409 | Transaction hash already used for another challenge. |
+| `TX_UNCONFIRMED` | 202 | Transaction not yet confirmed on-chain. Retry later. |
+| `INVALID_PROOF` | 400 | On-chain verification failed (wrong amount, wrong destination, etc.). |
+| `PROOF_ALREADY_REDEEMED` | 200 | Challenge already paid. Returns the cached `AccessGrant`. |
+| `CHAIN_MISMATCH` | 400 | Proof chainId does not match the challenge chainId. |
+| `AMOUNT_MISMATCH` | 400 | Proof amount does not match the challenge amount. |
+| `PAYMENT_FAILED` | 402 | EIP-3009 verification or settlement failed. |
+| `TOKEN_ISSUE_TIMEOUT` | 504 | `fetchResourceCredentials` callback timed out. |
+| `INTERNAL_ERROR` | 500 | Unexpected error or concurrent state transition conflict. |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="State Machine" icon="diagram-project" href="/architecture/state-machine">
+    Visual guide to ChallengeState transitions and invariants.
+  </Card>
+  <Card title="ChallengeEngine" icon="gears" href="/sdk-reference/challenge-engine">
+    The engine that orchestrates these data models through the payment lifecycle.
+  </Card>
+  <Card title="POST /x402/access" icon="lock" href="/api-reference/x402-access">
+    The x402 HTTP endpoint that produces and consumes these types.
+  </Card>
+</CardGroup>

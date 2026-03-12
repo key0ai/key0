@@ -1,0 +1,355 @@
+---
+title: "POST /x402/access"
+description: "The x402 HTTP payment endpoint — handles discovery, challenge issuance, and payment settlement in a single URL."
+---
+
+# POST /x402/access
+
+```
+POST /x402/access
+Content-Type: application/json
+```
+
+The primary x402 HTTP endpoint. It handles three distinct cases depending on the request body and headers:
+
+1. **Discovery** -- No `planId` in the body. Returns HTTP 402 with all available plans.
+2. **Challenge** -- `planId` in the body, no `PAYMENT-SIGNATURE` header. Returns HTTP 402 with payment requirements and a `challengeId`.
+3. **Settlement** -- `planId` in the body and a `PAYMENT-SIGNATURE` header. Settles the payment on-chain and returns HTTP 200 with an `AccessGrant`.
+
+---
+
+## Case 1: Discovery
+
+Send an empty body or a body without `planId` to discover all available plans and pricing.
+
+<Tabs>
+  <Tab title="Request">
+    ```bash
+    curl -X POST https://api.example.com/x402/access \
+      -H "Content-Type: application/json" \
+      -d '{}'
+    ```
+  </Tab>
+  <Tab title="Response">
+    **HTTP 402 Payment Required**
+
+    **Headers:**
+
+    | Header | Value |
+    |--------|-------|
+    | `payment-required` | Base64-encoded JSON (same as body below) |
+    | `www-authenticate` | `Payment realm="https://api.example.com", accept="exact"` |
+
+    **Body:**
+
+    ```json
+    {
+      "x402Version": 2,
+      "resource": {
+        "url": "https://api.example.com/x402/access",
+        "method": "POST",
+        "description": "Acme Photo API — Pay-per-use access with USDC. POST with { planId } to start a payment flow, or POST with { planId, requestId } + PAYMENT-SIGNATURE header to complete payment.",
+        "mimeType": "application/json"
+      },
+      "accepts": [
+        {
+          "scheme": "exact",
+          "network": "eip155:84532",
+          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "amount": "100000",
+          "payTo": "0xSellerWalletAddress",
+          "maxTimeoutSeconds": 900,
+          "extra": {
+            "name": "USDC",
+            "version": "2",
+            "planId": "basic",
+            "description": "basic — $0.10 USDC"
+          }
+        },
+        {
+          "scheme": "exact",
+          "network": "eip155:84532",
+          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "amount": "500000",
+          "payTo": "0xSellerWalletAddress",
+          "maxTimeoutSeconds": 900,
+          "extra": {
+            "name": "USDC",
+            "version": "2",
+            "planId": "pro",
+            "description": "pro — $0.50 USDC"
+          }
+        }
+      ],
+      "extensions": {
+        "key0": {
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "planId": {
+                "type": "string",
+                "description": "Tier to purchase. Available tiers: basic, pro"
+              },
+              "requestId": {
+                "type": "string",
+                "description": "Client-generated UUID for idempotency (auto-generated if omitted)"
+              },
+              "resourceId": {
+                "type": "string",
+                "description": "Optional: Specific resource identifier (defaults to 'default')"
+              }
+            },
+            "required": ["planId"]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "accessToken": { "type": "string", "description": "JWT token for API access" },
+              "tokenType": { "type": "string", "description": "Token type (usually 'Bearer')" },
+              "resourceEndpoint": { "type": "string", "description": "URL to access the protected resource" },
+              "txHash": { "type": "string", "description": "On-chain transaction hash" },
+              "explorerUrl": { "type": "string", "description": "Blockchain explorer URL" }
+            }
+          },
+          "description": "Pay-per-use access to high-resolution stock photos via USDC on Base."
+        }
+      },
+      "error": "Payment required"
+    }
+    ```
+
+    The `accepts` array contains one entry per plan. Each entry's `extra.planId` tells you the plan ID to use in the next step. The `extensions.key0.inputSchema` describes the expected request body format.
+  </Tab>
+</Tabs>
+
+---
+
+## Case 2: Challenge
+
+Send a `planId` in the body without a `PAYMENT-SIGNATURE` header. The server creates a PENDING challenge record and returns payment requirements.
+
+<Tabs>
+  <Tab title="Request">
+    ```bash
+    curl -X POST https://api.example.com/x402/access \
+      -H "Content-Type: application/json" \
+      -d '{
+        "planId": "basic",
+        "requestId": "550e8400-e29b-41d4-a716-446655440000",
+        "resourceId": "default"
+      }'
+    ```
+
+    | Field | Type | Required | Description |
+    |-------|------|----------|-------------|
+    | `planId` | string | Yes | Must match a `Plan.planId` from the seller's catalog. |
+    | `requestId` | string | No | Client-generated UUID. Auto-generated if omitted. Used as an idempotency key. |
+    | `resourceId` | string | No | Defaults to `"default"`. |
+  </Tab>
+  <Tab title="Response">
+    **HTTP 402 Payment Required**
+
+    **Headers:**
+
+    | Header | Value |
+    |--------|-------|
+    | `payment-required` | Base64-encoded JSON of the payment requirements |
+    | `www-authenticate` | `Payment realm="https://api.example.com", accept="exact", challenge="http-a1b2c3d4-..."` |
+
+    **Body:**
+
+    ```json
+    {
+      "x402Version": 2,
+      "resource": {
+        "url": "https://api.example.com/a2a/jsonrpc",
+        "method": "POST",
+        "description": "Access to default",
+        "mimeType": "application/json"
+      },
+      "accepts": [
+        {
+          "scheme": "exact",
+          "network": "eip155:84532",
+          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "amount": "100000",
+          "payTo": "0xSellerWalletAddress",
+          "maxTimeoutSeconds": 900,
+          "extra": {
+            "name": "USDC",
+            "version": "2",
+            "description": "basic — $0.10 USDC"
+          }
+        }
+      ],
+      "extensions": {
+        "key0": {
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "planId": { "type": "string", "description": "Tier to purchase. Must be 'basic'" },
+              "requestId": { "type": "string", "description": "Client-generated UUID for idempotency (auto-generated if omitted)" },
+              "resourceId": { "type": "string", "description": "Optional: Specific resource identifier (defaults to 'default')" }
+            },
+            "required": ["planId"]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "accessToken": { "type": "string", "description": "JWT token for API access" },
+              "tokenType": { "type": "string", "description": "Token type (usually 'Bearer')" },
+              "expiresAt": { "type": "string", "description": "ISO 8601 expiration timestamp" },
+              "resourceEndpoint": { "type": "string", "description": "URL to access the protected resource" },
+              "txHash": { "type": "string", "description": "On-chain transaction hash" },
+              "explorerUrl": { "type": "string", "description": "Blockchain explorer URL" }
+            }
+          },
+          "description": "Access to default via basic tier"
+        }
+      },
+      "challengeId": "http-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "error": "Payment required"
+    }
+    ```
+
+    The `challengeId` is included in the body for reference. The `accepts[0]` object contains everything the client needs to construct an EIP-3009 `transferWithAuthorization` signature.
+  </Tab>
+</Tabs>
+
+---
+
+## Case 3: Settlement
+
+Resend the same request with a `PAYMENT-SIGNATURE` header containing a base64url-encoded `X402PaymentPayload`. The server settles the payment on-chain and returns an `AccessGrant`.
+
+<Tabs>
+  <Tab title="Request">
+    ```bash
+    curl -X POST https://api.example.com/x402/access \
+      -H "Content-Type: application/json" \
+      -H "PAYMENT-SIGNATURE: eyJ4NDAyVmVyc2lvbiI6Miwi..." \
+      -d '{
+        "planId": "basic",
+        "requestId": "550e8400-e29b-41d4-a716-446655440000",
+        "resourceId": "default"
+      }'
+    ```
+
+    The `PAYMENT-SIGNATURE` header is a base64url-encoded JSON object with the following structure:
+
+    ```json
+    {
+      "x402Version": 2,
+      "network": "eip155:84532",
+      "payload": {
+        "signature": "0xabc...",
+        "authorization": {
+          "from": "0xClientAddress",
+          "to": "0xSellerAddress",
+          "value": "100000",
+          "validAfter": "0",
+          "validBefore": "9999999999",
+          "nonce": "0x123"
+        }
+      },
+      "accepted": {
+        "scheme": "exact",
+        "network": "eip155:84532",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "amount": "100000",
+        "payTo": "0xSellerAddress",
+        "maxTimeoutSeconds": 900
+      }
+    }
+    ```
+
+    The `accepted` field echoes back the payment requirements from the 402 response. The `payload.signature` is the EIP-3009 `transferWithAuthorization` signature. The `payload.authorization` contains the EIP-3009 parameters.
+
+    <Note>
+      If `planId` is missing from the request body but present in the `PAYMENT-SIGNATURE` payload's `accepted.extra.planId`, the server extracts it automatically. This supports standard x402 clients that replay the exact same request with only the header added.
+    </Note>
+  </Tab>
+  <Tab title="Response">
+    **HTTP 200 OK**
+
+    **Headers:**
+
+    | Header | Value |
+    |--------|-------|
+    | `payment-response` | Base64-encoded `X402SettleResponse` JSON |
+
+    **Body:**
+
+    ```json
+    {
+      "type": "AccessGrant",
+      "challengeId": "http-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "requestId": "550e8400-e29b-41d4-a716-446655440000",
+      "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZXF1ZXN0SWQiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJyZXNvdXJjZUlkIjoiZGVmYXVsdCIsInBsYW5JZCI6ImJhc2ljIiwiaWF0IjoxNzA1MzE1MjAwfQ.abc123",
+      "tokenType": "Bearer",
+      "resourceEndpoint": "https://api.example.com/a2a/resources/default",
+      "resourceId": "default",
+      "planId": "basic",
+      "txHash": "0x7f9fade1c0d57a7af66ab4ead79fade1c0d57a7af66ab4ead7c2c2eb7b11a91385",
+      "explorerUrl": "https://sepolia.basescan.org/tx/0x7f9fade1c0d57a7af66ab4ead79fade1c0d57a7af66ab4ead7c2c2eb7b11a91385"
+    }
+    ```
+
+    The `payment-response` header contains:
+
+    ```json
+    {
+      "success": true,
+      "transaction": "0x7f9fade1c0d57a7af66ab4ead79fade1c0d57a7af66ab4ead7c2c2eb7b11a91385",
+      "network": "eip155:84532",
+      "payer": "0xClientAddress"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Settlement Strategies
+
+Key0 supports two settlement strategies, configured via `SellerConfig`:
+
+| Strategy | Config | Description |
+|----------|--------|-------------|
+| **Facilitator** (default) | `facilitatorUrl` or network default | Sends the EIP-3009 authorization to the Coinbase facilitator for verification and on-chain settlement. The facilitator pays gas. |
+| **Gas Wallet** | `gasWalletPrivateKey` | Verifies and settles the EIP-3009 authorization directly using your own gas wallet. You pay gas. Supports distributed locking via Redis for multi-instance deployments. |
+
+## Pre-Settlement Check
+
+Before settling a payment, the server checks for existing challenge records:
+
+- **Already DELIVERED**: Returns the cached `AccessGrant` immediately (HTTP 200). No on-chain transaction.
+- **EXPIRED or CANCELLED**: Returns an error (HTTP 410). The client must start a new flow.
+- **PENDING or PAID**: Proceeds with settlement.
+
+This prevents burning USDC on duplicate settlements.
+
+## Error Responses
+
+| HTTP Status | Error Code | When |
+|-------------|------------|------|
+| 400 | `TIER_NOT_FOUND` | `planId` does not match any plan in the catalog. |
+| 400 | `INVALID_REQUEST` | Malformed `PAYMENT-SIGNATURE` header or request body. |
+| 402 | `PAYMENT_FAILED` | EIP-3009 verification or on-chain settlement failed. |
+| 409 | `TX_ALREADY_REDEEMED` | The transaction hash was already used for a different challenge. |
+| 410 | `CHALLENGE_EXPIRED` | The challenge expired or was cancelled before payment arrived. |
+| 500 | `INTERNAL_ERROR` | Concurrent state transition conflict or unexpected error. |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="x402 HTTP Flow" icon="money-bill-transfer" href="/protocol/x402-http-flow">
+    End-to-end walkthrough of the x402 payment protocol over HTTP.
+  </Card>
+  <Card title="Data Models" icon="database" href="/api-reference/data-models">
+    TypeScript types for X402PaymentPayload, X402SettleResponse, and more.
+  </Card>
+  <Card title="ChallengeEngine" icon="gears" href="/sdk-reference/challenge-engine">
+    The state machine that processes challenges created by this endpoint.
+  </Card>
+</CardGroup>
