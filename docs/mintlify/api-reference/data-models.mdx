@@ -64,7 +64,7 @@ type AccessRequest = {
 };
 ```
 
-**Used in:** A2A JSON-RPC `message/send` (as a data part), x402 HTTP middleware request parsing.
+**Used in:** A2A Executor `message/send` (as a data part), x402 HTTP request parsing.
 
 **Example:**
 
@@ -100,7 +100,7 @@ type X402Challenge = {
 };
 ```
 
-**Used in:** A2A JSON-RPC response, ChallengeEngine.requestAccess() return value.
+**Used in:** A2A Executor response, ChallengeEngine.requestAccess() return value.
 
 **Example:**
 
@@ -139,7 +139,7 @@ type PaymentProof = {
 };
 ```
 
-**Used in:** A2A JSON-RPC `message/send` (as a data part), ChallengeEngine.submitProof() input.
+**Used in:** A2A Executor `message/send` (as a data part), ChallengeEngine.submitProof() input.
 
 **Example:**
 
@@ -177,7 +177,7 @@ type AccessGrant = {
 };
 ```
 
-**Used in:** A2A JSON-RPC response, x402 HTTP 200 response body, MCP tool result.
+**Used in:** A2A Executor response, x402 HTTP 200 response body, MCP tool result.
 
 **Example:**
 

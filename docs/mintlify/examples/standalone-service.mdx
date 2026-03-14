@@ -370,7 +370,7 @@ Once running, the service exposes:
 | Endpoint | Description |
 | --- | --- |
 | `GET /.well-known/agent.json` | A2A agent card with capabilities and pricing |
-| `POST /agent` | A2A JSON-RPC endpoint for challenge/proof flow |
+| `POST /x402/access` | Unified x402 HTTP payment endpoint (also handles A2A JSON-RPC with `X-A2A-Extensions` header) |
 | `GET /.well-known/mcp.json` | MCP discovery (when `mcp: true`) |
 | `POST /mcp` | MCP Streamable HTTP endpoint |
 | `GET /health` | Health check with storage, token mode, and network info |

@@ -64,15 +64,14 @@ Once the client has paid on-chain, it submits a `PaymentProof` with the `txHash`
 
 All state transitions go through `ChallengeEngine`, which enforces the state machine invariants and logs every transition for auditability.
 
-## Three Transports, One Engine
+## Two Endpoints, One Engine
 
-Every transport shares the same `ChallengeEngine` instance, so payment logic, state management, and security invariants are identical regardless of how the client connects.
+Both entry points share the same `ChallengeEngine` instance, so payment logic, state management, and security invariants are identical regardless of how the client connects.
 
-| Transport | Endpoint | Use Case |
-|---|---|---|
-| **REST (x402)** | `/x402/access` | Simple HTTP 402 payment flow |
-| **A2A JSON-RPC** | `{basePath}/jsonrpc` | Agent-to-agent protocol with x402 middleware |
-| **A2A Executor** | Native A2A via `@a2a-js/sdk` | Full A2A protocol integration |
+| Endpoint | Use Case |
+|---|---|
+| `POST /x402/access` | Unified: x402 HTTP flow (default) or A2A JSON-RPC (with `X-A2A-Extensions` header, Express only) |
+| `POST /mcp` | MCP Streamable HTTP (opt-in via `mcp: true`) |
 
 ## Next Steps
 

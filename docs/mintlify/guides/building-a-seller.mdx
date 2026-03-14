@@ -120,7 +120,7 @@ Both stores accept an optional `keyPrefix` (default: `"key0"`) if you share a Re
 
 <Step title="Mount the router">
 
-Wire everything together with `key0Router`. This creates an Express router that serves the A2A agent card, the JSON-RPC endpoint, and the x402 HTTP payment endpoint.
+Wire everything together with `key0Router`. This creates an Express router that serves the A2A agent card and the unified x402 HTTP payment endpoint.
 
 ```typescript
 import express from "express";
@@ -166,8 +166,7 @@ This mounts the following routes automatically:
 | Route | Description |
 |---|---|
 | `GET /.well-known/agent.json` | A2A agent card discovery |
-| `POST /a2a/jsonrpc` | A2A JSON-RPC endpoint with x402 middleware |
-| `POST /x402/access` | Simple x402 HTTP payment endpoint |
+| `POST /x402/access` | Unified x402 HTTP payment endpoint (also handles A2A JSON-RPC when `X-A2A-Extensions` header is present) |
 
 </Step>
 

@@ -7,8 +7,6 @@ description: "All HTTP endpoints served by Key0 at a glance."
 
 Key0 exposes a set of HTTP endpoints for agent discovery, payment-gated access, and protocol interoperability. All endpoints are served by a single Express router created via `key0Router()`.
 
-The default base path for A2A endpoints is `/a2a`. You can override this with `basePath` in your `SellerConfig`.
-
 ## Endpoints
 
 ### Discovery
@@ -22,13 +20,6 @@ The default base path for A2A endpoints is `/a2a`. You can override this with `b
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/x402/access` | None | The x402 HTTP payment endpoint. Handles three cases: plan discovery (no `planId`), challenge issuance (`planId` without `PAYMENT-SIGNATURE`), and settlement (`planId` with `PAYMENT-SIGNATURE`). |
-
-### A2A Protocol
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `POST` | `{basePath}/jsonrpc` | x402 middleware | A2A JSON-RPC endpoint. The x402 HTTP middleware intercepts `message/send` calls and gates them behind payment unless the `X-A2A-Extensions` header is present. |
-| `POST` | `{basePath}/rest` | None | A2A REST handler for non-JSON-RPC clients. |
 
 ### MCP (when `mcp: true`)
 
@@ -64,7 +55,7 @@ All paths are relative to the host where you mount the Key0 router. For example,
 | `www-authenticate` | Response | HTTP-standard authentication challenge header. Includes `realm`, `accept`, and optionally `challenge` parameters. |
 | `payment-signature` | Request | Base64url-encoded `X402PaymentPayload` JSON. Sent by the client to complete payment. |
 | `payment-response` | Response | Base64-encoded `X402SettleResponse` JSON. Present on successful settlement (200 responses). |
-| `x-a2a-extensions` | Request | When present, the x402 HTTP middleware passes the request through to the A2A JSON-RPC handler without interception. Used by A2A-native clients. |
+| `x-a2a-extensions` | Request | When present on `POST /x402/access` (Express only), routes the request to the A2A JSON-RPC handler instead of the standard x402 HTTP flow. Used by A2A-native clients. |
 
 ## Error Format
 

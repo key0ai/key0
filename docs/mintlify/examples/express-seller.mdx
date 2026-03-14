@@ -19,12 +19,12 @@ A production-ready seller built with Express that monetizes a photo gallery API.
 Agent                         Express Seller
   |                                |
   |-- GET /.well-known/agent.json -|  Discover capabilities + pricing
-  |-- POST /a2a/jsonrpc ---------->|  Request access (planId, resourceId)
+  |-- POST /x402/access ---------->|  Request access (planId, resourceId)
   |<-------- X402Challenge --------|  Amount, destination wallet, chainId
   |                                |
   |  ... pays USDC on-chain ...    |
   |                                |
-  |-- POST /a2a/jsonrpc ---------->|  Submit payment proof (txHash)
+  |-- POST /x402/access ---------->|  Submit payment proof (txHash)
   |<-------- AccessGrant ----------|  JWT + resource endpoint URL
   |                                |
   |-- GET /api/photos/:id -------->|  Bearer token in Authorization header
@@ -260,7 +260,7 @@ A single middleware call gates all `/api/*` routes behind JWT validation. This i
 ```
 Photo Gallery Agent running on http://localhost:3000
   Agent card: http://localhost:3000/.well-known/agent.json
-  A2A endpoint: http://localhost:3000/a2a/jsonrpc
+  x402 endpoint: http://localhost:3000/x402/access
   Network: testnet
   Wallet: 0xYour...Address
 ```

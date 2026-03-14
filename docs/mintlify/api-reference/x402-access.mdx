@@ -162,7 +162,7 @@ Send a `planId` in the body without a `PAYMENT-SIGNATURE` header. The server cre
     {
       "x402Version": 2,
       "resource": {
-        "url": "https://api.example.com/a2a/jsonrpc",
+        "url": "https://api.example.com/x402/access",
         "method": "POST",
         "description": "Access to default",
         "mimeType": "application/json"
@@ -340,11 +340,39 @@ This prevents burning USDC on duplicate settlements.
 | 410 | `CHALLENGE_EXPIRED` | The challenge expired or was cancelled before payment arrived. |
 | 500 | `INTERNAL_ERROR` | Concurrent state transition conflict or unexpected error. |
 
+---
+
+## A2A-Native Clients (Express only)
+
+When using the **Express integration**, the same `POST /x402/access` endpoint also handles A2A JSON-RPC requests. A2A-native clients (e.g. the Google ADK `A2AClient`) signal their intent by including the `X-A2A-Extensions` header in the request:
+
+```http
+POST /x402/access
+Content-Type: application/json
+X-A2A-Extensions: a2a/1.0
+```
+
+When this header is detected, the Express middleware skips the x402 HTTP flow and delegates the request directly to the A2A JSON-RPC handler (`Key0Executor`). The response conforms to the A2A protocol (task lifecycle with `AccessRequest` and payment metadata).
+
+<Note>
+  Header-based A2A routing is **Express only**. The Hono and Fastify integrations serve the standard x402 HTTP flow on `POST /x402/access` only. A2A-native agents should use the Express integration or deploy the Key0 standalone Docker image.
+</Note>
+
+| Header | Value | Effect |
+|--------|-------|--------|
+| _(absent)_ | — | Standard x402 HTTP flow (discovery / challenge / settlement) |
+| `X-A2A-Extensions` | any value | Delegates to A2A JSON-RPC handler (Express only) |
+
+---
+
 ## Related
 
 <CardGroup cols={2}>
   <Card title="x402 HTTP Flow" icon="money-bill-transfer" href="/protocol/x402-http-flow">
     End-to-end walkthrough of the x402 payment protocol over HTTP.
+  </Card>
+  <Card title="A2A Flow" icon="robot" href="/protocol/a2a-flow">
+    How A2A-native agents discover and pay for access via Key0Executor.
   </Card>
   <Card title="Data Models" icon="database" href="/api-reference/data-models">
     TypeScript types for X402PaymentPayload, X402SettleResponse, and more.

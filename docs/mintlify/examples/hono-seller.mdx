@@ -5,15 +5,11 @@ description: "A Photo Gallery Agent built with Hono that sells photo access to A
 
 A lightweight seller agent built with [Hono](https://hono.dev) that monetizes a photo gallery API. AI agents discover the seller via its A2A agent card, pay USDC on Base, and receive a JWT to access protected photo endpoints.
 
-<Warning>
-  This example uses the **legacy product/tier API** (`products`, `tierId`, `onIssueToken`) rather than the current `plans`/`planId`/`fetchResourceCredentials` API. The payment flow is identical -- only the configuration shape differs. See the [Hono integration guide](/integrations/hono) and the [Express Seller example](/examples/express-seller) for the current API.
-</Warning>
-
 ## What It Demonstrates
 
 - Mounting the Key0 payment gateway on a Hono app with `key0App`
-- Defining multiple product tiers with different prices and access durations
-- Issuing JWTs with tier-specific TTLs via `AccessTokenIssuer`
+- Defining multiple pricing plans with different prices and access durations
+- Issuing JWTs with plan-specific TTLs via `AccessTokenIssuer`
 - Protecting downstream routes with `honoValidateAccessToken` middleware
 
 ## Architecture
@@ -22,12 +18,12 @@ A lightweight seller agent built with [Hono](https://hono.dev) that monetizes a 
 Agent                          Hono Seller
   |                                |
   |-- GET /.well-known/agent.json -|  (discover capabilities)
-  |-- POST /a2a/jsonrpc ---------->|  (request access)
+  |-- POST /x402/access ---------->|  (request access)
   |<-------- X402Challenge --------|  (amount, destination, chainId)
   |                                |
   |  ... pays USDC on-chain ...    |
   |                                |
-  |-- POST /a2a/jsonrpc ---------->|  (submit payment proof)
+  |-- POST /x402/access ---------->|  (submit payment proof)
   |<-------- AccessGrant ----------|  (JWT + resource endpoint)
   |                                |
   |-- GET /api/photos/:id -------->|  (Bearer token)
@@ -67,9 +63,9 @@ import { Hono } from "hono";
 const PORT = Number(process.env["PORT"] ?? 3001);
 const NETWORK = (process.env["KEY0_NETWORK"] ?? "testnet") as NetworkName;
 const WALLET = (process.env["KEY0_WALLET_ADDRESS"] ??
-	"0x0000000000000000000000000000000000000000") as `0x${string}`;
+  "0x0000000000000000000000000000000000000000") as `0x${string}`;
 const SECRET =
-	process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
+  process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
 ```
 
 All configuration comes from environment variables with safe defaults for local development. The `@key0ai/key0/hono` subpath export provides Hono-specific helpers.
@@ -78,8 +74,8 @@ All configuration comes from environment variables with safe defaults for local 
 
 ```typescript
 const adapter = new X402Adapter({
-	network: NETWORK,
-	rpcUrl: process.env["KEY0_RPC_URL"],
+  network: NETWORK,
+  rpcUrl: process.env["KEY0_RPC_URL"],
 });
 
 const tokenIssuer = new AccessTokenIssuer(SECRET);
@@ -91,63 +87,54 @@ const tokenIssuer = new AccessTokenIssuer(SECRET);
 
 ```typescript
 const gate = key0App({
-	config: {
-		agentName: "Photo Gallery Agent",
-		agentDescription: "Purchase access to premium photos via USDC payments on Base",
-		agentUrl: `http://localhost:${PORT}`,
-		providerName: "Example Corp",
-		providerUrl: "https://example.com",
-		walletAddress: WALLET,
-		network: NETWORK,
-		challengeTTLSeconds: 900,
-		products: [
-			{
-				tierId: "single-photo",
-				label: "Single Photo",
-				amount: "$0.10",
-				resourceType: "photo",
-				accessDurationSeconds: 3600,
-			},
-			{
-				tierId: "full-album",
-				label: "Full Album Access",
-				amount: "$1.00",
-				resourceType: "album",
-				accessDurationSeconds: 86400,
-			},
-		],
-		// ...callbacks shown below
-		resourceEndpointTemplate: `http://localhost:${PORT}/api/photos/{resourceId}`,
-	},
-	adapter,
+  config: {
+    agentName: "Photo Gallery Agent",
+    agentDescription: "Purchase access to premium photos via USDC payments on Base",
+    agentUrl: `http://localhost:${PORT}`,
+    providerName: "Example Corp",
+    providerUrl: "https://example.com",
+    walletAddress: WALLET,
+    network: NETWORK,
+    challengeTTLSeconds: 900,
+    plans: [
+      {
+        planId: "single-photo",
+        unitAmount: "$0.10",
+        description: "Single photo — 1 hour access",
+      },
+      {
+        planId: "full-album",
+        unitAmount: "$1.00",
+        description: "Full album — 24 hour access",
+      },
+    ],
+    // ...fetchResourceCredentials shown below
+  },
+  adapter,
 });
 ```
 
-`key0App` returns a Hono sub-app that mounts the A2A agent card at `/.well-known/agent.json` and the JSON-RPC endpoint at `/a2a/jsonrpc`. The `products` array defines two tiers -- a single photo for \$0.10 and a full album for \$1.00.
+`key0App` returns a Hono sub-app that mounts the A2A agent card at `/.well-known/agent.json` and the x402 payment endpoint at `POST /x402/access`. The `plans` array defines two tiers -- a single photo for \$0.10 and a full album for \$1.00.
 
 ### 4. Token issuance
 
 ```typescript
-onIssueToken: async (params) => {
-	const ttl = params.tierId === "single-photo" ? 3600 : 86400;
-	return tokenIssuer.sign(
-		{
-			sub: params.requestId,
-			jti: params.challengeId,
-			resourceId: params.resourceId,
-			tierId: params.tierId,
-			txHash: params.txHash,
-		},
-		ttl,
-	);
+fetchResourceCredentials: async (params) => {
+  const ttl = params.planId === "single-photo" ? 3600 : 86400;
+  return tokenIssuer.sign(
+    {
+      sub: params.requestId,
+      jti: params.challengeId,
+      resourceId: params.resourceId,
+      planId: params.planId,
+      txHash: params.txHash,
+    },
+    ttl,
+  );
 },
 ```
 
-`onIssueToken` runs after payment verification succeeds, minting a JWT with a tier-appropriate lifetime -- 1 hour for single photos, 24 hours for full albums.
-
-<Info>
-  This example uses the legacy `onIssueToken` pattern. In the current API, it is replaced by `fetchResourceCredentials`. See the [Express Seller example](/examples/express-seller) for the current approach.
-</Info>
+`fetchResourceCredentials` runs after payment verification succeeds, minting a JWT with a plan-appropriate lifetime -- 1 hour for single photos, 24 hours for full albums.
 
 ### 5. Payment lifecycle hook
 
@@ -155,8 +142,8 @@ The optional `onPaymentReceived` callback fires after a payment is verified and 
 
 ```typescript
 onPaymentReceived: async (grant) => {
-	console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.tierId})`);
-	console.log(`  TX: ${grant.explorerUrl}`);
+  console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.planId})`);
+  console.log(`  TX: ${grant.explorerUrl}`);
 },
 ```
 
@@ -170,13 +157,13 @@ const api = new Hono();
 api.use("/*", honoValidateAccessToken({ secret: SECRET }));
 
 api.get("/photos/:id", (c) => {
-	const photoId = c.req.param("id");
-	return c.json({
-		id: photoId,
-		url: `https://cdn.example.com/photos/${photoId}.jpg`,
-		title: `Premium Photo ${photoId}`,
-		resolution: "4K",
-	});
+  const photoId = c.req.param("id");
+  return c.json({
+    id: photoId,
+    url: `https://cdn.example.com/photos/${photoId}.jpg`,
+    title: `Premium Photo ${photoId}`,
+    resolution: "4K",
+  });
 });
 
 app.route("/api", api);
@@ -188,8 +175,8 @@ The `/api` sub-router is gated by `honoValidateAccessToken`. Any request without
 
 ```typescript
 export default {
-	port: PORT,
-	fetch: app.fetch,
+  port: PORT,
+  fetch: app.fetch,
 };
 ```
 
@@ -228,6 +215,10 @@ Bun picks up the default export automatically. No explicit `serve()` call needed
 
 ```
 Photo Gallery Agent (Hono) running on http://localhost:3001
+  Agent card: http://localhost:3001/.well-known/agent.json
+  x402 endpoint: http://localhost:3001/x402/access
+  Network: testnet
+  Wallet: 0xYour...Address
 ```
 
 ### Verify the agent card
@@ -236,7 +227,7 @@ Photo Gallery Agent (Hono) running on http://localhost:3001
 curl http://localhost:3001/.well-known/agent.json | jq .
 ```
 
-This returns the auto-generated A2A agent card describing the seller's capabilities, product tiers, and A2A endpoint.
+This returns the auto-generated A2A agent card describing the seller's capabilities, pricing plans, and payment endpoint URL.
 
 ### Complete a payment flow
 

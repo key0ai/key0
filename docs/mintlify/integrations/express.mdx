@@ -90,7 +90,7 @@ import { key0Router, validateAccessToken } from "@key0ai/key0/express";
 
 ## `key0Router(opts)`
 
-Creates an Express `Router` that serves agent discovery, the A2A JSON-RPC endpoint, and the x402 HTTP payment endpoint.
+Creates an Express `Router` that serves agent discovery and the unified x402 payment endpoint.
 
 ```typescript
 import { key0Router } from "@key0ai/key0/express";
@@ -114,9 +114,7 @@ The router mounts the following routes on your Express app:
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/.well-known/agent.json` | A2A agent card for discovery. |
-| `POST` | `{basePath}/jsonrpc` | A2A JSON-RPC endpoint with x402 middleware. |
-| `POST` | `{basePath}/rest` | A2A REST endpoint. |
-| `POST` | `/x402/access` | Simple x402 HTTP endpoint (no JSON-RPC wrapping). |
+| `POST` | `/x402/access` | Unified x402 HTTP endpoint. Handles x402 HTTP flow by default; routes to A2A JSON-RPC handler when `X-A2A-Extensions` header is present. |
 
 When `mcp: true` is set in `config`, two additional routes are mounted:
 
@@ -161,29 +159,9 @@ app.get("/api/resource", (req, res) => {
 
 The middleware returns a `401` or `403` JSON error if the token is missing, expired, or invalid.
 
-## Customizing `basePath`
-
-By default, A2A routes are mounted under `/a2a`. Set `basePath` in your `SellerConfig` to change this:
-
-```typescript
-app.use(
-  key0Router({
-    config: {
-      // ...
-      basePath: "/payments",
-    },
-    adapter,
-    store,
-    seenTxStore,
-  }),
-);
-```
-
-This changes the JSON-RPC endpoint to `POST /payments/jsonrpc` and the REST endpoint to `POST /payments/rest`. The `/x402/access` and `/.well-known/agent.json` paths are not affected.
-
 ## Enabling MCP mode
 
-Set `mcp: true` in your `SellerConfig` to expose MCP (Model Context Protocol) routes alongside the standard A2A and x402 endpoints:
+Set `mcp: true` in your `SellerConfig` to expose MCP (Model Context Protocol) routes alongside the standard x402 endpoint:
 
 ```typescript
 app.use(

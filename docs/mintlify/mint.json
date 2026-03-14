@@ -127,7 +127,6 @@
 			"pages": [
 				"api-reference/overview",
 				"api-reference/agent-card",
-				"api-reference/a2a-jsonrpc",
 				"api-reference/x402-access",
 				"api-reference/mcp-tools",
 				"api-reference/data-models"

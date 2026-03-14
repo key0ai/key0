@@ -1,11 +1,11 @@
 ---
 title: "Hono"
-description: "Mount Key0 as a Hono sub-app for agent discovery and access token validation."
+description: "Mount Key0 as a Hono sub-app for agent discovery and x402 payments."
 ---
 
 The Hono integration provides two exports from `@key0ai/key0/hono`:
 
-- **`key0App(opts)`** -- a Hono sub-app that serves the agent card and reserves the A2A endpoint.
+- **`key0App(opts)`** -- a Hono sub-app that serves agent discovery and the x402 payment endpoint.
 - **`honoValidateAccessToken({ secret })`** -- middleware that validates Bearer JWTs issued by Key0.
 
 ## Installation
@@ -18,18 +18,10 @@ bun add @key0ai/key0 hono
 
 When you mount `key0App`, the following routes are registered:
 
-| Method | Path                       | Description                        | Status |
-| ------ | -------------------------- | ---------------------------------- | ------ |
-| GET    | `/.well-known/agent.json`  | A2A agent card (discovery)         | Live   |
-| POST   | `{basePath}` (default `/a2a`) | A2A JSON-RPC endpoint           | 501    |
-
-<Note>
-The A2A JSON-RPC endpoint currently returns **501 Not Implemented**. Full A2A support is pending an upstream SDK update. Use the [Express integration](/integrations/express) if you need the complete A2A flow today.
-</Note>
-
-<Warning>
-The x402 HTTP payment endpoint (`/x402/access`) is **not available** in the Hono adapter. Use the Express integration for full x402 support, or use the Hono adapter exclusively for agent card discovery and access token validation.
-</Warning>
+| Method | Path                      | Description                              |
+| ------ | ------------------------- | ---------------------------------------- |
+| GET    | `/.well-known/agent.json` | A2A agent card (discovery)               |
+| POST   | `/x402/access`            | Unified x402 HTTP payment endpoint       |
 
 ## Setup
 
@@ -37,24 +29,41 @@ The x402 HTTP payment endpoint (`/x402/access`) is **not available** in the Hono
 
 <Step title="Configure the seller">
 
-Define your `SellerConfig` with wallet address, network, and pricing plans.
+Define your `SellerConfig` with wallet address, network, agent identity, and pricing plans.
 
 ```typescript
+import { AccessTokenIssuer } from "@key0ai/key0";
 import type { SellerConfig } from "@key0ai/key0";
 
+const SECRET = process.env.KEY0_ACCESS_TOKEN_SECRET!;
+const tokenIssuer = new AccessTokenIssuer(SECRET);
+
 const sellerConfig: SellerConfig = {
-  walletAddress: "0xYourWalletAddress",
+  agentName: "My API Agent",
+  agentDescription: "Pay-per-use API access via USDC on Base",
+  agentUrl: "https://api.example.com",
+  providerName: "Example Corp",
+  providerUrl: "https://example.com",
+  walletAddress: "0xYourWalletAddress" as `0x${string}`,
   network: "testnet",
-  basePath: "/a2a",
   plans: [
     {
       planId: "basic",
-      unitAmount: "0.01",
+      unitAmount: "$0.10",
       description: "Basic API access",
     },
   ],
-  fetchResourceCredentials: async (challenge) => {
-    return { token: "your-issued-credential" };
+  fetchResourceCredentials: async (params) => {
+    return tokenIssuer.sign(
+      {
+        sub: params.requestId,
+        jti: params.challengeId,
+        resourceId: params.resourceId,
+        planId: params.planId,
+        txHash: params.txHash,
+      },
+      3600,
+    );
   },
 };
 ```
@@ -102,7 +111,7 @@ app.route(
 );
 ```
 
-Your agent card is now available at `GET /.well-known/agent.json`.
+Your agent card is now available at `GET /.well-known/agent.json` and the payment endpoint at `POST /x402/access`.
 
 </Step>
 
@@ -114,10 +123,10 @@ Use `honoValidateAccessToken` as middleware on any route that requires a valid K
 import { honoValidateAccessToken } from "@key0ai/key0/hono";
 
 const guard = honoValidateAccessToken({
-  secret: process.env.KEY0_JWT_SECRET!,
+  secret: SECRET,
 });
 
-app.get("/protected/data", guard, (c) => {
+app.get("/api/resource", guard, (c) => {
   const token = c.get("key0Token");
   return c.json({
     message: "Authenticated",
@@ -159,6 +168,7 @@ On failure, the middleware returns a JSON error response:
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import {
+  AccessTokenIssuer,
   RedisChallengeStore,
   RedisSeenTxStore,
   X402Adapter,
@@ -167,23 +177,47 @@ import { key0App, honoValidateAccessToken } from "@key0ai/key0/hono";
 import Redis from "ioredis";
 
 const redis = new Redis();
+const SECRET = process.env.KEY0_ACCESS_TOKEN_SECRET!;
+const tokenIssuer = new AccessTokenIssuer(SECRET);
 
 const sellerConfig = {
-  walletAddress: "0xYourWalletAddress",
+  agentName: "My API Agent",
+  agentDescription: "Pay-per-use API access via USDC on Base",
+  agentUrl: "https://api.example.com",
+  providerName: "Example Corp",
+  providerUrl: "https://example.com",
+  walletAddress: process.env.KEY0_WALLET_ADDRESS! as `0x${string}`,
   network: "testnet" as const,
   plans: [
     {
       planId: "basic",
-      unitAmount: "0.01",
+      unitAmount: "$0.10",
       description: "Basic API access",
     },
   ],
-  fetchResourceCredentials: async () => ({ token: "credential" }),
+  fetchResourceCredentials: async (params: {
+    requestId: string;
+    challengeId: string;
+    resourceId: string;
+    planId: string;
+    txHash: string;
+  }) => {
+    return tokenIssuer.sign(
+      {
+        sub: params.requestId,
+        jti: params.challengeId,
+        resourceId: params.resourceId,
+        planId: params.planId,
+        txHash: params.txHash,
+      },
+      3600,
+    );
+  },
 };
 
 const app = new Hono();
 
-// Mount Key0 sub-app (agent card + A2A placeholder)
+// Mount Key0 sub-app (agent card + x402 payment endpoint)
 app.route(
   "/",
   key0App({
@@ -195,9 +229,7 @@ app.route(
 );
 
 // Protected route
-const guard = honoValidateAccessToken({
-  secret: process.env.KEY0_JWT_SECRET!,
-});
+const guard = honoValidateAccessToken({ secret: SECRET });
 
 app.get("/api/resource", guard, (c) => {
   const token = c.get("key0Token");
@@ -212,7 +244,7 @@ console.log("Hono server running on http://localhost:3000");
 
 ### `key0App(opts)`
 
-Creates a Hono sub-app with agent card discovery and an A2A endpoint stub.
+Creates a Hono sub-app with agent card discovery and the x402 payment endpoint.
 
 ```typescript
 function key0App(opts: Key0Config): Hono
@@ -240,3 +272,10 @@ function honoValidateAccessToken(config: ValidateAccessTokenConfig): MiddlewareH
 | Field    | Type     | Description                          |
 | -------- | -------- | ------------------------------------ |
 | `secret` | `string` | The JWT secret used to sign tokens   |
+
+## Related pages
+
+- [SellerConfig](/sdk-reference/seller-config) -- Configuration reference
+- [Express integration](/integrations/express) -- Full A2A JSON-RPC support (Express only)
+- [Fastify integration](/integrations/fastify)
+- [x402 HTTP Flow](/protocol/x402-http-flow)

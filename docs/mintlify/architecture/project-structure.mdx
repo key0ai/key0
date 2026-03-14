@@ -28,12 +28,8 @@ src/
 │   ├── agent-card.ts             # Auto-generates agent card from config
 │   ├── refund.ts                 # processRefunds() batch job
 │   └── storage/                  # Redis + Postgres implementations
-│       ├── redis-challenge.ts
-│       ├── redis-seen-tx.ts
-│       ├── redis-audit.ts
-│       ├── pg-challenge.ts
-│       ├── pg-seen-tx.ts
-│       └── pg-audit.ts
+│       ├── redis.ts              # RedisChallengeStore, RedisSeenTxStore, RedisAuditStore
+│       └── postgres.ts           # PostgresChallengeStore, PostgresSeenTxStore
 │
 ├── adapter/                      # On-chain interaction
 │   ├── adapter.ts                # X402Adapter (implements IPaymentAdapter)
@@ -46,8 +42,7 @@ src/
 │   ├── hono.ts                   # key0App, honoValidateAccessToken
 │   ├── fastify.ts                # key0Plugin, fastifyValidateAccessToken
 │   ├── mcp.ts                    # createMcpServer, mountMcpRoutes
-│   ├── settlement.ts             # Facilitator + gas wallet settlement
-│   └── x402-http-middleware.ts   # x402 HTTP middleware
+│   └── settlement.ts             # Facilitator + gas wallet settlement
 │
 ├── helpers/                      # Auth strategies and remote issuance
 │   ├── auth.ts                   # noAuth, sharedSecretAuth, signedJwtAuth, oauthClientCredentialsAuth
@@ -130,7 +125,6 @@ The main entry point (`src/index.ts`) re-exports from all layers. Framework subp
 | `src/factory.ts` | `createKey0()` -- the top-level factory that wires adapter, engine, stores, and integration together |
 | `src/executor.ts` | `Key0Executor` -- implements the A2A `AgentExecutor` interface for native agent-to-agent payment flows |
 | `src/integrations/settlement.ts` | Settlement logic for both facilitator-based (EIP-3009) and gas wallet (direct transfer) strategies |
-| `src/integrations/x402-http-middleware.ts` | x402 HTTP middleware that intercepts requests, issues challenges, and processes payment headers |
 | `src/utils/gas-wallet-lock.ts` | Distributed locking for gas wallet settlement -- Redis-based across replicas, in-process queue for single instances |
 
 ## Related

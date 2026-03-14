@@ -1,12 +1,12 @@
 ---
 title: "Payment Flow"
 sidebarTitle: "Payment Flow"
-description: "The full Key0 payment lifecycle: challenge issuance, on-chain settlement, token delivery, and the three transports that feed into the shared ChallengeEngine."
+description: "The full Key0 payment lifecycle: challenge issuance, on-chain settlement, token delivery, and the two endpoints that feed into the shared ChallengeEngine."
 ---
 
 ## Overview
 
-All three Key0 transports share a single `ChallengeEngine` that owns the payment lifecycle. The engine exposes two phases -- challenge issuance and settlement -- while each transport handles HTTP framing differently.
+Both Key0 entry points share a single `ChallengeEngine` that owns the payment lifecycle. The engine exposes two phases -- challenge issuance and settlement -- while each endpoint handles HTTP framing differently.
 
 ```
 +-------------------------------------------------------------+
@@ -16,16 +16,17 @@ All three Key0 transports share a single `ChallengeEngine` that owns the payment
 |        -> settlePayment() (transport layer)                 |
 |             -> processHttpPayment()        Phase 2          |
 +-------------------------------------------------------------+
-             ^               ^               ^
-             |               |               |
-    +--------+---+   +------+-------+   +----+------------+
-    | /x402/     |   | {basePath}/ |   | {basePath}/     |
-    | access     |   | jsonrpc     |   | jsonrpc         |
-    | (REST)     |   | (middleware)|   | (A2A executor)  |
-    +------------+   +-------------+   +-----------------+
+                    ^               ^
+                    |               |
+         +----------+---------+   +-+--------------------+
+         |  POST /x402/access |   |  POST /x402/access   |
+         |  (x402 HTTP flow)  |   |  + X-A2A-Extensions  |
+         |                    |   |  -> A2A Executor      |
+         +--------------------+   |  (Express only)       |
+                                  +----------------------+
 ```
 
-The transports differ only in how the HTTP request arrives and how the response is formatted. Under the hood, every payment passes through the same state machine, the same Redis/Postgres stores, and the same settlement logic.
+The two modes differ only in how the request arrives and how the response is formatted. Under the hood, every payment passes through the same state machine, the same Redis/Postgres stores, and the same settlement logic.
 
 ---
 
@@ -146,11 +147,11 @@ The `validateAccessToken` middleware verifies the JWT and attaches decoded claim
 
 ---
 
-## Three Transports
+## Two Endpoints
 
 <Tabs>
 
-<Tab title="REST (/x402/access)">
+<Tab title="x402 HTTP (/x402/access)">
 
 A plain REST endpoint mounted at `POST /x402/access` by the Express integration. The request shape determines which of three cases applies.
 
@@ -283,43 +284,9 @@ payment-response: eyJzdWNjZXNz... (base64-encoded X402SettleResponse)
 
 </Tab>
 
-<Tab title="JSON-RPC Middleware">
+<Tab title="A2A Executor (Express only)">
 
-The same JSON-RPC endpoint (`POST {basePath}/jsonrpc`) serves both A2A-native agents and plain HTTP clients. The `createX402HttpMiddleware` sits in front of the A2A handler and routes based on headers and request content.
-
-### Routing logic
-
-```
-POST {basePath}/jsonrpc
-        |
-        v
- x402HttpMiddleware
-        |
-        +-- Has X-A2A-Extensions header?
-        |       YES -> pass through to A2A SDK -> Key0Executor (Transport 3)
-        |
-        +-- Not a message/send call?
-        |       -> pass through
-        |
-        +-- No AccessRequest in parts?
-        |       -> pass through
-        |
-        +-- No payment-signature header?
-        |       -> engine.requestHttpAccess() -> HTTP 402 + payment-required header
-        |
-        +-- Has payment-signature header?
-                -> settlePayment() -> engine.processHttpPayment() -> HTTP 200 + AccessGrant
-```
-
-The middleware extracts `AccessRequest` from `params.message.parts` -- either a `data` part with `type: "AccessRequest"` or a `text` part containing JSON.
-
-The settlement logic is identical to the REST transport. The only difference is that requests and responses are wrapped in JSON-RPC framing.
-
-</Tab>
-
-<Tab title="A2A Executor">
-
-When a native A2A client sends the `X-A2A-Extensions` header, the middleware passes through to the A2A SDK, which routes to `Key0Executor`.
+When a native A2A client sends the `X-A2A-Extensions` header to `POST /x402/access`, the Express integration bypasses the x402 HTTP flow and delegates to the A2A JSON-RPC handler, which routes to `Key0Executor`.
 
 ### Phase 1: AccessRequest to Task (input-required)
 
@@ -417,7 +384,7 @@ The executor processes through intermediate working states:
 | `www-authenticate` | Server to Client (402) | `Payment realm=..., accept="exact"[, challenge=...]` | HTTP spec compliance |
 | `payment-signature` | Client to Server | Base64 JSON | X402PaymentPayload with EIP-3009 signature |
 | `payment-response` | Server to Client (200) | Base64 JSON | X402SettleResponse with txHash |
-| `x-a2a-extensions` | Client to Server | Presence check | Routes to A2A handler, skips x402 middleware |
+| `x-a2a-extensions` | Client to Server | Presence check | On `POST /x402/access` (Express only): routes to A2A JSON-RPC handler instead of x402 HTTP flow |
 
 ---
 

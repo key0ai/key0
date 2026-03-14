@@ -1,11 +1,11 @@
 ---
 title: "A2A Flow"
-description: "Agent-to-Agent payment flow using Google's A2A protocol with JSON-RPC tasks and x402 metadata."
+description: "Agent-to-Agent payment flow using Google's A2A protocol with x402 metadata over the unified /x402/access endpoint."
 ---
 
-The A2A (Agent-to-Agent) flow follows [Google's A2A protocol](https://google.github.io/A2A/). Client agents discover the seller via the agent card, negotiate payment via JSON-RPC tasks, and access protected resources with the issued JWT.
+The A2A (Agent-to-Agent) flow follows [Google's A2A protocol](https://google.github.io/A2A/). Client agents discover the seller via the agent card, negotiate payment via the A2A task lifecycle, and access protected resources with the issued JWT.
 
-All A2A interactions use the same `ChallengeEngine` and state machine as the other transports. The difference is the wire format: JSON-RPC task lifecycle with x402 metadata keys instead of HTTP headers.
+All A2A interactions use the same `ChallengeEngine` and state machine as the x402 HTTP flow. The difference is the wire format: A2A task lifecycle with x402 metadata keys instead of HTTP headers. A2A-native clients reach the `Key0Executor` via `POST /x402/access` with the `X-A2A-Extensions` header (Express only).
 
 ## Flow Overview
 
@@ -170,7 +170,7 @@ All payment state is communicated through task metadata using these keys:
 
 ## A2A Headers
 
-Native A2A clients send the `X-A2A-Extensions` header, which tells the x402 HTTP middleware to pass the request through to the A2A SDK and `Key0Executor`. Without this header, the same `{basePath}/jsonrpc` endpoint is handled by the x402 middleware directly.
+Native A2A clients send the `X-A2A-Extensions` header on `POST /x402/access`. This tells the Express integration to bypass the standard x402 HTTP flow and route the request to the A2A JSON-RPC handler and `Key0Executor`.
 
 ## Next Steps
 

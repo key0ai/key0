@@ -3,7 +3,7 @@ title: "Settlement Strategies"
 description: "How Key0 settles on-chain payments: facilitator mode vs. gas wallet mode."
 ---
 
-The `settlePayment()` function is called by all three transports (REST, A2A JSON-RPC middleware, and A2A Executor). It inspects your `SellerConfig` and routes to one of two settlement strategies: **Facilitator Mode** (the default) or **Gas Wallet Mode**.
+The `settlePayment()` function is called by both the x402 HTTP flow and the A2A Executor. It inspects your `SellerConfig` and routes to one of two settlement strategies: **Facilitator Mode** (the default) or **Gas Wallet Mode**.
 
 Both strategies verify the client's EIP-3009 `transferWithAuthorization` signature and then settle the USDC transfer on-chain. They differ in _who_ broadcasts the transaction and _who_ pays the gas.
 
