@@ -1,0 +1,25 @@
+{
+	"schema_version": "1.2",
+	"document_id": "key0-prd",
+	"document_version": "0.3",
+	"upstream_mode": "standalone",
+	"upstream_ref_path": null,
+	"drift_detection_skipped": true,
+	"last_reviewed": "2026-03-14T00:00:00",
+	"last_fixed": null,
+	"reviewer_version": "2.3",
+	"fixer_version": null,
+	"autopilot_version": null,
+	"upstream_documents": {},
+	"review_history": [
+		{
+			"date": "2026-03-14T00:00:00",
+			"score": 14,
+			"drift_detected": false,
+			"report_version": "v001",
+			"review_type": "audit",
+			"status": "FAIL"
+		}
+	],
+	"fix_history": []
+}

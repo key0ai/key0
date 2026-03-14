@@ -1,0 +1,55 @@
+{
+	"schema_version": "1.2",
+	"document_id": "PRD-01",
+	"document_version": "0.3",
+	"upstream_mode": "standalone",
+	"upstream_ref_path": null,
+	"drift_detection_skipped": true,
+	"last_reviewed": "2026-03-14T00:00:00",
+	"last_fixed": "2026-03-14T00:00:00",
+	"reviewer_version": "2.3",
+	"fixer_version": "doc-prd-fixer (manual)",
+	"autopilot_version": null,
+	"upstream_documents": {},
+	"review_history": [
+		{
+			"date": "2026-03-14T00:00:00",
+			"score": 14,
+			"drift_detected": false,
+			"report_version": "v001",
+			"review_type": "audit",
+			"status": "FAIL",
+			"notes": "Pre-fix audit of feat/key0-prd.md"
+		}
+	],
+	"fix_history": [
+		{
+			"date": "2026-03-14T00:00:00",
+			"fixer_version": "doc-prd-fixer (manual)",
+			"fixes_applied": [
+				"PRD-E001 PRD-E002 PRD-E003: Added YAML frontmatter with required tags and custom_fields",
+				"PRD-E009: Added all Document Control fields (Author, Date Created, Last Updated, SYS-Ready, EARS-Ready)",
+				"PRD-E010: Consolidated scattered user stories into dedicated Section 7",
+				"PRD-E011: Consolidated inline requirement tables into dedicated Section 8 with PRD.01.01.SS IDs",
+				"PRD-E012: Added Section 16 Traceability (standalone — no upstream BRD)",
+				"PRD-E013: Added @brd: N/A declaration in Section 16",
+				"PRD-E015 PRD-E016: Added SYS-Ready and EARS-Ready scores (estimated 78/100)",
+				"PRD-E017: Renamed AC-A1..A6 to PRD.01.06.01..06; all inline ACs assigned PRD.01.06.SS IDs",
+				"PRD-E020 PRD-E021 PRD-E022: Relocated to docs/02_PRD/PRD-01_key0_platform/PRD-01_key0_platform.md",
+				"PRD-E023 PRD-E024 PRD-E025: Added @diagram: c4-l2, dfd-l1, sequence-payment-flow stubs with intent headers",
+				"PRD-W002: Added Section 9 Quality Attributes, Section 13 Implementation Approach, Section 15 Budget & Resources",
+				"PRD-W004: Added Document Revision History table",
+				"REV-S002: Added Section 11 Constraints & Assumptions; Section 10 Architecture Requirements with PRD.01.32.SS IDs",
+				"REV-P005: Added Section 17 Glossary with key terms",
+				"PRD-E008: Sequential section numbering 1-17 (replaced Part 1/Part 2 section numbering)"
+			],
+			"remaining_manual": [
+				"Fill Reviewer and Approver in Document Control",
+				"Render actual C4, DFD, and sequence diagrams (currently intent stubs)",
+				"Complete Section 13 Implementation Approach (engineering sprint planning)",
+				"Complete Section 15 Budget & Resources (business input)",
+				"Re-run /doc-prd-audit to confirm final score >= 90"
+			]
+		}
+	]
+}
