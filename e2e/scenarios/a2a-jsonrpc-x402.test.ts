@@ -6,7 +6,7 @@
  *   - No header → x402 HTTP flow (discovery / challenge / settle)
  *
  * Three-case flow (x402 HTTP):
- *   1. POST /x402/access (no planId)                         → 402 Discovery
+ *   1. POST /x402/access (no planId)                         → 400 (use GET /discovery)
  *   2. POST /x402/access + { planId } (no PAYMENT-SIGNATURE) → 402 Challenge
  *   3. POST /x402/access + { planId } + PAYMENT-SIGNATURE    → settle → 200 AccessGrant
  *
@@ -22,28 +22,18 @@ import type { AccessGrant } from "../helpers/client.ts";
 const X402_URL = `${KEY0_URL}/x402/access`;
 
 describe("Unified /x402/access endpoint", () => {
-	test("POST /x402/access with no planId returns 402 Discovery", async () => {
+	test("POST /x402/access with no planId returns 400 pointing to GET /discovery", async () => {
 		const res = await fetch(X402_URL, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({}),
 		});
 
-		expect(res.status).toBe(402);
+		expect(res.status).toBe(400);
 
 		const body = (await res.json()) as Record<string, unknown>;
-
-		// Discovery returns all tiers
-		expect(body["error"]).toBe("Payment required");
-		expect(Array.isArray(body["accepts"])).toBe(true);
-		expect(body["x402Version"]).toBe(2);
-
-		// payment-required header must be set
-		const header = res.headers.get("payment-required");
-		expect(header).toBeTruthy();
-		const decoded = JSON.parse(Buffer.from(header!, "base64").toString("utf-8"));
-		expect(decoded.x402Version).toBe(2);
-		expect(decoded.accepts.length).toBeGreaterThan(0);
+		expect(typeof body["error"]).toBe("string");
+		expect((body["error"] as string).toLowerCase()).toContain("discovery");
 	});
 
 	test("POST /x402/access with planId (no signature) returns 402 Challenge", async () => {
