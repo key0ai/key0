@@ -15,6 +15,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
       - uses: changesets/action@v1
         with:
           title: "chore: version packages"
