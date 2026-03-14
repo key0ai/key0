@@ -21,8 +21,11 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - uses: changesets/action@v1
-        with:
-          title: "chore: version packages"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check changeset exists
+        run: |
+          count=$(find .changeset -name "*.md" ! -name "README.md" | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "❌ No changeset found. Run 'bun changeset' to add one."
+            exit 1
+          fi
+          echo "✅ Found $count changeset file(s)."
