@@ -82,34 +82,30 @@ async function main() {
 	console.log(`   Skills: ${card.skills.map((s) => s.id).join(", ")}\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 2: Call discover-products to get available tiers
+	// Step 2: Call discover-plans to get available plans
 	// -----------------------------------------------------------------------
-	console.log("2. Discovering products...");
-	const discoveryRes = await fetch(`${SELLER_URL}/x402/access`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({}),
-	});
+	console.log("2. Discovering plans...");
+	const discoveryRes = await fetch(`${SELLER_URL}/discovery`);
 
-	if (discoveryRes.status !== 402) {
-		console.error(`   Expected HTTP 402 for discovery, got ${discoveryRes.status}`);
+	if (discoveryRes.status !== 200) {
+		console.error(`   Expected HTTP 200 for discovery, got ${discoveryRes.status}`);
 		process.exit(1);
 	}
 
-	const discoveryBody = await discoveryRes.json();
-	if (!discoveryBody.accepts || discoveryBody.accepts.length === 0) {
-		console.error("   No products found");
+	const { discoveryResponse } = await discoveryRes.json();
+	if (!discoveryResponse.accepts || discoveryResponse.accepts.length === 0) {
+		console.error("   No plans found");
 		process.exit(1);
 	}
 
 	// Pick the first tier
-	const tierInfo = discoveryBody.accepts[0];
+	const tierInfo = discoveryResponse.accepts[0];
 	const tierId = tierInfo.extra?.tierId;
 	const tierLabel = tierInfo.extra?.label || tierId;
 	const tierAmount = tierInfo.extra?.description || tierInfo.amount;
 	const _amountUSDC = tierInfo.amount;
 
-	console.log(`   Available products: ${discoveryBody.accepts.length}`);
+	console.log(`   Available plans: ${discoveryResponse.accepts.length}`);
 	console.log(`   Using: ${tierLabel} — ${tierAmount}\n`);
 
 	// -----------------------------------------------------------------------

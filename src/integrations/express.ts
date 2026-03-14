@@ -95,23 +95,9 @@ export function key0Router(opts: Key0Config): Router {
 
 			// ===== CASE 1: No planId → Discovery (402 with all tiers, no PENDING record) =====
 			if (!planId) {
-				console.log("[x402-access] → CASE 1: No planId provided, returning discovery 402");
-				const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig);
-				console.log(
-					"[x402-access] Discovery response:",
-					JSON.stringify(discoveryResponse, null, 2),
-				);
-				const encoded = Buffer.from(JSON.stringify(discoveryResponse)).toString("base64");
-				res.setHeader("payment-required", encoded);
-				const authHeader = `Payment realm="${opts.config.agentUrl}", accept="exact"`;
-				res.setHeader("www-authenticate", authHeader);
-				console.log(`[x402-access] payment-required header set (${encoded.length} bytes)`);
-				console.log(`[x402-access] www-authenticate header set`);
-				console.log("[x402-access] → Returning HTTP 402 Payment Required (Discovery)");
-				return res.status(402).json({
-					...discoveryResponse,
+				return res.status(400).json({
 					error:
-						"Please select a plan from the discovery response to purchase access. Endpoint: GET /discovery ",
+						"Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery ",
 				});
 			}
 

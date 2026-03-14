@@ -16,9 +16,9 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	const skills: AgentSkill[] = [
 		{
 			id: "discover-plans",
-			name: "Discover plans",
+			name: "Discover Plans",
 			description: [
-				`Browse available products and pricing for ${config.agentName}.`,
+				`Browse available plans and pricing for ${config.agentName}.`,
 				`Returns the product catalog with plan IDs, prices (USDC on ${networkName}), wallet address, and chain ID.`,
 				`GET to ${baseUrl}/discovery to discover plans.`,
 			].join(" "),
@@ -31,7 +31,7 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 			name: "Request Access",
 			description: [
 				`Purchase access to a ${config.agentName} product plan via x402 payment on ${networkName}.`,
-				`First call discover-products to get available plans.`,
+				`First call discover-plans to get available plans.`,
 				`Then POST to ${baseUrl}/x402/access with planId and requestId to initiate purchase.`,
 				`Server responds with x402 payment challenge.`,
 				`Complete payment on-chain and include PAYMENT-SIGNATURE header to receive access token.`,

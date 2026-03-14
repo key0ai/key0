@@ -30,7 +30,7 @@ const gate = key0App({
 		walletAddress: WALLET,
 		network: NETWORK,
 		challengeTTLSeconds: 900,
-		products: [
+		plans: [
 			{
 				tierId: "single-photo",
 				label: "Single Photo",
