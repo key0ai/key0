@@ -186,13 +186,13 @@ const plans = [
 	},
 	{
 		planId: "starter-monthly",
-		unitAmount: "$15.00",
+		unitAmount: "$0.1",
 		description:
 			"Starter (monthly). Best for developers running daily workflows. 1,650 requests/month, 10 concurrent agents, 100 requests/minute, priority email support. Past 1,650 requests: $0.014/req.",
 	},
 	{
 		planId: "starter-yearly",
-		unitAmount: "$168.00",
+		unitAmount: "$0.50",
 		description:
 			"Starter (yearly — save 7%). Best for developers running daily workflows. 1,650 requests/month, 10 concurrent agents, 100 requests/minute, priority email support. Past 1,650 requests: $0.014/req.",
 	},

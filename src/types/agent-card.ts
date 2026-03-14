@@ -11,6 +11,9 @@ export type AgentSkill = {
 	readonly inputModes?: readonly string[];
 	readonly outputModes?: readonly string[];
 	readonly security?: Record<string, string[]>;
+	readonly endpoint?: { readonly url: string; readonly method: "GET" | "POST" };
+	readonly inputSchema?: Record<string, unknown>;
+	readonly workflow?: readonly string[];
 };
 
 export type AgentInterface = {

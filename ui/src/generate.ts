@@ -385,7 +385,7 @@ function serializePlan(p: Plan) {
 }
 
 // ── Separator helpers (60-char wide, safe for narrow panels) ─────────────────
-const _HR = "# " + "─".repeat(58);
+const _HR = `# ${"─".repeat(58)}`;
 const _sec = (name: string): string => {
 	const prefix = `# ── ${name} `;
 	return prefix + "─".repeat(Math.max(0, 60 - prefix.length));
