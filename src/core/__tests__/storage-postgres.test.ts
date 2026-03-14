@@ -300,7 +300,6 @@ function createMockSql() {
 	// Add helper methods
 	sql.unsafe = (str: string) => str;
 	sql.json = (obj: unknown) => obj;
-	// biome-ignore lint/suspicious/noExplicitAny: mock implementation
 	sql.begin = async (fn: (sql: any) => Promise<any>) => fn(sql);
 
 	// Expose tables for inspection
@@ -316,7 +315,6 @@ function createMockSql() {
 		(value: string): any;
 		unsafe(value: string): any;
 		json(value: unknown): any;
-		// biome-ignore lint/suspicious/noExplicitAny: mock type
 		begin(fn: (sql: any) => Promise<any>): Promise<any>;
 		_tables: Map<string, Row[]>; // for inspection
 	} & { _tables: Map<string, Row[]> };

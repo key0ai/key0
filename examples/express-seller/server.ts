@@ -35,7 +35,7 @@ const seenTxStore = new RedisSeenTxStore({ redis });
 // Create token issuer (opt-in utility for JWT generation)
 const tokenIssuer = new AccessTokenIssuer(SECRET);
 
-// Mount Key0 — serves agent card + A2A endpoint
+// Mount Key0 — serves agent card + /x402/access endpoint
 app.use(
 	key0Router({
 		config: {
@@ -96,7 +96,7 @@ app.get("/api/photos/:id", (req, res) => {
 app.listen(PORT, () => {
 	console.log(`\nPhoto Gallery Agent running on ${PUBLIC_URL}`);
 	console.log(`  Agent card: ${PUBLIC_URL}/.well-known/agent.json`);
-	console.log(`  A2A endpoint: ${PUBLIC_URL}/a2a/jsonrpc`);
+	console.log(`  x402 endpoint: ${PUBLIC_URL}/x402/access`);
 	console.log(`  Network: ${NETWORK}`);
 	console.log(`  Wallet: ${WALLET}\n`);
 });

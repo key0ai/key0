@@ -138,7 +138,7 @@ Build from source: `docker build -t key0ai/key0 .`
 | `PROVIDER_URL` | | `https://key0.ai` | Your organization URL shown in the agent card `provider` field |
 | `PLANS` | | `[{"planId":"basic","unitAmount":"$0.10"}]` | JSON array of pricing plans — each with `planId`, `unitAmount`, and optional `description` |
 | `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
-| `BASE_PATH` | ✅ | — | URL path prefix for A2A endpoints (e.g. `/a2a` mounts `/a2a/jsonrpc` and `/a2a/.well-known/agent.json`) |
+| `BASE_PATH` | | — | URL path prefix for endpoints (e.g. `/a2a` mounts `/a2a/.well-known/agent.json`). The `/x402/access` endpoint is always at the root. |
 | `BACKEND_AUTH_STRATEGY` | | `none` | How Key0 authenticates with `ISSUE_TOKEN_API` — `none`, `shared-secret`, or `jwt` |
 | `ISSUE_TOKEN_API_SECRET` | | — | Secret for `ISSUE_TOKEN_API` auth — Bearer token (shared-secret) or JWT signing key (jwt). Only used when `BACKEND_AUTH_STRATEGY` is not `none` |
 | `MCP_ENABLED` | | `false` | When `true`, mounts MCP routes (`/.well-known/mcp.json` + `POST /mcp`) exposing `discover_plans` and `request_access` tools |
@@ -312,8 +312,6 @@ app.listen(3000);
 
 ### Hono
 
-> A2A endpoints mount at `/a2a` by default (set `config.basePath` to override).
-
 ```typescript
 import { Hono } from "hono";
 import { key0App, honoValidateAccessToken } from "@key0ai/key0/hono";
@@ -341,8 +339,6 @@ export default { port: 3000, fetch: app.fetch };
 ```
 
 ### Fastify
-
-> A2A endpoints mount at `/a2a` by default (set `config.basePath` to override).
 
 ```typescript
 import Fastify from "fastify";
@@ -381,7 +377,7 @@ fastify.listen({ port: 3000 });
 | `plans` | `Plan[]` | ✅ | — | Pricing plans |
 | `fetchResourceCredentials` | `(params) => Promise<TokenIssuanceResult>` | ✅ | — | Issue the credential after payment |
 | `challengeTTLSeconds` | `number` | | `900` | Challenge validity window |
-| `basePath` | `string` | | `"/a2a"` | A2A endpoint path prefix |
+| `basePath` | `string` | | `"/a2a"` | Path prefix for agent card and A2A routes |
 | `resourceEndpointTemplate` | `string` | | auto | URL template (use `{resourceId}`) |
 | `gasWalletPrivateKey` | `0x${string}` | | — | Private key for self-contained settlement |
 | `redis` | `IRedisLockClient` | | — | Redis client for distributed gas wallet settlement locking across replicas |
@@ -480,6 +476,8 @@ Key0 supports two payment flows. Both follow the same `ChallengeRecord` lifecycl
 
 ### A2A Flow (Agent-to-Agent)
 
+A2A-native clients send a `POST /x402/access` with the `X-A2A-Extensions` header, which delegates to the JSON-RPC handler. The payment flow uses the same `PENDING → PAID → DELIVERED` lifecycle.
+
 ```
 Client Agent                          Seller Server
      |                                      |
@@ -487,7 +485,9 @@ Client Agent                          Seller Server
      |------------------------------------->|
      |  <-- Agent card (skills, pricing)    |
      |                                      |
-     |  2. POST /a2a/jsonrpc (AccessRequest)|
+     |  2. POST /x402/access               |
+     |     + X-A2A-Extensions header        |
+     |     (JSON-RPC AccessRequest)         |
      |------------------------------------->|
      |  <-- X402Challenge (amount, chain,   |
      |       destination, challengeId)      |
@@ -496,7 +496,9 @@ Client Agent                          Seller Server
      |----> Blockchain                      |
      |  <-- txHash                          |
      |                                      |
-     |  4. POST /a2a/jsonrpc (PaymentProof) |
+     |  4. POST /x402/access               |
+     |     + X-A2A-Extensions header        |
+     |     (JSON-RPC PaymentProof)          |
      |------------------------------------->|
      |      Server verifies tx on-chain --> |
      |  <-- AccessGrant (JWT + endpoint)    |
@@ -508,10 +510,10 @@ Client Agent                          Seller Server
 ```
 
 1. **Discovery** — Client fetches the agent card at `/.well-known/agent.json` to learn about available plans and pricing
-2. **Access Request** — Client sends an `AccessRequest` with the resource ID and desired plan
+2. **Access Request** — Client sends a JSON-RPC `AccessRequest` to `/x402/access` with the `X-A2A-Extensions` header
 3. **Challenge** — Server creates a `PENDING` record and returns an `X402Challenge` with payment details
 4. **Payment** — Client pays on-chain USDC on Base — a standard ERC-20 transfer, no custom contracts
-5. **Proof** — Client submits a `PaymentProof` with the transaction hash
+5. **Proof** — Client submits a JSON-RPC `PaymentProof` with the transaction hash
 6. **Verification** — Server verifies the payment on-chain (correct recipient, amount, not expired, not double-spent), transitions `PENDING → PAID`
 7. **Grant** — Server calls `fetchResourceCredentials`, transitions `PAID → DELIVERED`, returns an `AccessGrant` with the token and resource endpoint URL
 8. **Access** — Client uses the token as a Bearer header to access the protected resource

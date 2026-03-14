@@ -1,13 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { NextFunction, Request, Response } from "express";
 import { AccessTokenIssuer } from "../core/access-token.js";
 import { ChallengeEngine } from "../core/challenge-engine.js";
 import {
 	buildHttpPaymentRequirements,
-	createX402HttpMiddleware,
 	decodePaymentSignature,
 	settleViaFacilitator,
-} from "../integrations/x402-http-middleware.js";
+} from "../integrations/settlement.js";
 import { MockPaymentAdapter } from "../test-utils/index.js";
 import { TestChallengeStore, TestSeenTxStore } from "../test-utils/stores.js";
 import { CHAIN_CONFIGS } from "../types/config-shared.js";
@@ -49,61 +47,7 @@ function makeConfig(): SellerConfig {
 	};
 }
 
-function createMockRequest(body: any, headers: Record<string, string> = {}): Partial<Request> {
-	return {
-		body,
-		headers: headers as any,
-	};
-}
-
-function createMockResponse(): {
-	res: Partial<Response>;
-	statusCode: number;
-	jsonData: any;
-	nextCalled: boolean;
-	headers: Record<string, string>;
-} {
-	let statusCode = 200;
-	let jsonData: any = null;
-	const nextCalled = false;
-	const headers: Record<string, string> = {};
-
-	const res = {
-		status: function (code: number) {
-			statusCode = code;
-			return this;
-		},
-		json: function (data: any) {
-			jsonData = data;
-			return this;
-		},
-		send: function (_data: any) {
-			return this;
-		},
-		setHeader: function (name: string, value: string) {
-			headers[name] = value;
-			return this;
-		},
-	};
-
-	return {
-		res: res as Partial<Response>,
-		get statusCode() {
-			return statusCode;
-		},
-		get jsonData() {
-			return jsonData;
-		},
-		get headers() {
-			return headers;
-		},
-		get nextCalled() {
-			return nextCalled;
-		},
-	};
-}
-
-describe("x402-http-middleware", () => {
+describe("x402 settlement helpers", () => {
 	describe("buildHttpPaymentRequirements", () => {
 		test("should build correct payment requirements", () => {
 			const config = makeConfig();
@@ -114,7 +58,7 @@ describe("x402-http-middleware", () => {
 			// v2 response structure
 			expect(requirements.x402Version).toBe(2);
 			expect(requirements.resource).toBeDefined();
-			expect(requirements.resource.url).toBe("https://agent.example.com/a2a/jsonrpc");
+			expect(requirements.resource.url).toBe("https://agent.example.com/x402/access");
 			expect(requirements.resource.method).toBe("POST");
 
 			// Payment requirements
@@ -143,209 +87,13 @@ describe("x402-http-middleware", () => {
 		});
 	});
 
-	describe("createX402HttpMiddleware", () => {
-		let engine: ChallengeEngine;
-		let config: SellerConfig;
-		let middleware: ReturnType<typeof createX402HttpMiddleware>;
-
-		beforeEach(() => {
-			config = makeConfig();
-			const store = new TestChallengeStore();
-			const seenTxStore = new TestSeenTxStore();
-			const adapter = new MockPaymentAdapter();
-
-			engine = new ChallengeEngine({
-				config,
-				store,
-				seenTxStore,
-				adapter,
-			});
-
-			middleware = createX402HttpMiddleware(engine, config);
-		});
-
-		test("should pass through if X-A2A-Extensions header is present", async () => {
-			const req = createMockRequest(
-				{
-					method: "message/send",
-					params: {
-						message: {
-							parts: [
-								{
-									kind: "data",
-									data: { type: "AccessRequest", requestId: "test", planId: "basic" },
-								},
-							],
-						},
-					},
-				},
-				{
-					"x-a2a-extensions":
-						"https://github.com/google-agentic-commerce/a2a-x402/blob/main/spec/v0.2",
-				},
-			);
-
-			let nextCalled = false;
-			const next = (() => {
-				nextCalled = true;
-			}) as NextFunction;
-			const mockRes = createMockResponse();
-
-			await middleware(req as Request, mockRes.res as Response, next);
-
-			expect(nextCalled).toBe(true);
-		});
-
-		test("should pass through if not message/send", async () => {
-			const req = createMockRequest({
-				method: "task/get",
-				params: {},
-			});
-
-			let nextCalled = false;
-			const next = (() => {
-				nextCalled = true;
-			}) as NextFunction;
-			const mockRes = createMockResponse();
-
-			await middleware(req as Request, mockRes.res as Response, next);
-
-			expect(nextCalled).toBe(true);
-		});
-
-		test("should pass through if no AccessRequest in message parts", async () => {
-			const req = createMockRequest({
-				method: "message/send",
-				params: {
-					message: {
-						parts: [{ kind: "data", data: { type: "SomethingElse" } }],
-					},
-				},
-			});
-
-			let nextCalled = false;
-			const next = (() => {
-				nextCalled = true;
-			}) as NextFunction;
-			const mockRes = createMockResponse();
-
-			await middleware(req as Request, mockRes.res as Response, next);
-
-			expect(nextCalled).toBe(true);
-		});
-
-		test("should return HTTP 402 for AccessRequest without X-Payment", async () => {
-			const req = createMockRequest({
-				method: "message/send",
-				params: {
-					message: {
-						parts: [
-							{
-								kind: "data",
-								data: {
-									type: "AccessRequest",
-									requestId: "req-123",
-									planId: "basic",
-									resourceId: "default",
-								},
-							},
-						],
-					},
-				},
-			});
-
-			const next = (() => {}) as NextFunction;
-			const mockRes = createMockResponse();
-
-			await middleware(req as Request, mockRes.res as Response, next);
-
-			expect(mockRes.statusCode).toBe(402);
-			expect(mockRes.jsonData.x402Version).toBe(2);
-			expect(mockRes.jsonData.resource).toBeDefined();
-			expect(mockRes.jsonData.accepts).toHaveLength(1);
-			expect(mockRes.jsonData.accepts[0].amount).toBe("990000");
-
-			// challengeId from PENDING record should be in the response
-			expect(mockRes.jsonData.challengeId).toBeDefined();
-			expect(mockRes.jsonData.challengeId).toMatch(/^http-/);
-
-			// Check PAYMENT-REQUIRED header is set
-			expect(mockRes.headers["payment-required"]).toBeDefined();
-			const decodedHeader = JSON.parse(
-				Buffer.from(mockRes.headers["payment-required"]!, "base64").toString(),
-			);
-			expect(decodedHeader.x402Version).toBe(2);
-		});
-
-		test("should return 400 for invalid tier", async () => {
-			const req = createMockRequest({
-				method: "message/send",
-				params: {
-					message: {
-						parts: [
-							{
-								kind: "data",
-								data: {
-									type: "AccessRequest",
-									requestId: "req-123",
-									planId: "invalid-tier",
-									resourceId: "default",
-								},
-							},
-						],
-					},
-				},
-			});
-
-			const next = (() => {}) as NextFunction;
-			const mockRes = createMockResponse();
-
-			await middleware(req as Request, mockRes.res as Response, next);
-
-			expect(mockRes.statusCode).toBe(400);
-			expect(mockRes.jsonData.code).toBe("TIER_NOT_FOUND");
-		});
-
-		test("should parse AccessRequest from text part", async () => {
-			const req = createMockRequest({
-				method: "message/send",
-				params: {
-					message: {
-						parts: [
-							{
-								kind: "text",
-								text: JSON.stringify({
-									type: "AccessRequest",
-									requestId: "req-123",
-									planId: "basic",
-									resourceId: "default",
-								}),
-							},
-						],
-					},
-				},
-			});
-
-			const next = (() => {}) as NextFunction;
-			const mockRes = createMockResponse();
-
-			await middleware(req as Request, mockRes.res as Response, next);
-
-			expect(mockRes.statusCode).toBe(402);
-			expect(mockRes.jsonData.x402Version).toBe(2);
-
-			// Check PAYMENT-REQUIRED header is set
-			expect(mockRes.headers["payment-required"]).toBeDefined();
-		});
-	});
-
 	describe("settleViaFacilitator", () => {
 		const mockPaymentPayload = {
 			x402Version: 2,
 			network: "eip155:84532",
 			scheme: "exact",
 			resource: {
-				url: "https://agent.example.com/a2a/jsonrpc",
+				url: "https://agent.example.com/x402/access",
 				method: "POST",
 				description: "Access to default",
 				mimeType: "application/json",

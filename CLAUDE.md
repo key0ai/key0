@@ -51,7 +51,7 @@ Client → Protected API with Bearer JWT
 
 3. **Adapter** (`src/adapter/`) — `X402Adapter`: verifies ERC-20 Transfer events on Base via viem. Supports `mainnet` (chainId 8453) and `testnet`/Base Sepolia (chainId 84532).
 
-4. **Integrations** (`src/integrations/`) — Framework adapters mount the challenge/proof endpoints and export `validateAccessToken` middleware for protecting routes. Available for Express, Hono, Fastify, and MCP (Streamable HTTP transport via `@modelcontextprotocol/sdk`).
+4. **Integrations** (`src/integrations/`) — Framework adapters mount a unified `POST /x402/access` endpoint (with `X-A2A-Extensions` header routing to A2A JSON-RPC) and export `validateAccessToken` middleware for protecting routes. Available for Express, Hono, Fastify, and MCP (Streamable HTTP transport via `@modelcontextprotocol/sdk`). Settlement helpers (`buildHttpPaymentRequirements`, `decodePaymentSignature`, `settleViaFacilitator`) live in `settlement.ts`.
 
 5. **Executor** (`src/executor.ts`) — `Key0Executor` implements `@a2a-js/sdk`'s `AgentExecutor` for the A2A protocol flow.
 

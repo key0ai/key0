@@ -109,7 +109,7 @@ export class ChallengeEngine {
 			chainId: record.chainId,
 			destination: record.destination,
 			expiresAt: record.expiresAt.toISOString(),
-			description: `Send ${record.amount} USDC to ${record.destination} on chain ${record.chainId}. Then call the "submit-proof" skill with a PaymentProof containing the txHash, challengeId "${record.challengeId}", requestId "${record.requestId}", chainId ${record.chainId}, amount "${record.amount}", asset "USDC", and your fromAgentId.`,
+			description: `Send ${record.amount} USDC to ${record.destination} on chain ${record.chainId}. Then replay the same POST /x402/access request with the PAYMENT-SIGNATURE header containing the signed EIP-3009 authorization for challengeId "${record.challengeId}", requestId "${record.requestId}", chainId ${record.chainId}, amount "${record.amount}", asset "USDC".`,
 			resourceVerified: true,
 		};
 	}

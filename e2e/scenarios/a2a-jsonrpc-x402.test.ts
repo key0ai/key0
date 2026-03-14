@@ -1,17 +1,17 @@
 /**
- * A2A JSON-RPC x402 Middleware — verifies the x402 payment flow on /a2a/jsonrpc.
+ * Unified /x402/access endpoint — verifies the x402 payment flow.
  *
- * The x402-http-middleware intercepts POST /a2a/jsonrpc when:
- *   - X-A2A-Extensions header is ABSENT (non-A2A client)
- *   - method === "message/send"
- *   - params.message.parts contains a part with type === "AccessRequest"
+ * The /x402/access endpoint handles all payment flows:
+ *   - X-A2A-Extensions header present → delegates to A2A JSON-RPC handler
+ *   - No header → x402 HTTP flow (discovery / challenge / settle)
  *
- * Two-step flow:
- *   1. POST /a2a/jsonrpc + AccessRequest (no PAYMENT-SIGNATURE) → 402 + challengeId
- *   2. POST /a2a/jsonrpc + AccessRequest + PAYMENT-SIGNATURE → settle → 200 AccessGrant
+ * Three-case flow (x402 HTTP):
+ *   1. POST /x402/access (no planId)                         → 402 Discovery
+ *   2. POST /x402/access + { planId } (no PAYMENT-SIGNATURE) → 402 Challenge
+ *   3. POST /x402/access + { planId } + PAYMENT-SIGNATURE    → settle → 200 AccessGrant
  *
- * This is the code path used by non-MCP HTTP clients that POST JSON-RPC directly
- * rather than using the /x402/access simple HTTP endpoint.
+ * A2A-native flow:
+ *   POST /x402/access + X-A2A-Extensions header → delegates to JSON-RPC handler
  */
 
 import { describe, expect, test } from "bun:test";
@@ -19,56 +19,48 @@ import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
 import type { AccessGrant } from "../helpers/client.ts";
 
-const JSONRPC_URL = `${KEY0_URL}/a2a/jsonrpc`;
+const X402_URL = `${KEY0_URL}/x402/access`;
 
-/** Build a JSON-RPC message/send body with an AccessRequest data part */
-function buildJsonRpcRequest(
-	planId: string,
-	requestId: string,
-	resourceId = "default",
-): Record<string, unknown> {
-	return {
-		jsonrpc: "2.0",
-		id: "1",
-		method: "message/send",
-		params: {
-			message: {
-				parts: [
-					{
-						kind: "data",
-						data: {
-							type: "AccessRequest",
-							requestId,
-							planId,
-							resourceId,
-							clientAgentId: "agent://e2e-test",
-						},
-					},
-				],
-			},
-		},
-	};
-}
-
-describe("A2A JSON-RPC x402 Middleware", () => {
-	test("POST /a2a/jsonrpc with AccessRequest (no signature) returns 402 + challengeId", async () => {
-		const requestId = crypto.randomUUID();
-
-		const res = await fetch(JSONRPC_URL, {
+describe("Unified /x402/access endpoint", () => {
+	test("POST /x402/access with no planId returns 402 Discovery", async () => {
+		const res = await fetch(X402_URL, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			// No X-A2A-Extensions header → middleware intercepts
-			body: JSON.stringify(buildJsonRpcRequest(DEFAULT_TIER_ID, requestId)),
+			body: JSON.stringify({}),
 		});
 
 		expect(res.status).toBe(402);
 
 		const body = (await res.json()) as Record<string, unknown>;
 
-		// Middleware returns challengeId + payment requirements inline
+		// Discovery returns all tiers
+		expect(body["error"]).toBe("Payment required");
+		expect(Array.isArray(body["accepts"])).toBe(true);
+		expect(body["x402Version"]).toBe(2);
+
+		// payment-required header must be set
+		const header = res.headers.get("payment-required");
+		expect(header).toBeTruthy();
+		const decoded = JSON.parse(Buffer.from(header!, "base64").toString("utf-8"));
+		expect(decoded.x402Version).toBe(2);
+		expect(decoded.accepts.length).toBeGreaterThan(0);
+	});
+
+	test("POST /x402/access with planId (no signature) returns 402 Challenge", async () => {
+		const res = await fetch(X402_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ planId: DEFAULT_TIER_ID }),
+		});
+
+		expect(res.status).toBe(402);
+
+		const body = (await res.json()) as Record<string, unknown>;
+
+		// Challenge returns challengeId + payment requirements
 		expect(typeof body["challengeId"]).toBe("string");
 		expect((body["challengeId"] as string).length).toBeGreaterThan(0);
-		expect(body["error"]).toBe("PAYMENT-SIGNATURE header is required");
+		expect(body["error"]).toBe("Payment required");
 		expect(Array.isArray(body["accepts"])).toBe(true);
 
 		// payment-required header must be set
@@ -79,15 +71,15 @@ describe("A2A JSON-RPC x402 Middleware", () => {
 		expect(decoded.accepts[0].scheme).toBe("exact");
 	});
 
-	test("POST /a2a/jsonrpc with AccessRequest + PAYMENT-SIGNATURE returns 200 AccessGrant", async () => {
+	test("POST /x402/access with planId + PAYMENT-SIGNATURE returns 200 AccessGrant", async () => {
 		const client = makeClientE2eClient();
 		const requestId = crypto.randomUUID();
 
-		// Step 1: Get challenge (no signature)
-		const challengeRes = await fetch(JSONRPC_URL, {
+		// Step 1: Get challenge
+		const challengeRes = await fetch(X402_URL, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(buildJsonRpcRequest(DEFAULT_TIER_ID, requestId)),
+			body: JSON.stringify({ planId: DEFAULT_TIER_ID, requestId }),
 		});
 
 		expect(challengeRes.status).toBe(402);
@@ -109,7 +101,7 @@ describe("A2A JSON-RPC x402 Middleware", () => {
 			amountRaw: BigInt(requirements.amount),
 		});
 
-		// Build PAYMENT-SIGNATURE payload (same format as /x402/access)
+		// Build PAYMENT-SIGNATURE payload
 		const paymentPayload = {
 			x402Version: 2,
 			network: `eip155:84532`,
@@ -124,13 +116,13 @@ describe("A2A JSON-RPC x402 Middleware", () => {
 		const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
 
 		// Step 3: POST with signature
-		const settleRes = await fetch(JSONRPC_URL, {
+		const settleRes = await fetch(X402_URL, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 				"payment-signature": paymentSignature,
 			},
-			body: JSON.stringify(buildJsonRpcRequest(DEFAULT_TIER_ID, requestId)),
+			body: JSON.stringify({ planId: DEFAULT_TIER_ID, requestId }),
 		});
 
 		expect(settleRes.status).toBe(200);
@@ -148,43 +140,40 @@ describe("A2A JSON-RPC x402 Middleware", () => {
 		expect(paymentResponse).toBeTruthy();
 	}, 120_000);
 
-	test("POST /a2a/jsonrpc with X-A2A-Extensions header passes through to A2A handler", async () => {
-		// When X-A2A-Extensions is present, the middleware skips x402 logic and
-		// passes the request to the A2A JSON-RPC handler. The A2A handler processes
-		// the request normally (not as a payment flow).
-		// Since the request doesn't match a valid A2A task, it returns an A2A error response —
-		// NOT a 402. This confirms the middleware correctly detected the header and passed through.
-		const res = await fetch(JSONRPC_URL, {
+	test("POST /x402/access with X-A2A-Extensions header delegates to JSON-RPC handler", async () => {
+		// When X-A2A-Extensions is present, the endpoint delegates to the A2A JSON-RPC
+		// handler. Since the body below isn't a valid JSON-RPC request, we expect a
+		// non-402 response confirming the middleware correctly detected the header.
+		const res = await fetch(X402_URL, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
-				"x-a2a-extensions": "x402/v2", // presence alone triggers passthrough
+				"x-a2a-extensions": "x402/v2",
 			},
-			body: JSON.stringify(buildJsonRpcRequest(DEFAULT_TIER_ID, crypto.randomUUID())),
-		});
-
-		// Not 402 — the middleware did NOT intercept this request
-		expect(res.status).not.toBe(402);
-	});
-
-	test("POST /a2a/jsonrpc without AccessRequest in parts passes through to A2A handler", async () => {
-		// message/send with non-AccessRequest parts → middleware passes through
-		const res = await fetch(JSONRPC_URL, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
 				jsonrpc: "2.0",
 				id: "1",
 				method: "message/send",
 				params: {
 					message: {
-						parts: [{ kind: "text", text: "Hello, not an access request" }],
+						parts: [
+							{
+								kind: "data",
+								data: {
+									type: "AccessRequest",
+									requestId: crypto.randomUUID(),
+									planId: DEFAULT_TIER_ID,
+									resourceId: "default",
+									clientAgentId: "agent://e2e-test",
+								},
+							},
+						],
 					},
 				},
 			}),
 		});
 
-		// Passes through — not intercepted as x402 — not 402
+		// Not 402 — the x402 logic did NOT intercept this request
 		expect(res.status).not.toBe(402);
 	});
 });

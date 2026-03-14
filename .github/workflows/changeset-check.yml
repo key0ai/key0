@@ -15,8 +15,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: changesets/action@v1
+      - uses: oven-sh/setup-bun@v2
         with:
-          title: "chore: version packages"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Check changeset exists
+        run: |
+          count=$(find .changeset -name "*.md" ! -name "README.md" | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "❌ No changeset found. Run 'bun changeset' to add one."
+            exit 1
+          fi
+          echo "✅ Found $count changeset file(s)."

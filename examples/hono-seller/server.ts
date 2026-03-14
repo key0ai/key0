@@ -19,7 +19,7 @@ const adapter = new X402Adapter({
 // Create token issuer (opt-in utility for JWT generation)
 const tokenIssuer = new AccessTokenIssuer(SECRET);
 
-// Mount Key0 — serves agent card + A2A endpoint
+// Mount Key0 — serves agent card + /x402/access endpoint
 const gate = key0App({
 	config: {
 		agentName: "Photo Gallery Agent",
@@ -32,39 +32,34 @@ const gate = key0App({
 		challengeTTLSeconds: 900,
 		plans: [
 			{
-				tierId: "single-photo",
-				label: "Single Photo",
-				amount: "$0.10",
-				resourceType: "photo",
-				accessDurationSeconds: 3600,
+				planId: "single-photo",
+				unitAmount: "$0.10",
+				description: "Single photo — 1 hour access",
 			},
 			{
-				tierId: "full-album",
-				label: "Full Album Access",
-				amount: "$1.00",
-				resourceType: "album",
-				accessDurationSeconds: 86400,
+				planId: "full-album",
+				unitAmount: "$1.00",
+				description: "Full album — 24 hour access",
 			},
 		],
-		onIssueToken: async (params) => {
+		fetchResourceCredentials: async (params) => {
 			// Generate JWT using the opt-in AccessTokenIssuer utility
-			const ttl = params.tierId === "single-photo" ? 3600 : 86400;
+			const ttl = params.planId === "single-photo" ? 3600 : 86400;
 			return tokenIssuer.sign(
 				{
 					sub: params.requestId,
 					jti: params.challengeId,
 					resourceId: params.resourceId,
-					tierId: params.tierId,
+					planId: params.planId,
 					txHash: params.txHash,
 				},
 				ttl,
 			);
 		},
 		onPaymentReceived: async (grant) => {
-			console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.tierId})`);
+			console.log(`[Payment] Received payment for ${grant.resourceId} (${grant.planId})`);
 			console.log(`  TX: ${grant.explorerUrl}`);
 		},
-		resourceEndpointTemplate: `http://localhost:${PORT}/api/photos/{resourceId}`,
 	},
 	adapter,
 });
@@ -97,6 +92,6 @@ export default {
 
 console.log(`\nPhoto Gallery Agent (Hono) running on http://localhost:${PORT}`);
 console.log(`  Agent card: http://localhost:${PORT}/.well-known/agent.json`);
-console.log(`  A2A endpoint: http://localhost:${PORT}/a2a/jsonrpc`);
+console.log(`  x402 endpoint: http://localhost:${PORT}/x402/access`);
 console.log(`  Network: ${NETWORK}`);
 console.log(`  Wallet: ${WALLET}\n`);

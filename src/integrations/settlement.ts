@@ -111,9 +111,8 @@ export function buildHttpPaymentRequirements(
 		throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found`, 400);
 	}
 
-	const basePath = config.basePath ?? "/a2a";
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
-	const resourceUrl = `${baseUrl}${basePath}/jsonrpc`;
+	const resourceUrl = `${baseUrl}/x402/access`;
 
 	const amountRaw = parseDollarToUsdcMicro(tier.unitAmount);
 	const network = `eip155:${networkConfig.chainId}`;
@@ -165,7 +164,6 @@ export function buildDiscoveryResponse(
 	config: SellerConfig,
 	networkConfig: NetworkConfig,
 ): X402PaymentRequiredResponse {
-	const _basePath = config.basePath ?? "/a2a";
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const resourceUrl = `${baseUrl}/x402/access`;
 
