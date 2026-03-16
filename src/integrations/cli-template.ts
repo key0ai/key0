@@ -89,6 +89,61 @@ export async function runRequest(
 	return { exitCode: 1, output: body as Record<string, unknown> };
 }
 
+export async function runMain(args: string[], name: string, url: string): Promise<CliResult> {
+	const parsed = parseCli(args);
+
+	switch (parsed.command) {
+		case "help":
+			return {
+				exitCode: 0,
+				output: {
+					name,
+					url,
+					commands: {
+						discover: "List available plans (GET /discovery)",
+						request: "Request access or submit payment (POST /x402/access)",
+					},
+					flags: {
+						"--plan": "Plan ID (required for request)",
+						"--resource": "Resource ID (optional, defaults to 'default')",
+						"--payment-signature": "Base64-encoded x402 payment payload from payments-mcp",
+					},
+				},
+			};
+
+		case "version":
+			return {
+				exitCode: 0,
+				output: { name, version: "1.0.0", url },
+			};
+
+		case "error":
+			return {
+				exitCode: 1,
+				output: { error: parsed.message, code: "INVALID_REQUEST" },
+			};
+
+		case "discover":
+			return runDiscover(url);
+
+		case "request":
+			return runRequest(url, parsed.plan, parsed.resource, parsed.paymentSignature);
+	}
+}
+
+// Binary entry point — only runs in compiled binary (not during tests)
+const IS_MAIN = typeof process !== "undefined" && CLI_NAME !== "__CLI_NAME__";
+
+if (IS_MAIN) {
+	const args = process.argv.slice(2);
+	runMain(args, CLI_NAME, CLI_URL).then((result) => {
+		const stream =
+			result.exitCode === 0 || result.exitCode === 42 ? process.stdout : process.stderr;
+		stream.write(`${JSON.stringify(result.output, null, 2)}\n`);
+		process.exit(result.exitCode);
+	});
+}
+
 export function parseCli(args: string[]): ParsedArgs {
 	if (args.length === 0) {
 		return { command: "help" };

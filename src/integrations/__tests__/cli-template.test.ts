@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { parseCli, runDiscover, runRequest } from "../cli-template.js";
+import { parseCli, runDiscover, runMain, runRequest } from "../cli-template.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -167,5 +167,67 @@ describe("runRequest", () => {
 		const result = await runRequest("https://api.example.com", "single-photo");
 		expect(result.exitCode).toBe(1);
 		expect(result.output["code"]).toBe("NETWORK_ERROR");
+	});
+});
+
+describe("runMain", () => {
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+	});
+
+	test("--help returns help JSON with name and url", async () => {
+		const result = await runMain(["--help"], "mycli", "https://api.example.com");
+		expect(result.exitCode).toBe(0);
+		expect(result.output).toEqual({
+			name: "mycli",
+			url: "https://api.example.com",
+			commands: {
+				discover: "List available plans (GET /discovery)",
+				request: "Request access or submit payment (POST /x402/access)",
+			},
+			flags: {
+				"--plan": "Plan ID (required for request)",
+				"--resource": "Resource ID (optional, defaults to 'default')",
+				"--payment-signature": "Base64-encoded x402 payment payload from payments-mcp",
+			},
+		});
+	});
+
+	test("--version returns version JSON", async () => {
+		const result = await runMain(["--version"], "mycli", "https://api.example.com");
+		expect(result.exitCode).toBe(0);
+		expect(result.output["name"]).toBe("mycli");
+		expect(result.output["url"]).toBe("https://api.example.com");
+		expect(result.output).toHaveProperty("version");
+	});
+
+	test("unknown command returns error with exit 1", async () => {
+		const result = await runMain(["foobar"], "mycli", "https://api.example.com");
+		expect(result.exitCode).toBe(1);
+		expect(result.output["error"]).toBe('Unknown command: "foobar"');
+		expect(result.output["code"]).toBe("INVALID_REQUEST");
+	});
+
+	test("discover delegates to runDiscover", async () => {
+		const mockBody = { discoveryResponse: { x402Version: 2 } };
+		globalThis.fetch = mock(() =>
+			Promise.resolve(new Response(JSON.stringify(mockBody), { status: 200 })),
+		) as unknown as typeof fetch;
+		const result = await runMain(["discover"], "mycli", "https://api.example.com");
+		expect(result.exitCode).toBe(0);
+		expect(result.output).toEqual(mockBody);
+	});
+
+	test("request delegates to runRequest and returns 402", async () => {
+		const mockBody = { x402Version: 2, accepts: [], error: "Payment required" };
+		globalThis.fetch = mock(() =>
+			Promise.resolve(new Response(JSON.stringify(mockBody), { status: 402 })),
+		) as unknown as typeof fetch;
+		const result = await runMain(
+			["request", "--plan", "single-photo"],
+			"mycli",
+			"https://api.example.com",
+		);
+		expect(result.exitCode).toBe(42);
 	});
 });
