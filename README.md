@@ -1,22 +1,38 @@
 <img src="docs/logo.png" alt="Key0" width="260" />
 
-Sell anything to AI agents — APIs, data, goods or services — with built-in payments, zero proxying, and no architectural changes to your existing stack.
+[![npm version](https://img.shields.io/npm/v/@key0ai/key0)](https://www.npmjs.com/package/@key0ai/key0)
+[![Docker](https://img.shields.io/docker/v/key0ai/key0?label=docker)](https://hub.docker.com/r/key0ai/key0)
+[![License](https://img.shields.io/github/license/key0ai/key0)](./LICENSE)
+[![Docs](https://img.shields.io/badge/docs-key0.ai-blue)](https://docs.key0.ai/introduction/overview)
 
-Key0 orchestrates the payment handshake and credential exchange between your server and the agent, then gets completely out of the way.
+Commerce infrastructure for the agentic web. Let AI agents discover,
+pay for, and access your APIs autonomously — no human in the loop.
 
-- **Zero proxying** — all requests go directly to your server with no latency overhead
-- **Open-source & self-hostable** — every part of the payment flow is auditable and customizable
-- **Automatic refunds** — if anything goes wrong on-chain, Key0 handles it; neither you nor your client is left holding a bad transaction
-
-**Agent environments:** Claude Code, OpenClaw, Cursor, and more.
-
-**Negotiation & transaction:** HTTP, MCP, and A2A protocols supported.
-
-**Payments:** Base (x402 / USDC) today · Visa, Mastercard, and UPI coming soon.
+[Docs](https://docs.key0.ai/introduction/overview) · [Quick Start](#quick-start) · [Book a Demo](https://key0.ai/book-a-demo)
 
 ---
 
-## Two Ways to Run
+- **Zero proxying** — requests go directly to your server, no latency overhead
+- **Open-source & self-hostable** — every part of the commerce flow is auditable
+- **Automatic refunds** — if anything goes wrong on-chain, Key0 handles it
+
+**Agent environments:** Claude Code, OpenClaw, Cursor, and more
+**Protocols:** HTTP x402, MCP, A2A
+**Payments:** Base (USDC) · Visa, Mastercard, UPI coming soon
+
+---
+
+## What is Key0
+
+Key0 is an open-source commerce layer for API sellers and agent builders.
+Sellers add Key0 to any existing API — via Docker or SDK — to make it
+discoverable and purchasable by AI agents. Agents pay with USDC on Base;
+Key0 handles verification, credential issuance, and automatic refunds if
+anything fails.
+
+---
+
+## Quick Start
 
 | | [Standalone (Docker)](#standalone-mode) | [Embedded (SDK)](#embedded-mode) |
 |---|---|---|
@@ -25,37 +41,116 @@ Key0 orchestrates the payment handshake and credential exchange between your ser
 | **Token issuance** | Delegated to your `ISSUE_TOKEN_API` | Your `fetchResourceCredentials` callback |
 | **Best for** | Quick deploy, no code changes | Full control, existing app |
 
+### Standalone — 30 seconds
+
+```bash
+docker compose -f docker/docker-compose.yml --profile full up
+# Open http://localhost:3000 → configure via browser
+```
+
+### Embedded — Express
+
+```bash
+bun add @key0ai/key0
+```
+
+```typescript
+import { key0Router, validateAccessToken } from "@key0ai/key0/express";
+
+app.use(key0Router({
+  config: {
+    walletAddress: "0xYour...",
+    network: "testnet",
+    plans: [{ planId: "basic", unitAmount: "$0.10" }],
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params),
+  },
+  adapter, store, seenTxStore,
+}));
+app.use("/api", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }));
+```
+
+`adapter`, `store`, and `seenTxStore` are constructed in the [Embedded Mode](#embedded-mode) section.
+
+---
+
+## How It Works
+
+Key0 sits between your server and any agent client. It handles the commerce
+handshake — discovery, challenge, on-chain verification, credential issuance
+— then gets out of the way. Your protected routes receive normal Bearer token
+requests.
+
+Two flows are supported. Both follow the same `PENDING → PAID → DELIVERED`
+lifecycle and are eligible for automatic refunds.
+
+### A2A Flow (Agent-to-Agent)
+
+```
+Client Agent          Key0                    Seller Server
+     │  1. GET /.well-known/agent.json             │
+     │ ──────────────────▶│                         │
+     │ ◀── agent card + pricing                    │
+     │                   │                         │
+     │  2. AccessRequest │                         │
+     │ ──────────────────▶│                         │
+     │ ◀── X402Challenge  │                         │
+     │                   │                         │
+     │  3. Pay USDC on Base (on-chain)             │
+     │                   │                         │
+     │  4. PaymentProof  │                         │
+     │ ──────────────────▶│                         │
+     │                   │── verify on-chain        │
+     │                   │── fetchResourceCredentials ──▶│
+     │                   │◀── token                │
+     │ ◀── AccessGrant   │                         │
+     │                   │                         │
+     │  5. Bearer <JWT>  │                         │
+     │ ──────────────────────────────────────────▶│
+     │ ◀── protected content                       │
+```
+
+### HTTP x402 Flow (Gas Wallet / Facilitator)
+
+```
+Client                Key0                    Seller Server
+     │  1. GET /discovery │                         │
+     │ ──────────────────▶│                         │
+     │ ◀── plan catalog   │                         │
+     │                   │                         │
+     │  2. POST /x402/access { planId }            │
+     │ ──────────────────▶│                         │
+     │ ◀── HTTP 402       │                         │
+     │                   │                         │
+     │  3. POST + PAYMENT-SIGNATURE                │
+     │ ──────────────────▶│                         │
+     │                   │── settle on-chain        │
+     │                   │── fetchResourceCredentials ──▶│
+     │ ◀── AccessGrant   │                         │
+     │                   │                         │
+     │  4. Bearer <JWT>  │                         │
+     │ ──────────────────────────────────────────▶│
+     │ ◀── protected content                       │
+```
+
 ---
 
 ## Standalone Mode
 
-Run Key0 as a pre-built Docker container. No code required — configure via the built-in Setup UI or environment variables, and point it at your own token-issuance endpoint.
+Run Key0 as a Docker container alongside your existing backend. No code changes required.
 
 ```
-┌──────────────┐        ┌───────────────────────────┐        ┌──────────────────┐
-│ Client Agent │        │    Key0 (Docker)     │        │  Your Backend    │
-│              │        │                           │        │                  │
-│  discover    │───────▶│  /.well-known/agent.json  │        │                  │
-│              │◀───────│  agent card + pricing      │        │                  │
-│              │        │                           │        │                  │
-│  request     │───────▶│  /x402/access             │        │                  │
-│              │        │  [store: PENDING]         │        │                  │
-│              │◀───────│  402 + payment terms       │        │                  │
-│              │        │                           │        │                  │
-│  [pays USDC on Base]  │                           │        │                  │
-│              │        │                           │        │                  │
-│  retry +sig  │───────▶│  settle on-chain          │        │                  │
-│              │        │  verify payment           │        │                  │
-│              │        │  [PENDING → PAID]         │        │                  │
-│              │        │  POST /issue-token ───────│───────▶│  issue-token     │
-│              │        │                    ◀──────│────────│  {token, ...}    │
-│              │        │  [PAID → DELIVERED]       │        │                  │
-│              │◀───────│  AccessGrant              │        │                  │
-│              │        │  (token passed through)   │        │                  │
-└──────────────┘        └───────────────────────────┘        └──────────────────┘
+┌──────────────┐     ┌──────────────────────┐     ┌──────────────────┐
+│ Client Agent │     │    Key0 (Docker)      │     │  Your Backend    │
+│              │────▶│  payment handshake    │     │                  │
+│              │◀────│  agent card + pricing │     │                  │
+│              │     │                       │     │                  │
+│              │     │  verify on-chain      │     │                  │
+│              │     │  POST /issue-token ───│────▶│  issue-token     │
+│              │◀────│  AccessGrant          │◀────│  {token, ...}    │
+└──────────────┘     └──────────────────────┘     └──────────────────┘
 ```
 
-### Quick Start
+### Setup
 
 There are two ways to configure Standalone mode:
 
@@ -224,7 +319,7 @@ REFUND_MIN_AGE_MS=300000   # refund after 5-min grace period
 
 ## Embedded Mode
 
-Install the SDK and add Key0 as middleware inside your existing application. You keep full control over token issuance, resource verification, and routing.
+Install the SDK and mount Key0 as middleware inside your existing application. You keep full control over token issuance, routing, and resource verification.
 
 ```
 ┌──────────────┐        ┌──────────────────────────────────────────────────┐
@@ -484,97 +579,9 @@ CDP_API_KEY_SECRET=your-cdp-api-key-secret
 GAS_WALLET_PRIVATE_KEY=0xYourPrivateKey
 ```
 
-## How It Works
-
-Key0 supports two payment flows. Both follow the same `ChallengeRecord` lifecycle (`PENDING → PAID → DELIVERED`) and are eligible for automatic refunds.
-
-### A2A Flow (Agent-to-Agent)
-
-A2A-native clients send a `POST /x402/access` with the `X-A2A-Extensions` header, which delegates to the JSON-RPC handler. The payment flow uses the same `PENDING → PAID → DELIVERED` lifecycle.
-
-```
-Client Agent                          Seller Server
-     |                                      |
-     |  1. GET /.well-known/agent.json      |
-     |------------------------------------->|
-     |  <-- Agent card (skills, pricing)    |
-     |                                      |
-     |  2. POST /x402/access               |
-     |     + X-A2A-Extensions header        |
-     |     (JSON-RPC AccessRequest)         |
-     |------------------------------------->|
-     |  <-- X402Challenge (amount, chain,   |
-     |       destination, challengeId)      |
-     |                                      |
-     |  3. Pay USDC on Base (on-chain)      |
-     |----> Blockchain                      |
-     |  <-- txHash                          |
-     |                                      |
-     |  4. POST /x402/access               |
-     |     + X-A2A-Extensions header        |
-     |     (JSON-RPC PaymentProof)          |
-     |------------------------------------->|
-     |      Server verifies tx on-chain --> |
-     |  <-- AccessGrant (JWT + endpoint)    |
-     |                                      |
-     |  5. GET /api/resource/:id            |
-     |     Authorization: Bearer <JWT>      |
-     |------------------------------------->|
-     |  <-- Protected content               |
-```
-
-1. **Discovery** — Client fetches the agent card at `/.well-known/agent.json` to learn about available plans and pricing
-2. **Access Request** — Client sends a JSON-RPC `AccessRequest` to `/x402/access` with the `X-A2A-Extensions` header
-3. **Challenge** — Server creates a `PENDING` record and returns an `X402Challenge` with payment details
-4. **Payment** — Client pays on-chain USDC on Base — a standard ERC-20 transfer, no custom contracts
-5. **Proof** — Client submits a JSON-RPC `PaymentProof` with the transaction hash
-6. **Verification** — Server verifies the payment on-chain (correct recipient, amount, not expired, not double-spent), transitions `PENDING → PAID`
-7. **Grant** — Server calls `fetchResourceCredentials`, transitions `PAID → DELIVERED`, returns an `AccessGrant` with the token and resource endpoint URL
-8. **Access** — Client uses the token as a Bearer header to access the protected resource
-
-### HTTP x402 Flow (Gas Wallet / Facilitator)
-
-```
-Client                                Seller Server
-     |                                      |
-     |  1. GET /discovery                   |
-     |------------------------------------->|
-     |  <-- 200 + all plans                 |
-     |      (discovery, no PENDING record)  |
-     |                                      |
-     |  2. POST /x402/access               |
-     |     { planId, requestId? }           |
-     |------------------------------------->|
-     |  <-- HTTP 402 + PaymentRequirements  |
-     |       + challengeId                  |
-     |      (requestId auto-generated       |
-     |       if omitted)                    |
-     |                                      |
-     |  3. POST /x402/access               |
-     |     { planId, requestId }            |
-     |     + PAYMENT-SIGNATURE header       |
-     |       (signed EIP-3009 auth)         |
-     |------------------------------------->|
-     |      Gas wallet / facilitator        |
-     |      settles on-chain -------------> |
-     |  <-- AccessGrant (JWT + endpoint)    |
-     |                                      |
-     |  4. GET /api/resource/:id            |
-     |     Authorization: Bearer <JWT>      |
-     |------------------------------------->|
-     |  <-- Protected content               |
-```
-
-1. **Discovery (optional)** — Client calls `GET /discovery` to receive a 200 response listing all available plans and pricing. No `PENDING` record is created. `POST /x402/access` without a `planId` returns 400 and directs clients to `GET /discovery`.
-2. **Challenge** — Client POSTs `{ planId }` (and optionally `requestId`, `resourceId`). Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` for that plan. `requestId` is auto-generated if omitted.
-3. **Payment + Settlement** — Client resends with the same `{ planId, requestId }` plus a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles on-chain; server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`.
-4. **Access** — Client uses the token as a Bearer header to access the protected resource.
-
-If `fetchResourceCredentials` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
-
 ## Clients
 
-Any agent that can hold a wallet and sign an on-chain USDC transfer can pay Key0-protected APIs autonomously — no human in the loop.
+Any agent that can hold a wallet and sign an on-chain USDC transfer can access Key0-gated APIs autonomously — no human in the loop, no pre-registration, no manual API key management. Payment is the credential.
 
 ### Coding Agents (e.g. Claude Code)
 
@@ -785,10 +792,11 @@ bun run build        # Compile to ./dist
 
 ## Documentation
 
-- [SPEC.md](./SPEC.md) — Protocol specification
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines and development setup (`github.com/key0ai/key0`)
-- [setup-ui.md](./docs/setup-ui.md) — Setup UI: architecture, Docker integration, config flow, plan editor
-- [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling
-- [mcp-integration.md](./docs/mcp-integration.md) — MCP server: transport choice, stateless architecture, tool design, concerns
-- [FLOW.md](./docs/FLOW.md) — Detailed payment flow, state machine diagrams, and health check endpoint
+Full documentation at **[docs.key0.ai](https://docs.key0.ai/introduction/overview)**.
 
+- [SPEC.md](./SPEC.md) — Protocol specification
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines
+- [setup-ui.md](./docs/setup-ui.md) — Setup UI architecture
+- [Refund_flow.md](./docs/Refund_flow.md) — Refund state machine
+- [mcp-integration.md](./docs/mcp-integration.md) — MCP transport
+- [FLOW.md](./docs/FLOW.md) — Payment flow diagrams
