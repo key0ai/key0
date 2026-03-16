@@ -10,6 +10,85 @@ export type ParsedArgs =
 	| { command: "version" }
 	| { command: "error"; message: string };
 
+export interface CliResult {
+	exitCode: number;
+	output: Record<string, unknown>;
+}
+
+export async function runDiscover(baseUrl: string): Promise<CliResult> {
+	let response: Response;
+	try {
+		response = await fetch(`${baseUrl}/discovery`, {
+			method: "GET",
+			headers: { "Content-Type": "application/json" },
+		});
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		return { exitCode: 1, output: { error: msg, code: "NETWORK_ERROR" } };
+	}
+
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return {
+			exitCode: 1,
+			output: { error: "Response was not valid JSON", code: "INVALID_RESPONSE" },
+		};
+	}
+
+	return { exitCode: 0, output: body as Record<string, unknown> };
+}
+
+export async function runRequest(
+	baseUrl: string,
+	plan: string,
+	resource?: string,
+	paymentSignature?: string,
+): Promise<CliResult> {
+	const bodyObj: Record<string, unknown> = { planId: plan };
+	if (resource !== undefined) {
+		bodyObj["resourceId"] = resource;
+	}
+
+	const headers: Record<string, string> = { "Content-Type": "application/json" };
+	if (paymentSignature !== undefined) {
+		headers["payment-signature"] = paymentSignature;
+	}
+
+	let response: Response;
+	try {
+		response = await fetch(`${baseUrl}/x402/access`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(bodyObj),
+		});
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		return { exitCode: 1, output: { error: msg, code: "NETWORK_ERROR" } };
+	}
+
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return {
+			exitCode: 1,
+			output: { error: "Response was not valid JSON", code: "INVALID_RESPONSE" },
+		};
+	}
+
+	if (response.status === 402) {
+		return { exitCode: 42, output: body as Record<string, unknown> };
+	}
+
+	if (response.status === 200) {
+		return { exitCode: 0, output: body as Record<string, unknown> };
+	}
+
+	return { exitCode: 1, output: body as Record<string, unknown> };
+}
+
 export function parseCli(args: string[]): ParsedArgs {
 	if (args.length === 0) {
 		return { command: "help" };
