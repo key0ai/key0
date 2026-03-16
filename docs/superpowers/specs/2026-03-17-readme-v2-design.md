@@ -192,10 +192,24 @@ Intro (1 sentence):
 > Run Key0 as a Docker container alongside your existing backend. No code
 > changes required.
 
-Topology diagram showing 3-party separation (Client Agent | Key0 Docker | Your Backend).
+Topology diagram (corrected alignment — use this exactly):
+
+```
+┌──────────────┐     ┌─────────────────────┐     ┌──────────────────┐
+│ Client Agent │     │    Key0 (Docker)     │     │  Your Backend    │
+│              │────▶│  payment handshake   │     │                  │
+│              │◀────│  agent card + pricing│     │                  │
+│              │     │                      │     │                  │
+│              │     │  verify on-chain     │     │                  │
+│              │     │  POST /issue-token ──│────▶│  issue-token     │
+│              │◀────│  AccessGrant         │◀────│  {token, ...}    │
+└──────────────┘     └──────────────────────┘     └──────────────────┘
+```
 
 Then:
-- Quick Start: Option A (Setup UI) + Option B (env vars) — kept as-is, including
+- Setup: renamed from `### Quick Start` to `### Setup` (avoids duplicate anchor
+  with the top-level `## Quick Start` at section 3). Option A (Setup UI) + Option B
+  (env vars) — kept as-is, including
   the `docker compose` command. The command appears in both section 3 and section 5
   intentionally — readers landing directly on Standalone Mode need it without
   scrolling up.
