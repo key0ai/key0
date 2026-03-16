@@ -175,6 +175,9 @@ Native A2A clients send the `X-A2A-Extensions` header on `POST /x402/access`. Th
 ## Next Steps
 
 <CardGroup cols={2}>
+  <Card title="Express Integration" icon="server" href="/integrations/express">
+    A2A is only available on Express — see setup details and the `X-A2A-Extensions` header.
+  </Card>
   <Card title="x402 HTTP Flow" icon="globe" href="/protocol/x402-http-flow">
     The simpler REST-based payment flow using HTTP 402 status codes.
   </Card>
@@ -183,8 +186,5 @@ Native A2A clients send the `X-A2A-Extensions` header on `POST /x402/access`. Th
   </Card>
   <Card title="Settlement Strategies" icon="link" href="/architecture/settlement-strategies">
     Gas wallet vs. facilitator settlement and EIP-3009 authorization.
-  </Card>
-  <Card title="Refunds" icon="rotate-left" href="/architecture/refunds">
-    Automatic refund handling for failed deliveries.
   </Card>
 </CardGroup>

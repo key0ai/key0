@@ -3,8 +3,6 @@ title: "Storage"
 description: "API reference for IChallengeStore, ISeenTxStore, and IAuditStore — the storage interfaces that power atomic state transitions and double-spend prevention."
 ---
 
-# Storage Interfaces
-
 Key0 defines three storage interfaces that back the challenge lifecycle. All state mutations go through these interfaces to guarantee atomicity and prevent race conditions.
 
 - **`IChallengeStore`** — Manages challenge records and atomic state transitions.

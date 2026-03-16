@@ -3,8 +3,6 @@ title: "X402Adapter"
 description: "API reference for X402Adapter — the payment adapter that verifies USDC transfers on Base via on-chain ERC-20 Transfer events."
 ---
 
-# X402Adapter
-
 `X402Adapter` is the default implementation of `IPaymentAdapter` for the x402 payment protocol. It issues challenges locally (no on-chain call) and verifies payment proofs by inspecting ERC-20 `Transfer` events on Base or Base Sepolia.
 
 ```typescript

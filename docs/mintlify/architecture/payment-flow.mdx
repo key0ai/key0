@@ -407,15 +407,9 @@ The executor processes through intermediate working states:
 
 ---
 
-## HTTP Headers Reference
-
-| Header | Direction | Format | Purpose |
-| --- | --- | --- | --- |
-| `payment-required` | Server to Client (402) | Base64 JSON | PaymentRequirements or discovery response |
-| `www-authenticate` | Server to Client (402) | `Payment realm=..., accept="exact"[, challenge=...]` | HTTP spec compliance |
-| `payment-signature` | Client to Server | Base64 JSON | X402PaymentPayload with EIP-3009 signature |
-| `payment-response` | Server to Client (200) | Base64 JSON | X402SettleResponse with txHash |
-| `x-a2a-extensions` | Client to Server | Presence check | On `POST /x402/access` (Express only): routes to A2A JSON-RPC handler instead of x402 HTTP flow |
+<Note>
+  For the complete HTTP headers reference, see [API Reference → Overview](/api-reference/overview#common-headers).
+</Note>
 
 ---
 

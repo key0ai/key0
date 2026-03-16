@@ -83,12 +83,100 @@ You: "Get me the latest satellite photo of Tokyo"
 Claude will:
 
 1. Call `discover_plans` — see available plans and pricing
-2. Call `request_access` — get a payment challenge
-3. Use `payments-mcp` to sign and submit the USDC payment
-4. Receive an access token (JWT)
-5. Call the protected API with the token
+2. Call `request_access` — get a payment challenge (Key0 returns a PaymentRequired response)
+3. Use `payments-mcp` (`make_http_request_with_x402`) to sign and submit the USDC payment
+4. Receive an access token (JWT) in the `AccessGrant`
+5. Call the protected API with the Bearer token
 
 All of this happens in a single conversation turn.
+
+---
+
+## How payments-mcp works under the hood
+
+This section explains what happens between step 2 and step 4 — the part that's invisible from the CLI.
+
+### Sequence diagram
+
+```mermaid
+sequenceDiagram
+    participant Claude as Claude Code
+    participant Key0MCP as Key0 MCP Server
+    participant paymentsMCP as payments-mcp
+    participant Base as Base (L2)
+
+    Claude->>Key0MCP: tools/call request_access({ planId })
+    Key0MCP-->>Claude: isError:true + x402PaymentUrl + paymentInstructions + accepts[]
+
+    Note over Claude,paymentsMCP: Claude reads paymentInstructions and delegates payment
+
+    Claude->>paymentsMCP: make_http_request_with_x402(url, body, paymentRequirements)
+    paymentsMCP-->>paymentsMCP: Sign EIP-3009 authorization off-chain
+    paymentsMCP->>Key0MCP: POST /x402/access + payment-signature header
+    Key0MCP->>Base: Execute transferWithAuthorization (EIP-3009)
+    Base-->>Key0MCP: txHash confirmed
+    Key0MCP-->>paymentsMCP: AccessGrant (JWT, resourceEndpoint, txHash)
+    paymentsMCP-->>Claude: AccessGrant result
+
+    Claude->>Key0MCP: GET resourceEndpoint (Bearer JWT)
+    Key0MCP-->>Claude: Protected data
+```
+
+### What Key0 returns when payment is missing
+
+When an agent calls `request_access` without a payment, Key0's MCP integration returns:
+
+```json
+{
+  "isError": true,
+  "structuredContent": {
+    "x402Version": 2,
+    "error": "Payment required to access this resource",
+    "resource": {
+      "url": "https://my-service.example.com/x402/access",
+      "description": "Basic plan",
+      "mimeType": "application/json"
+    },
+    "accepts": [
+      {
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "amount": "1000000",
+        "payTo": "0xSellerWallet...",
+        "maxTimeoutSeconds": 900,
+        "extra": { "name": "USDC", "version": "2", "planId": "basic" }
+      }
+    ]
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"x402PaymentUrl\": \"https://my-service.example.com/x402/access\", \"paymentInstructions\": \"To complete payment, use make_http_request_with_x402 with: URL=..., method=POST, body={...}, and pass the accepts array as paymentRequirements.\" }"
+    }
+  ]
+}
+```
+
+Key fields the LLM reads:
+- `structuredContent.accepts[]` — the `paymentRequirements` array to pass to `make_http_request_with_x402`
+- `content[0].text` — contains `x402PaymentUrl` and human-readable `paymentInstructions` so the LLM can understand the next action even without structured content support
+
+### What payments-mcp does
+
+The `make_http_request_with_x402` tool from `@coinbase/payments-mcp`:
+1. Receives the `x402PaymentUrl`, the request body, and the `paymentRequirements` (accepts array)
+2. Signs an EIP-3009 `transferWithAuthorization` off-chain using the configured CDP (Coinbase Developer Platform) wallet
+3. Base64-encodes the signed payload into the `payment-signature` header
+4. POSTs to `/x402/access` with the header attached
+5. Key0 settles the on-chain transfer via the gas wallet or facilitator
+6. Returns the `AccessGrant` JSON to Claude
+
+<Note>
+  The buyer (Claude Code) never pays gas. The EIP-3009 authorization delegates the on-chain execution to Key0's gas wallet, which covers all gas fees.
+</Note>
+
+---
 
 ## Try It Locally
 
@@ -120,3 +208,41 @@ All of this happens in a single conversation turn.
     Open Claude Code in the same directory. Ask it to interact with the seller — it discovers the plans, pays, and accesses the API.
   </Step>
 </Steps>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="payments-mcp says 'wallet not funded'">
+    Your CDP wallet does not have sufficient USDC. Check the network — if the seller is on Base Sepolia, your wallet needs **Base Sepolia USDC** (not mainnet). Get free testnet USDC from [faucet.circle.com](https://faucet.circle.com).
+  </Accordion>
+  <Accordion title="Request fails with 'wrong network'">
+    The seller is on a different chain than your wallet. Check `GET /discovery` to see the seller's `network` field (e.g., `eip155:84532` = Base Sepolia, `eip155:8453` = Base mainnet). Ensure your payments-mcp wallet is configured for the same network.
+  </Accordion>
+  <Accordion title="Claude cannot find the 'discover_plans' tool">
+    The seller may not have MCP enabled. Verify by calling `GET https://my-service.example.com/.well-known/mcp.json`. If you get a 404, the seller only supports x402 HTTP — use the [Paying for Access](/guides/paying-for-access) guide instead with a custom script.
+  </Accordion>
+  <Accordion title="payments-mcp is not installed or not in .mcp.json">
+    Run `npx @coinbase/payments-mcp` again to reinstall and re-register. Check `~/.mcp.json` (global) or `.mcp.json` (project) to confirm the `payments-mcp` entry is present.
+  </Accordion>
+  <Accordion title="CHALLENGE_EXPIRED error">
+    The payment window (default 15 minutes) elapsed between the challenge being issued and the payment arriving. Ask Claude to retry — it will get a fresh challenge.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Paying for Access" icon="credit-card" href="/guides/paying-for-access">
+    Build a custom client: full EIP-3009 example with TypeScript and viem.
+  </Card>
+  <Card title="MCP Protocol Details" icon="plug" href="/protocol/mcp">
+    Full reference for the Key0 MCP tools, payment paths, and stateless architecture.
+  </Card>
+  <Card title="Building a Seller" icon="rocket" href="/guides/building-a-seller">
+    Set up your own Key0-powered service that Claude Code can connect to.
+  </Card>
+</CardGroup>

@@ -9,34 +9,9 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
 2. **Challenge** -- `planId` present, no `payment-signature` header, creates a PENDING record.
 3. **Settlement** -- `planId` present with a `payment-signature` header, settles on-chain and returns an `AccessGrant`.
 
-## Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Server
-    participant Base as Base (L2)
-
-    Note over Client,Server: Phase 1 -- Discovery
-    Client->>Server: GET /discovery
-    Server->>Client: 200 + all plans
-
-    Note over Client,Server: Phase 2 -- Challenge
-    Client->>Server: POST /x402/access { planId }
-    Server-->>Server: Create PENDING challenge
-    Server->>Client: 402 + PaymentRequirements + challengeId
-
-    Note over Client,Base: Phase 3 -- Settlement
-    Client->>Server: POST /x402/access { planId, requestId } + payment-signature
-    Server->>Base: Execute transferWithAuthorization (EIP-3009)
-    Base-->>Server: txHash confirmed
-    Server-->>Server: PENDING -> PAID -> DELIVERED
-    Server->>Client: 200 + AccessGrant (JWT, resourceUrl)
-
-    Note over Client,Server: Access protected resource
-    Client->>Server: GET /api/resource (Bearer JWT)
-    Server->>Client: Protected data
-```
+<Note>
+  For a full sequence diagram of the Discovery → Challenge → Settlement flow, see [How It Works](/introduction/how-it-works#sequence-diagram).
+</Note>
 
 ## Three Cases
 
@@ -215,15 +190,9 @@ sequenceDiagram
   </Tab>
 </Tabs>
 
-## HTTP Headers Reference
-
-| Header | Direction | Format | Purpose |
-|---|---|---|---|
-| `payment-required` | Server to Client (402) | base64 JSON | `PaymentRequirements` containing plan pricing and wallet address |
-| `www-authenticate` | Server to Client (402) | `Payment realm=..., accept="exact"` | HTTP spec compliance; includes `challenge=...` when a PENDING record is created |
-| `payment-signature` | Client to Server | base64 JSON | `X402PaymentPayload` with the signed EIP-3009 authorization |
-| `payment-response` | Server to Client (200) | base64 JSON | `X402SettleResponse` with the on-chain `txHash` |
-| `x-a2a-extensions` | Client to Server | presence check | When present, the x402 middleware passes through to the A2A handler instead of processing the x402 flow |
+<Note>
+  For the complete HTTP headers reference, see [API Reference → Overview](/api-reference/overview#common-headers).
+</Note>
 
 ## EIP-3009 Authorization
 
@@ -270,6 +239,9 @@ Key fields:
 ## Next Steps
 
 <CardGroup cols={2}>
+  <Card title="Paying for Access" icon="credit-card" href="/guides/paying-for-access">
+    Step-by-step client guide: discover plans, sign EIP-3009, and use the access token.
+  </Card>
   <Card title="A2A Flow" icon="arrows-left-right" href="/protocol/a2a-flow">
     The JSON-RPC based agent-to-agent payment flow for native A2A clients.
   </Card>

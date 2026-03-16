@@ -4,6 +4,16 @@ sidebarTitle: "Embedded"
 description: "Add Key0 middleware to an existing Express, Hono, or Fastify server in under 5 minutes. Agents discover your pricing, pay in USDC, and access your protected endpoints."
 ---
 
+By the end of this guide you will have a running server that:
+- Exposes a plan catalog at `GET /discovery`
+- Issues a USDC payment challenge at `POST /x402/access`
+- Settles the on-chain payment and returns a signed JWT (`AccessGrant`)
+- Protects your own routes with `validateAccessToken` middleware
+
+<Note>
+  New to Key0? Read [Core Concepts](/introduction/core-concepts) first to understand terms like Plan, Challenge, AccessGrant, and EIP-3009.
+</Note>
+
 ## Prerequisites
 
 Before you begin, make sure you have:
@@ -257,8 +267,38 @@ Test the agent card, plan discovery, and payment endpoints with curl:
 curl http://localhost:3000/.well-known/agent.json
 ```
 
+```json Expected output
+{
+  "name": "My Agent",
+  "description": "A payment-gated API",
+  "url": "https://my-agent.example.com",
+  "skills": [
+    { "id": "basic", "name": "Basic API access.", "tags": ["x402", "usdc"] }
+  ]
+}
+```
+
 ```bash Browse plans (returns 200 with plan catalog)
 curl http://localhost:3000/discovery
+```
+
+```json Expected output
+{
+  "discoveryResponse": {
+    "x402Version": 2,
+    "accepts": [
+      {
+        "scheme": "exact",
+        "network": "eip155:84532",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "amount": "100000",
+        "payTo": "0xYourWalletAddress",
+        "maxTimeoutSeconds": 900,
+        "extra": { "name": "USDC", "version": "2", "planId": "basic", "description": "Basic API access." }
+      }
+    ]
+  }
+}
 ```
 
 ```bash Request access (returns 402 challenge)
@@ -267,7 +307,16 @@ curl -X POST http://localhost:3000/x402/access \
   -d '{"planId": "basic"}'
 ```
 
-The first call returns the A2A agent card. The second returns all available plans and pricing — use the `planId` values from here when requesting access. The third call creates a PENDING challenge containing the payment amount, destination wallet, and chain ID. A client agent uses this to submit payment on-chain and receive an `AccessGrant`.
+```json Expected output (HTTP 402)
+{
+  "x402Version": 2,
+  "accepts": [ { "amount": "100000", "payTo": "0xYourWallet...", "network": "eip155:84532" } ],
+  "challengeId": "http-a1b2c3d4-...",
+  "error": "Payment required"
+}
+```
+
+The agent card describes your service. The discovery endpoint lists all plans — use the `planId` values when requesting access. The access endpoint creates a PENDING challenge containing the payment amount, destination wallet, and chain ID. A client uses the challenge to sign an EIP-3009 authorization and submit payment. See [Paying for Access](/guides/paying-for-access) for the full client walkthrough.
 
 </Step>
 

@@ -49,8 +49,9 @@ Key0 ships in two deployment modes. Both use the same payment engine, state mach
     - **Framework adapters** for Express, Hono, Fastify, and MCP via subpath imports:
 
     ```ts
-    import { mountKey0 } from "@key0ai/key0/express";
-    // or "@key0ai/key0/hono", "@key0ai/key0/fastify", "@key0ai/key0/mcp"
+    import { key0Router } from "@key0ai/key0/express";
+    // or key0App from "@key0ai/key0/hono"
+    // or key0Plugin from "@key0ai/key0/fastify"
     ```
 
     - **Token issuance** is handled by your `fetchResourceCredentials` callback -- you have full control over what credential is returned (JWT, API key, signed URL, etc.)

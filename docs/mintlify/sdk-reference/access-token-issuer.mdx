@@ -3,8 +3,6 @@ title: "AccessTokenIssuer"
 description: "API reference for AccessTokenIssuer — JWT creation and verification with HS256 or RS256, including zero-downtime secret rotation."
 ---
 
-# AccessTokenIssuer
-
 `AccessTokenIssuer` handles JWT creation and verification for the Key0 payment flow. After a client completes an on-chain USDC payment, the engine uses `AccessTokenIssuer` to mint a signed JWT that grants access to the purchased resource.
 
 It supports two signing algorithms:

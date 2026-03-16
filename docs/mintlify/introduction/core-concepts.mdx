@@ -1,0 +1,198 @@
+---
+title: "Core Concepts"
+description: "Plain-English definitions of every Key0 term, from USDC and EIP-3009 to ChallengeEngine and AccessGrant."
+---
+
+This page defines every domain-specific term you will encounter in the Key0 docs. Read it once before diving into protocols or architecture — or use it as a reference when you hit an unfamiliar term.
+
+---
+
+## Roles
+
+<AccordionGroup>
+  <Accordion title="Seller">
+    The API provider. You configure Key0 with your pricing plans, wallet address, and credential-issuance logic. Key0 mounts onto your server and handles the entire payment flow on your behalf. You never touch wallets or on-chain code.
+  </Accordion>
+  <Accordion title="Buyer (Agent)">
+    The AI agent or autonomous client that wants to use a Key0-protected API. The buyer discovers your service, signs an on-chain payment authorization, and receives an access token in return. No human is in the loop.
+  </Accordion>
+  <Accordion title="Facilitator">
+    An optional third party (such as Coinbase or a wallet provider) that submits the on-chain USDC transfer on behalf of the buyer. The buyer signs the authorization off-chain (EIP-3009) and the facilitator pays the gas. Key0's gas wallet plays the facilitator role when you supply a `gasWalletPrivateKey`. See [Settlement Strategies](/architecture/settlement-strategies).
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Payment Concepts
+
+<AccordionGroup>
+  <Accordion title="USDC">
+    USD Coin — a fully-reserved US dollar stablecoin issued by Circle. Key0 uses USDC as the payment currency. One USDC equals one US dollar; amounts in the protocol are expressed in **micro-units** (1 USDC = 1,000,000 micro-units, following the ERC-20 6-decimal convention). You can test on Base Sepolia using free USDC from [faucet.circle.com](https://faucet.circle.com).
+  </Accordion>
+  <Accordion title="Base (L2)">
+    Base is an Ethereum Layer 2 network built by Coinbase. It uses Optimistic Rollups to provide fast, low-cost transactions while inheriting Ethereum's security. Key0 supports both **Base mainnet** (chain ID `8453`) and **Base Sepolia** testnet (chain ID `84532`). Using L2 keeps per-transaction fees low enough for micropayments.
+  </Accordion>
+  <Accordion title="EIP-3009 (transferWithAuthorization)">
+    An Ethereum standard that lets the USDC owner sign a transfer authorization **off-chain** — no RPC call, no gas, just a cryptographic signature. A third party (the gas wallet or facilitator) then submits the signed authorization on-chain and pays the gas. This is how Key0 enables gasless payments for buyers: the buyer signs locally, the seller's infrastructure pays gas.
+
+    The authorization is an EIP-712 typed-data signature over:
+    - `from` / `to` addresses
+    - `value` (USDC micro-units)
+    - `validAfter` / `validBefore` (Unix timestamps — the window during which the authorization is valid)
+    - `nonce` (random 32-byte value to prevent replay)
+  </Accordion>
+  <Accordion title="Gas Wallet">
+    A separate Ethereum wallet (controlled by the seller) whose sole purpose is to submit EIP-3009 authorizations on-chain and pay the gas fees. Configure it by passing `gasWalletPrivateKey` to `SellerConfig`. The gas wallet never holds USDC — it only pays ETH for gas. See [Settlement Strategies](/architecture/settlement-strategies).
+  </Accordion>
+  <Accordion title="Payment Signature (PAYMENT-SIGNATURE header)">
+    The base64-encoded JSON blob the buyer sends as an HTTP header to prove payment. It wraps the EIP-3009 authorization (or a raw txHash) along with protocol metadata. Key0 decodes it, verifies the on-chain transfer, and issues credentials.
+
+    ```json
+    {
+      "x402Version": 2,
+      "network": "eip155:84532",
+      "scheme": "exact",
+      "payload": {
+        "signature": "0x...",
+        "authorization": { "from": "0x...", "to": "0x...", "value": "100000", ... }
+      },
+      "accepted": { "scheme": "exact", "network": "eip155:84532", ... }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Protocol Concepts
+
+<AccordionGroup>
+  <Accordion title="x402 Protocol">
+    An open standard for HTTP payment-gating that repurposes the HTTP 402 Payment Required status code. When a client hits a gated endpoint without payment, the server responds `402` with machine-readable `PaymentRequirements`. The client pays and retries with proof. Key0 implements x402 version 2. See the [x402 spec on GitHub](https://github.com/coinbase/x402).
+  </Accordion>
+  <Accordion title="Challenge">
+    A short-lived payment session created when a buyer requests access to a plan. A challenge has a unique `challengeId`, records the expected USDC amount, the destination wallet, and the expiry timestamp. It starts in the `PENDING` state and moves through the state machine as the payment progresses. See [State Machine](/architecture/state-machine).
+  </Accordion>
+  <Accordion title="AccessGrant">
+    The response returned to the buyer after a successful payment. It contains:
+    - `accessToken` — a signed JWT (or other credential) for the protected resource
+    - `tokenType` — always `"Bearer"`
+    - `resourceEndpoint` — the URL to call with the token
+    - `txHash` — the on-chain transaction hash as proof of payment
+    - `expiresAt` — when the token expires
+    - `challengeId` / `requestId` — for correlation and idempotency
+  </Accordion>
+  <Accordion title="Settlement">
+    The act of executing the USDC transfer on-chain and confirming it. After settlement, Key0 verifies the ERC-20 `Transfer` event matches the expected amount and destination, then transitions the challenge from `PAID` to `DELIVERED`. Settlement can happen via a gas wallet (EIP-3009) or a direct on-chain transfer (txHash proof). See [Settlement Strategies](/architecture/settlement-strategies).
+  </Accordion>
+  <Accordion title="PaymentRequirements">
+    The machine-readable payment instructions Key0 returns in a 402 response. They tell the buyer exactly what to pay: amount (in micro-units), asset (`USDC`), destination (`payTo` wallet address), network (`eip155:84532`), and maximum timeout. Buyers read these values to construct the EIP-3009 authorization.
+  </Accordion>
+  <Accordion title="Idempotency">
+    The property that repeating the same payment request with the same `requestId` produces the same result without double-charging. If a buyer retries after a network failure, Key0 detects the existing challenge and returns the same `AccessGrant` rather than creating a second payment. Always pass a stable `requestId` (e.g., a UUID generated once per purchase intent).
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Key0 Concepts
+
+<AccordionGroup>
+  <Accordion title="Plan">
+    A configured pricing tier offered by the seller. Each plan has a `planId`, a `unitAmount` (e.g., `"$0.10"`), and an optional `description`. Buyers choose a plan when requesting access. Plans are defined in `SellerConfig.plans` and exposed via `GET /discovery` and the agent card. See [SellerConfig](/sdk-reference/seller-config).
+  </Accordion>
+  <Accordion title="SellerConfig">
+    The TypeScript object you pass to Key0 that defines everything about your service: identity (`agentName`, `agentUrl`), your wallet address, your plans, your `fetchResourceCredentials` callback, settlement mode, and optional hooks. It is the single source of truth for your Key0 deployment. See [SellerConfig Reference](/sdk-reference/seller-config).
+  </Accordion>
+  <Accordion title="ChallengeEngine">
+    The core class that orchestrates the entire payment flow. It creates challenges, validates payment proofs, enforces state machine transitions, calls `fetchResourceCredentials`, fires `onPaymentReceived` hooks, and manages idempotency. Both the x402 HTTP middleware and the MCP integration share the same `ChallengeEngine` instance. See [ChallengeEngine Reference](/sdk-reference/challenge-engine).
+  </Accordion>
+  <Accordion title="ChallengeRecord">
+    The persisted state of a single payment session, stored in the Challenge Store. It records the `planId`, `requestId`, `challengeId`, USDC amount, expiry, and current state. The state machine enforces valid transitions on this record atomically. See [Data Models](/api-reference/data-models).
+  </Accordion>
+  <Accordion title="State Machine">
+    The lifecycle of a challenge, enforced atomically to prevent race conditions and double-spend. States and their meanings:
+
+    | State | Meaning |
+    |---|---|
+    | `PENDING` | Challenge created, waiting for payment |
+    | `PAID` | On-chain transfer confirmed, credentials being issued |
+    | `DELIVERED` | Credentials issued, AccessGrant returned to buyer |
+    | `EXPIRED` | Challenge TTL passed before payment arrived |
+    | `CANCELLED` | Manually cancelled |
+    | `REFUND_PENDING` | Credential issuance failed, refund queued |
+    | `REFUNDED` | On-chain USDC refund confirmed |
+    | `REFUND_FAILED` | Refund attempt failed (needs manual review) |
+
+    See [State Machine](/architecture/state-machine) for transition rules and atomic Lua scripts.
+  </Accordion>
+  <Accordion title="AccessTokenIssuer">
+    The component that creates the JWT returned in the `AccessGrant`. It supports HS256 (symmetric secret) and RS256 (RSA key pair) algorithms. The issued token embeds the `planId`, `resourceId`, `walletAddress`, and expiry. Sellers can also use their own `fetchResourceCredentials` callback to return any credential type. See [Token Issuance](/architecture/token-issuance).
+  </Accordion>
+  <Accordion title="fetchResourceCredentials">
+    A seller-supplied async callback invoked by Key0 after successful payment. It receives the `planId`, `resourceId`, and `walletAddress` of the buyer, and must return the credential (JWT, API key, signed URL, etc.) to include in the `AccessGrant`. This is the integration point between Key0 and your application's auth system.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Transport Layers
+
+<AccordionGroup>
+  <Accordion title="x402 HTTP Transport">
+    The default transport. All interactions happen over standard HTTP: `GET /discovery`, `POST /x402/access`, and `GET /api/resource`. Any HTTP client — curl, fetch, an AI agent — can participate. No special libraries required on the client side. See [x402 HTTP Flow](/protocol/x402-http-flow).
+  </Accordion>
+  <Accordion title="A2A (Agent-to-Agent)">
+    Google's Agent-to-Agent protocol, which uses JSON-RPC over HTTP. In Key0, A2A requests arrive at `POST /x402/access` with an `X-A2A-Extensions: x402/v2` header, routing them to the A2A JSON-RPC handler. The payment mechanics are identical to the x402 HTTP flow; only the message envelope differs. See [A2A Flow](/protocol/a2a-flow).
+  </Accordion>
+  <Accordion title="MCP (Model Context Protocol)">
+    Anthropic's Model Context Protocol, which exposes server capabilities as callable tools. Key0 mounts an MCP server at `POST /mcp` (enabled via `mcp: true` in `SellerConfig`). Two tools are exposed: `discover_plans` (free) and `request_access` (payment-gated). Claude Code, Cursor, and other MCP clients use this to interact with Key0 services. See [MCP Integration](/protocol/mcp).
+  </Accordion>
+  <Accordion title="Agent Card">
+    A JSON document served at `GET /.well-known/agent.json` that describes the Key0 service: its name, description, URL, available skills (plans), and supported extensions. Agent frameworks use it to auto-discover Key0 services and understand their pricing without any prior configuration. See [Agent Card](/api-reference/agent-card).
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Infrastructure
+
+<AccordionGroup>
+  <Accordion title="Challenge Store (IChallengeStore)">
+    The persistence layer for challenge records. Key0 requires a challenge store to create, read, and atomically update challenge state. Supported backends: Redis (`RedisChallengeStore`) and Postgres (`PostgresChallengeStore`). An in-memory store is available for testing. See [Storage](/architecture/storage).
+  </Accordion>
+  <Accordion title="Seen TX Store (ISeenTxStore)">
+    A deduplication index that records every transaction hash that has been used to settle a payment. Before accepting a payment proof, Key0 checks the seen TX store to ensure the same on-chain transaction cannot be reused for a second `AccessGrant` (double-spend protection). See [Storage](/architecture/storage).
+  </Accordion>
+  <Accordion title="Audit Store (IAuditStore)">
+    An optional append-only log of all payment events and state transitions. Useful for compliance, debugging, and analytics. Both Redis and Postgres implementations are available. See [Storage](/architecture/storage).
+  </Accordion>
+  <Accordion title="Refund Cron">
+    A background job (typically run as a cron or BullMQ worker) that periodically scans for challenges in `REFUND_PENDING` state and executes on-chain USDC refunds back to the buyer's wallet. Refunds are triggered when `fetchResourceCredentials` fails after a confirmed payment. See [Refunds](/architecture/refunds).
+  </Accordion>
+  <Accordion title="requestId">
+    A buyer-supplied identifier (UUID recommended) that scopes a payment session. Key0 uses it to enable idempotency: the same `requestId` always maps to the same challenge and the same `AccessGrant`. If you omit it, Key0 auto-generates one — but you lose the ability to safely retry on network failure.
+  </Accordion>
+  <Accordion title="resourceId">
+    An optional identifier for the specific resource within a plan the buyer wants access to. Passed through to your `fetchResourceCredentials` callback so you can issue a credential scoped to a particular resource (e.g., a specific dataset or API endpoint). Defaults to `"default"` if omitted.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="How It Works" icon="diagram-project" href="/introduction/how-it-works">
+    See the full three-phase payment sequence diagram.
+  </Card>
+  <Card title="Quickstart: Embedded" icon="bolt" href="/quickstart/embedded">
+    Add Key0 to an Express, Hono, or Fastify server in minutes.
+  </Card>
+  <Card title="Paying for Access" icon="credit-card" href="/guides/paying-for-access">
+    How agents discover, pay, and call Key0-protected APIs.
+  </Card>
+  <Card title="SellerConfig Reference" icon="sliders" href="/sdk-reference/seller-config">
+    Complete reference for every configuration option.
+  </Card>
+</CardGroup>

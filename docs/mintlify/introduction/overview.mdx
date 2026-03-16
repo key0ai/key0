@@ -17,13 +17,31 @@ description: "Key0 is a TypeScript SDK that lets API providers sell APIs, data, 
   style={{ maxWidth: "200px" }}
 />
 
-# Sell anything to AI agents
-
-Key0 is a TypeScript SDK that turns any API into a paid, agent-accessible service. Drop it into your Express, Hono, Fastify, or MCP server -- agents discover your pricing, pay in USDC on Base via the x402 protocol, and get access. No signup walls, no API key portals, no proxying.
+Key0 is a TypeScript SDK that turns any API into a paid, agent-accessible service. Drop it into your Express, Hono, Fastify, or MCP server — agents discover your pricing, pay in USDC on Base via the x402 protocol, and get access. No signup walls, no API key portals, no proxying.
 
 ```bash
 npm install @key0ai/key0
 ```
+
+## How it works in 30 seconds
+
+<Steps>
+  <Step title="Agent discovers your service">
+    The agent calls `GET /discovery` to browse your pricing plans — plan IDs, USDC amounts, and your wallet address. No payment yet.
+  </Step>
+  <Step title="Agent pays on-chain">
+    The agent signs an EIP-3009 authorization off-chain (no gas required on their side). Key0's gas wallet executes the USDC transfer on Base.
+  </Step>
+  <Step title="Agent receives a token and calls your API">
+    Key0 returns a signed JWT (`AccessGrant`). The agent uses it as a Bearer token to call your protected endpoints.
+  </Step>
+</Steps>
+
+<Note>
+  Unfamiliar with terms like EIP-3009, x402, AccessGrant, or ChallengeEngine? Read [Core Concepts](/introduction/core-concepts) for plain-English definitions before continuing.
+</Note>
+
+---
 
 ## Why Key0
 
@@ -32,7 +50,7 @@ AI agents cannot fill out signup forms, enter credit cards, or navigate dashboar
 Key0 solves this by embedding the entire payment-and-access flow directly into your API:
 
 1. An agent discovers your service and its pricing (via A2A agent card or MCP tool).
-2. It pays on-chain in USDC -- one transaction, no intermediary.
+2. It pays on-chain in USDC — one transaction, no intermediary.
 3. It receives a signed JWT and calls your protected endpoints.
 
 No proxy sits between the agent and your API. You keep full control of your infrastructure.
@@ -40,18 +58,14 @@ No proxy sits between the agent and your API. You keep full control of your infr
 ## Value props
 
 <CardGroup cols={3}>
-  <Card title="Zero Proxying" icon="server">
-    Key0 runs inside your server process. Agent traffic hits your API directly -- no
-    third-party relay, no added latency, no data leaving your infrastructure.
+  <Card title="No Signup Walls" icon="server">
+    Agents discover your service and pay automatically — no API key portals, no signup forms, no human in the loop.
   </Card>
   <Card title="Open Source & Self-Hostable" icon="code">
-    Every part of the payment flow is auditable and customizable. Run it as an npm
-    package embedded in your app, or as a standalone Docker container from `key0ai/key0`
-    on Docker Hub.
+    Every part of the payment flow is auditable and customizable. Run it as an npm package embedded in your app, or as a standalone Docker container from `key0ai/key0` on Docker Hub.
   </Card>
   <Card title="Automatic Refunds" icon="rotate-left">
-    If credential delivery fails after payment, Key0 settles a refund on-chain
-    automatically. No manual intervention required.
+    If credential delivery fails after payment, Key0 settles a refund on-chain automatically. No manual intervention required.
   </Card>
 </CardGroup>
 
@@ -59,9 +73,9 @@ No proxy sits between the agent and your API. You keep full control of your infr
 
 Key0 works with any agent that can make HTTP requests. It has been tested with:
 
-- **Claude Code** -- Anthropic's CLI agent
-- **OpenClaw** -- open-source agent framework
-- **Cursor** -- AI-powered IDE
+- **Claude Code** — Anthropic's CLI agent
+- **OpenClaw** — open-source agent framework
+- **Cursor** — AI-powered IDE
 
 ## Protocols
 
@@ -86,7 +100,7 @@ Key0 works with any agent that can make HTTP requests. It has been tested with:
 </Info>
 
 <Note>
-  **Coming soon:** Visa, Mastercard, and UPI support -- so agents can pay with traditional rails when on-chain is not an option.
+  **Coming soon:** Visa, Mastercard, and UPI support — so agents can pay with traditional rails when on-chain is not an option.
 </Note>
 
 ## Install
@@ -120,10 +134,10 @@ docker pull key0ai/key0
   <Card title="Quickstart: Standalone" icon="docker" href="/quickstart/standalone">
     Run Key0 as a standalone Docker service that sits alongside your API.
   </Card>
-  <Card title="How It Works" icon="diagram-project" href="/introduction/how-it-works">
-    Understand the two-phase payment flow and challenge lifecycle.
+  <Card title="Core Concepts" icon="book" href="/introduction/core-concepts">
+    Plain-English definitions of every Key0 term — read this before diving in.
   </Card>
-  <Card title="Two Modes" icon="toggle-on" href="/introduction/two-modes">
-    Learn the difference between embedded and standalone deployment modes.
+  <Card title="Paying for Access" icon="credit-card" href="/guides/paying-for-access">
+    For agents and buyers: how to discover, pay, and call a Key0-protected API.
   </Card>
 </CardGroup>

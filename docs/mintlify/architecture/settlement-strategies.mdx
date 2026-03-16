@@ -3,6 +3,10 @@ title: "Settlement Strategies"
 description: "How Key0 settles on-chain payments: facilitator mode vs. gas wallet mode."
 ---
 
+<Note>
+  New to these terms? See [Core Concepts → Facilitator](/introduction/core-concepts#payment-concepts) and [Core Concepts → Gas Wallet](/introduction/core-concepts#payment-concepts) for plain-English definitions.
+</Note>
+
 The `settlePayment()` function is called by both the x402 HTTP flow and the A2A Executor. It inspects your `SellerConfig` and routes to one of two settlement strategies: **Facilitator Mode** (the default) or **Gas Wallet Mode**.
 
 Both strategies verify the client's EIP-3009 `transferWithAuthorization` signature and then settle the USDC transfer on-chain. They differ in _who_ broadcasts the transaction and _who_ pays the gas.
@@ -11,7 +15,7 @@ Both strategies verify the client's EIP-3009 `transferWithAuthorization` signatu
 
 <Tabs>
   <Tab title="Facilitator Mode">
-    Facilitator mode is the **default** strategy. It delegates on-chain settlement to an external facilitator service (Coinbase CDP). Your server never touches a private key or pays gas.
+    Facilitator mode is the **default** strategy. It delegates on-chain settlement to an external facilitator service — Coinbase Developer Platform (CDP). Your server never touches a private key or pays gas.
 
     ### How It Works
 
@@ -37,7 +41,7 @@ Both strategies verify the client's EIP-3009 `transferWithAuthorization` signatu
 
     ### Configuration
 
-    The default facilitator URL for both testnet and mainnet is:
+    The default CDP facilitator URL for both testnet and mainnet is:
 
     ```
     https://api.cdp.coinbase.com/platform/v2/x402

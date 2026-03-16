@@ -197,3 +197,19 @@ const token = (request as typeof request & { key0Token?: unknown }).key0Token;
 
 The payload includes `sub` (request ID), `jti` (challenge ID), `resourceId`, `planId`, and `txHash`.
 
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="SellerConfig Reference" icon="sliders" href="/sdk-reference/seller-config">
+    Complete reference for every configuration option.
+  </Card>
+  <Card title="Paying for Access" icon="credit-card" href="/guides/paying-for-access">
+    How clients discover, pay, and call your protected endpoints.
+  </Card>
+  <Card title="Hono Integration" icon="bolt" href="/integrations/hono">
+    Key0 as a Hono sub-app.
+  </Card>
+  <Card title="x402 HTTP Flow" icon="globe" href="/protocol/x402-http-flow">
+    Full protocol reference for the payment flow.
+  </Card>
+</CardGroup>

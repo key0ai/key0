@@ -3,8 +3,6 @@ title: "Middleware"
 description: "Access token validation middleware for Express, Hono, and Fastify — plus the standalone validateKey0Token for backend services."
 ---
 
-# Middleware
-
 Key0 provides access token validation middleware for every supported framework, plus a standalone validator for backend services that do not run the full SDK.
 
 All middleware functions extract the `Bearer` token from the `Authorization` header, verify it using the configured secret or public key, and attach the decoded payload to the request context. On failure they return a JSON error response and short-circuit the request.

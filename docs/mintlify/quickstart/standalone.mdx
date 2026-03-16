@@ -4,7 +4,15 @@ sidebarTitle: "Standalone"
 description: "Run Key0 as a standalone Docker container alongside your existing API. Two options: a visual Setup UI for zero-config start, or environment variables for automation."
 ---
 
-# Standalone Docker quickstart
+By the end of this guide you will have a running Key0 Docker container that:
+- Accepts USDC payments from AI agents
+- Calls your `ISSUE_TOKEN_API` to fetch credentials after a confirmed payment
+- Automatically refunds agents if your token endpoint fails
+- Exposes `GET /discovery`, `POST /x402/access`, and `GET /.well-known/agent.json`
+
+<Note>
+  New to Key0? Read [Core Concepts](/introduction/core-concepts) first to understand terms like Plan, Challenge, AccessGrant, and EIP-3009. See [Two Modes](/introduction/two-modes) to understand how Standalone differs from Embedded.
+</Note>
 
 Run Key0 as a standalone service in Docker. It handles agent discovery, payment verification, and credential issuance -- your existing API only needs to expose a single token-issuing endpoint.
 
@@ -145,8 +153,34 @@ Once the container is running, verify the setup:
 curl http://localhost:3000/.well-known/agent.json
 ```
 
+```json Expected output
+{
+  "name": "My Service",
+  "description": "Payment-gated API",
+  "url": "http://localhost:3000",
+  "skills": [{ "id": "basic", "name": "Basic plan" }]
+}
+```
+
 ```bash Browse available plans
 curl http://localhost:3000/discovery
+```
+
+```json Expected output
+{
+  "discoveryResponse": {
+    "x402Version": 2,
+    "accepts": [
+      {
+        "scheme": "exact",
+        "network": "eip155:84532",
+        "amount": "100000",
+        "payTo": "0xYourWalletAddress",
+        "extra": { "planId": "basic", "description": "Basic plan" }
+      }
+    ]
+  }
+}
 ```
 
 ```bash Request access to a plan (returns 402 challenge)
@@ -155,7 +189,16 @@ curl -X POST http://localhost:3000/x402/access \
   -d '{"planId": "basic"}'
 ```
 
-The discovery call returns all available plans and pricing — start here to find a valid `planId`. The access request returns an x402 challenge containing the payment amount and destination wallet. An agent completes the flow by paying on-chain and submitting proof.
+```json Expected output (HTTP 402)
+{
+  "x402Version": 2,
+  "accepts": [{ "amount": "100000", "payTo": "0xYourWallet...", "network": "eip155:84532" }],
+  "challengeId": "http-a1b2c3d4-...",
+  "error": "Payment required"
+}
+```
+
+The discovery call returns all available plans — start here to find a valid `planId`. The access request returns an x402 challenge with the payment amount and destination wallet. An agent completes the flow by signing an EIP-3009 authorization and submitting proof. See [Paying for Access](/guides/paying-for-access) for the full client walkthrough.
 
 ## Docker image tags
 

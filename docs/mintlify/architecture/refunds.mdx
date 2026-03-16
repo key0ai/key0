@@ -4,8 +4,6 @@ sidebarTitle: "Refunds"
 description: "When token issuance fails after payment, Key0 automatically refunds USDC to the buyer. Learn how the refund state machine, cron job, and double-refund prevention work."
 ---
 
-# Automatic Refunds
-
 When a buyer pays for a resource, the SDK records the payment in a `ChallengeRecord`. After on-chain verification succeeds, token issuance (`fetchResourceCredentials`) and the `PAID -> DELIVERED` transition happen in the same request.
 
 If `fetchResourceCredentials` throws -- or the server crashes between payment verification and delivery -- the record stays in `PAID` state. The refund cron picks it up after a configurable grace period and sends USDC back to the buyer's wallet.
@@ -120,9 +118,9 @@ In the full lifecycle, `PAID` is reached via `PENDING -> PAID` after on-chain pa
     ```
 
     <Note>
-      The `walletPrivateKey` must correspond to the `walletAddress` that received USDC payments.
-      Without Redis, a plain `setInterval` works for single-instance deployments -- the atomic
-      `PAID -> REFUND_PENDING` CAS transition prevents double-refunds even with overlapping ticks.
+      Your `walletPrivateKey` must correspond to the `walletAddress` that received USDC payments.
+      Without Redis, a plain `setInterval` works for single-instance deployments — the atomic
+      `PAID -> REFUND_PENDING` compare-and-swap (CAS) transition prevents double-refunds even with overlapping ticks.
     </Note>
   </Tab>
 </Tabs>

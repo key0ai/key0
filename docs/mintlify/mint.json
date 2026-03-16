@@ -73,15 +73,18 @@
 	"navigation": [
 		{
 			"group": "Getting Started",
-			"pages": ["introduction/overview", "introduction/how-it-works", "introduction/two-modes"]
+			"pages": [
+				"introduction/overview",
+				"introduction/core-concepts",
+				"introduction/how-it-works",
+				"introduction/two-modes",
+				"quickstart/embedded",
+				"quickstart/standalone"
+			]
 		},
 		{
-			"group": "Quickstart",
-			"pages": ["quickstart/embedded", "quickstart/standalone"]
-		},
-		{
-			"group": "Protocol",
-			"pages": ["protocol/a2a-flow", "protocol/x402-http-flow", "protocol/mcp"]
+			"group": "Protocols",
+			"pages": ["protocol/x402-http-flow", "protocol/a2a-flow", "protocol/mcp"]
 		},
 		{
 			"group": "Architecture",
@@ -96,12 +99,17 @@
 			]
 		},
 		{
-			"group": "Integrations",
-			"pages": ["integrations/express", "integrations/hono", "integrations/fastify"]
-		},
-		{
-			"group": "Guides",
-			"pages": ["guides/building-a-seller", "guides/claude-code-integration"]
+			"group": "Integrations & Guides",
+			"pages": [
+				"integrations/express",
+				"integrations/hono",
+				"integrations/fastify",
+				"integrations/mcp",
+				"guides/paying-for-access",
+				"guides/building-a-seller",
+				"guides/claude-code-integration",
+				"guides/production-checklist"
+			]
 		},
 		{
 			"group": "Deployment",

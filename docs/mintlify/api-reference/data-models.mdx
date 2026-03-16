@@ -3,8 +3,6 @@ title: "Data Models"
 description: "TypeScript type definitions for all protocol messages — AccessRequest, X402Challenge, PaymentProof, AccessGrant, ChallengeRecord, and ChallengeState."
 ---
 
-# Data Models
-
 All types are exported from `@key0ai/key0` and are available as TypeScript imports:
 
 ```typescript
@@ -386,31 +384,12 @@ type X402SettleResponse = {
 };
 ```
 
----
-
-## Error Codes
-
-All errors use the `Key0Error` class with standardized codes:
-
-| Code | HTTP Status | Description |
-|------|-------------|-------------|
-| `TIER_NOT_FOUND` | 400 | Plan ID not found in the seller's catalog. |
-| `INVALID_REQUEST` | 400 | Malformed request, missing required fields, or invalid input. |
-| `CHALLENGE_NOT_FOUND` | 404 | Challenge ID not found in the store. |
-| `CHALLENGE_EXPIRED` | 410 | Challenge TTL elapsed or was cancelled. |
-| `TX_ALREADY_REDEEMED` | 409 | Transaction hash already used for another challenge. |
-| `TX_UNCONFIRMED` | 202 | Transaction not yet confirmed on-chain. Retry later. |
-| `INVALID_PROOF` | 400 | On-chain verification failed (wrong amount, wrong destination, etc.). |
-| `PROOF_ALREADY_REDEEMED` | 200 | Challenge already paid. Returns the cached `AccessGrant`. |
-| `CHAIN_MISMATCH` | 400 | Proof chainId does not match the challenge chainId. |
-| `AMOUNT_MISMATCH` | 400 | Proof amount does not match the challenge amount. |
-| `PAYMENT_FAILED` | 402 | EIP-3009 verification or settlement failed. |
-| `TOKEN_ISSUE_TIMEOUT` | 504 | `fetchResourceCredentials` callback timed out. |
-| `INTERNAL_ERROR` | 500 | Unexpected error or concurrent state transition conflict. |
-
 ## Related
 
 <CardGroup cols={2}>
+  <Card title="Error Codes" icon="triangle-exclamation" href="/sdk-reference/error-codes">
+    Complete reference of all Key0ErrorCode values and HTTP status codes.
+  </Card>
   <Card title="State Machine" icon="diagram-project" href="/architecture/state-machine">
     Visual guide to ChallengeState transitions and invariants.
   </Card>

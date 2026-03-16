@@ -274,9 +274,19 @@ function honoValidateAccessToken(config: ValidateAccessTokenConfig): MiddlewareH
 | -------- | -------- | ------------------------------------ |
 | `secret` | `string` | The JWT secret used to sign tokens   |
 
-## Related pages
+## Next Steps
 
-- [SellerConfig](/sdk-reference/seller-config) -- Configuration reference
-- [Express integration](/integrations/express) -- Full A2A JSON-RPC support (Express only)
-- [Fastify integration](/integrations/fastify)
-- [x402 HTTP Flow](/protocol/x402-http-flow)
+<CardGroup cols={2}>
+  <Card title="SellerConfig Reference" icon="sliders" href="/sdk-reference/seller-config">
+    Complete reference for every configuration option.
+  </Card>
+  <Card title="Paying for Access" icon="credit-card" href="/guides/paying-for-access">
+    How clients discover, pay, and call your protected endpoints.
+  </Card>
+  <Card title="Express Integration" icon="server" href="/integrations/express">
+    Full A2A JSON-RPC support is available on Express only.
+  </Card>
+  <Card title="x402 HTTP Flow" icon="globe" href="/protocol/x402-http-flow">
+    Full protocol reference for the payment flow.
+  </Card>
+</CardGroup>

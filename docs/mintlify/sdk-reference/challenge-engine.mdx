@@ -3,8 +3,6 @@ title: "ChallengeEngine"
 description: "API reference for ChallengeEngine — the core class that manages the challenge lifecycle from access request through payment to credential delivery."
 ---
 
-# ChallengeEngine
-
 The `ChallengeEngine` class orchestrates the full challenge lifecycle: creating challenges, verifying payments, transitioning state, and issuing credentials. It is instantiated internally by [`createKey0()`](/sdk-reference/factory) and shared across all transports (Express, Hono, Fastify, MCP).
 
 You rarely construct a `ChallengeEngine` directly. Use the factory unless you need full control over wiring.

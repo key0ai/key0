@@ -3,8 +3,6 @@ title: "Environment Variables"
 description: "Complete reference of all environment variables for standalone Docker and embedded SDK deployments."
 ---
 
-import { Tabs, Tab } from '/snippets/tabs';
-
 Configuration differs depending on whether you run Key0 as a **standalone Docker container** or **embed the SDK** directly in your application.
 
 <Tabs>
@@ -73,7 +71,7 @@ Configuration differs depending on whether you run Key0 as a **standalone Docker
 
     | Variable | Required | Default | Description |
     |---|---|---|---|
-    | `GAS_WALLET_PRIVATE_KEY` | No | -- | Private key of an ETH-funded wallet for self-contained on-chain settlement. Alternative to using the CDP facilitator. |
+    | `GAS_WALLET_PRIVATE_KEY` | No | -- | Private key of an ETH-funded wallet for self-contained on-chain settlement. Alternative to using the CDP (Coinbase Developer Platform) facilitator. |
     | `KEY0_WALLET_PRIVATE_KEY` | No | -- | Private key of the receiving wallet. Required only if you run the refund cron. |
     | `REFUND_INTERVAL_MS` | No | `60000` | How often the refund cron scans for refundable challenges, in milliseconds. |
     | `REFUND_MIN_AGE_MS` | No | `300000` | Grace period before a paid-but-undelivered challenge becomes eligible for refund, in milliseconds. |

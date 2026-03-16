@@ -1,0 +1,250 @@
+---
+title: "Production Checklist"
+description: "Everything you need to verify before going live with Key0: security, networking, infrastructure, settlement, refunds, and observability."
+---
+
+Use this checklist before you launch a Key0-powered service to real users. Production guidance is scattered across several reference pages — this page consolidates the most important items in one place.
+
+<Warning>
+  Never go live on Base mainnet without completing the security and settlement sections. A misconfigured gas wallet or weak secret can result in fund loss.
+</Warning>
+
+---
+
+## Security
+
+<Steps>
+  <Step title="Rotate all secrets">
+    - `ACCESS_TOKEN_SECRET` (embedded mode) must be **at least 32 characters** and **cryptographically random**. Generate one with:
+
+    ```bash
+    openssl rand -base64 32
+    ```
+
+    - `GAS_WALLET_PRIVATE_KEY` should be a dedicated hot wallet, never your main wallet. Fund it with just enough ETH to cover expected gas costs.
+    - `KEY0_WALLET_PRIVATE_KEY` (for the refund cron) should be stored in a secrets manager (e.g., AWS Secrets Manager, Doppler, Vault), not in `.env` files checked into source control.
+  </Step>
+  <Step title="Never expose private keys in logs or responses">
+    Key0 never logs private keys itself, but make sure your `fetchResourceCredentials` callback and `onPaymentReceived` hook do not inadvertently log sensitive data. Audit your logging pipeline.
+  </Step>
+  <Step title="Set AGENT_URL / agentUrl to your public HTTPS address">
+    The agent card (`/.well-known/agent.json`) and the `resourceEndpoint` in the `AccessGrant` both use `agentUrl` as the base URL. If it is wrong, agents will call the wrong host. In standalone mode, set `AGENT_URL=https://api.yourdomain.com`.
+  </Step>
+  <Step title="Use TLS (HTTPS) in production">
+    Run Key0 behind a reverse proxy (nginx, Caddy, AWS ALB, Cloudflare) that terminates TLS (Transport Layer Security). The x402 protocol transmits EIP-3009 signatures in HTTP headers — always use HTTPS to prevent interception.
+  </Step>
+</Steps>
+
+---
+
+## Network switch: testnet → mainnet
+
+<Steps>
+  <Step title="Set network to mainnet">
+    - **Embedded:** `network: "mainnet"` in `SellerConfig` and `new X402Adapter({ network: "mainnet" })`
+    - **Standalone:** `KEY0_NETWORK=mainnet`
+
+    Chain IDs: mainnet = `8453`, testnet (Base Sepolia) = `84532`.
+  </Step>
+  <Step title="Update USDC contract address">
+    Key0 selects the correct USDC address automatically based on the `network` setting:
+
+    | Network | USDC Address |
+    |---|---|
+    | Base mainnet | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+    | Base Sepolia | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+
+    You never need to set this manually — just ensure `network` is correct.
+  </Step>
+  <Step title="Fund wallets with real USDC and ETH">
+    - **Seller wallet** (`walletAddress` / `KEY0_WALLET_ADDRESS`): receives USDC payments. No ETH needed unless you also use it for refunds.
+    - **Gas wallet** (`GAS_WALLET_PRIVATE_KEY`): needs Base mainnet ETH to pay gas for `transferWithAuthorization`. Top up as needed.
+    - **Refund wallet** (`KEY0_WALLET_PRIVATE_KEY`): needs both USDC (to refund) and ETH (for gas). Keep a buffer for refunds in proportion to your transaction volume.
+  </Step>
+  <Step title="Verify plans are priced for mainnet">
+    If you configured plans with testnet pricing (e.g., `$0.001`), make sure they reflect your actual mainnet pricing. Agents will pay real USDC.
+  </Step>
+</Steps>
+
+---
+
+## Infrastructure
+
+<Steps>
+  <Step title="Use managed Redis and Postgres — not in-process stores">
+    The in-memory challenge store (`MemoryChallengeStore`) loses all state on restart. In production, use:
+    - **Redis** (`RedisChallengeStore`, `RedisSeenTxStore`) — required for the refund cron and gas wallet nonce locking
+    - **Postgres** (`PostgresChallengeStore`) — optional alternative for challenge storage; Postgres has stronger ACID guarantees
+
+    <Warning>
+      Redis is required even when using Postgres for challenge storage. The refund cron (BullMQ) and gas wallet distributed lock both depend on Redis.
+    </Warning>
+  </Step>
+  <Step title="Enable health checks">
+    The standalone server exposes `GET /health` returning `{ status: "ok" }`. Add this as your container/load balancer health check endpoint.
+
+    For embedded mode, add your own health endpoint that verifies the Redis/Postgres connection.
+  </Step>
+  <Step title="Pin Docker image versions">
+    Use a specific version tag in production (e.g., `key0ai/key0:1.2.3`), never `latest`. This prevents unexpected breaking changes during deployments.
+  </Step>
+  <Step title="Horizontal scaling">
+    Key0 is stateless — all state lives in Redis/Postgres. You can run multiple instances behind a load balancer with no sticky sessions. Ensure:
+    - All instances share the same Redis instance (for the gas wallet nonce lock and BullMQ)
+    - All instances share the same Postgres database (if using Postgres storage)
+  </Step>
+</Steps>
+
+---
+
+## Settlement
+
+<Steps>
+  <Step title="Choose your settlement mode">
+    Key0 supports two settlement modes. Choose one for production:
+
+    | Mode | How it works | Best for |
+    |---|---|---|
+    | **Gas Wallet** (`gasWalletPrivateKey`) | Key0 submits EIP-3009 transactions using a gas wallet you control | Full control, no third-party dependency |
+    | **CDP Facilitator** (`cdpApiKeyId` + `cdpApiKeySecret`) | Coinbase's infrastructure submits the transaction | Managed gas, simpler ops |
+
+    See [Settlement Strategies](/architecture/settlement-strategies) for a full comparison.
+  </Step>
+  <Step title="Gas wallet: ensure ETH balance">
+    If using a gas wallet, monitor its ETH balance. A depleted gas wallet will cause settlement to fail (and trigger refunds). Set up an alert when ETH balance drops below a threshold.
+  </Step>
+  <Step title="Test the full settlement path before launch">
+    Run at least one end-to-end payment on mainnet before opening to users. Verify:
+    - The on-chain transfer appears on Basescan
+    - The `AccessGrant` is returned with a valid JWT
+    - The JWT validates correctly on your protected endpoint
+  </Step>
+</Steps>
+
+---
+
+## Refunds
+
+<Steps>
+  <Step title="Enable the refund cron">
+    The refund cron is disabled by default. Enable it by providing `KEY0_WALLET_PRIVATE_KEY` (for the refund wallet) and configuring:
+
+    ```bash
+    REFUND_INTERVAL_MS=60000    # Scan every minute
+    REFUND_MIN_AGE_MS=300000    # 5-minute grace period before a PAID challenge becomes refundable
+    REFUND_BATCH_SIZE=50        # Max refunds per tick
+    ```
+
+    Or in embedded mode:
+
+    ```typescript
+    import { startRefundCron } from "@key0ai/key0";
+    startRefundCron({ store, adapter, config, intervalMs: 60_000 });
+    ```
+  </Step>
+  <Step title="Set an appropriate grace period">
+    `REFUND_MIN_AGE_MS` should be longer than your `TOKEN_ISSUE_TIMEOUT_MS` × `TOKEN_ISSUE_RETRIES` to avoid refunding challenges that are still being processed. Default: 5 minutes.
+  </Step>
+  <Step title="Monitor REFUND_FAILED state">
+    If a refund fails (e.g., insufficient ETH for gas), the challenge moves to `REFUND_FAILED`. Set up an alert for this state — manual intervention may be required. Query with:
+
+    ```sql
+    SELECT * FROM key0_challenges WHERE state = 'REFUND_FAILED';
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Observability
+
+<Steps>
+  <Step title="Enable the audit store">
+    The audit store (`IAuditStore`) logs every payment event and state transition. In production, use the Redis or Postgres audit store for durable event history:
+
+    ```typescript
+    import { RedisAuditStore } from "@key0ai/key0";
+    const auditStore = new RedisAuditStore({ redis });
+    ```
+  </Step>
+  <Step title="Use the onPaymentReceived hook">
+    Wire the `onPaymentReceived` hook in your `SellerConfig` to emit events to your analytics pipeline (Segment, Mixpanel, Amplitude, or a webhook):
+
+    ```typescript
+    onPaymentReceived: async ({ challengeId, planId, txHash, walletAddress }) => {
+      await analytics.track("payment_received", { challengeId, planId, txHash });
+    },
+    ```
+
+    This hook fires asynchronously and never blocks the payment response.
+  </Step>
+  <Step title="Set up error alerting">
+    Monitor for `INTERNAL_ERROR` and `TOKEN_ISSUE_TIMEOUT` error codes — these indicate your `fetchResourceCredentials` / `ISSUE_TOKEN_API` endpoint is failing. Excessive timeouts may trigger automatic refunds.
+  </Step>
+  <Step title="Monitor challenge state distribution">
+    A healthy system should have most challenges in `DELIVERED` state. High `REFUND_PENDING` or `REFUND_FAILED` counts indicate issues with your token issuance endpoint. Set up a dashboard query:
+
+    ```sql
+    SELECT state, COUNT(*) FROM key0_challenges
+    WHERE created_at > NOW() - INTERVAL '24 hours'
+    GROUP BY state;
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Deployment
+
+<Steps>
+  <Step title="Set all required environment variables">
+    Review the [Environment Variables](/deployment/environment-variables) reference. The minimum required for production:
+
+    **Standalone:**
+    - `KEY0_WALLET_ADDRESS`
+    - `ISSUE_TOKEN_API` (your token endpoint)
+    - `KEY0_NETWORK=mainnet`
+    - `AGENT_URL` (your public HTTPS URL)
+    - `REDIS_URL` or `DATABASE_URL`
+
+    **Embedded:**
+    - `KEY0_WALLET_ADDRESS`
+    - `ACCESS_TOKEN_SECRET` (≥ 32 chars, cryptographically random)
+    - `KEY0_NETWORK=mainnet`
+    - `REDIS_URL`
+  </Step>
+  <Step title="Reverse proxy configuration">
+    Key0 responds with custom headers (`payment-required`, `payment-response`, `www-authenticate`). Ensure your reverse proxy does not strip them. In nginx:
+
+    ```nginx
+    location / {
+        proxy_pass http://key0:3000;
+        proxy_pass_header payment-required;
+        proxy_pass_header payment-response;
+        proxy_pass_header www-authenticate;
+    }
+    ```
+  </Step>
+  <Step title="CORS (if accessed from a browser)">
+    If agents running in browsers call your Key0 endpoints directly, configure CORS to allow the `payment-signature` request header and expose `payment-required` and `payment-response` in responses.
+  </Step>
+</Steps>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="gear" href="/deployment/environment-variables">
+    Complete reference for all configuration options.
+  </Card>
+  <Card title="Settlement Strategies" icon="link" href="/architecture/settlement-strategies">
+    Gas wallet vs. CDP facilitator — detailed tradeoffs.
+  </Card>
+  <Card title="Refunds" icon="rotate-left" href="/architecture/refunds">
+    How the automatic refund cron works and how to configure it.
+  </Card>
+  <Card title="Storage" icon="database" href="/architecture/storage">
+    Redis and Postgres backends for challenge state and audit logs.
+  </Card>
+</CardGroup>

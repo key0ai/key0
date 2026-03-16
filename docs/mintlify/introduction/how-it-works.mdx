@@ -3,6 +3,10 @@ title: "How It Works"
 description: "Key0's two-phase payment flow: challenge, pay, access."
 ---
 
+<Note>
+  Unfamiliar with terms like EIP-3009, x402, AccessGrant, or ChallengeEngine? Read [Core Concepts](/introduction/core-concepts) first.
+</Note>
+
 Key0 uses a **three-phase payment flow** to gate API access behind on-chain USDC payments on Base. Every transaction follows the same pattern regardless of transport.
 
 <Steps>
@@ -51,7 +55,9 @@ sequenceDiagram
 
 The client calls `GET /discovery` to retrieve the full plan catalog. The response contains one entry per configured plan with its `planId`, USDC amount, seller wallet, and chain ID. No challenge record is created.
 
-Note: `POST /x402/access` without a `planId` returns HTTP **400** with a pointer to `GET /discovery` — it is not the discovery endpoint.
+<Note>
+  `POST /x402/access` without a `planId` returns HTTP **400** with a pointer to `GET /discovery` — it is not the discovery endpoint.
+</Note>
 
 ## Phase 2 -- Challenge
 
@@ -85,6 +91,9 @@ Both entry points share the same `ChallengeEngine` instance, so payment logic, s
 ## Next Steps
 
 <CardGroup cols={2}>
+  <Card title="Paying for Access" icon="credit-card" href="/guides/paying-for-access">
+    The buyer's perspective: sign EIP-3009, submit payment, and use the access token.
+  </Card>
   <Card title="Payment Flow Details" icon="diagram-project" href="/architecture/payment-flow">
     Full walkthrough of every state transition and error path.
   </Card>
@@ -93,8 +102,5 @@ Both entry points share the same `ChallengeEngine` instance, so payment logic, s
   </Card>
   <Card title="Settlement Strategies" icon="link" href="/architecture/settlement-strategies">
     Direct transfer vs. EIP-3009 authorization and facilitator settlement.
-  </Card>
-  <Card title="Two Modes" icon="toggle-on" href="/introduction/two-modes">
-    Embedded SDK vs. standalone Docker service.
   </Card>
 </CardGroup>

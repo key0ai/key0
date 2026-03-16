@@ -3,8 +3,6 @@ title: "Overview"
 description: "All HTTP endpoints served by Key0 at a glance."
 ---
 
-# API Reference
-
 Key0 exposes a set of HTTP endpoints for agent discovery, payment-gated access, and protocol interoperability. All endpoints are served by a single Express router created via `key0Router()`.
 
 ## Endpoints
@@ -37,12 +35,9 @@ Key0 exposes a set of HTTP endpoints for agent discovery, payment-gated access, 
 
 ## Authentication Model
 
-Key0 uses the x402 payment protocol instead of traditional API keys. The flow works as follows:
+Key0 uses the x402 payment protocol instead of traditional API keys: discover a plan, request a challenge (402), sign an EIP-3009 authorization, settle on-chain, receive a Bearer token.
 
-1. **Discovery** -- The client fetches the Agent Card or calls `GET /discovery` to learn available plans and pricing.
-2. **Challenge** -- The client sends a request with a `planId`. The server responds with HTTP 402 and payment requirements (amount, wallet address, chain ID).
-3. **Settlement** -- The client signs an EIP-3009 authorization off-chain, encodes it as a `PAYMENT-SIGNATURE` header, and retries the same request. The server settles the payment on-chain and returns an `AccessGrant` containing a bearer token.
-4. **Access** -- The client uses the bearer token from the `AccessGrant` to call protected resource endpoints.
+For the full three-phase flow explanation and sequence diagram, see [How It Works](/introduction/how-it-works).
 
 ## Base URL
 

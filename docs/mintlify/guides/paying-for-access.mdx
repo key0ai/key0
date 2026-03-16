@@ -1,0 +1,453 @@
+---
+title: "Paying for Access"
+description: "How an agent discovers a Key0-protected API, pays in USDC, and calls the protected endpoint — with a full EIP-3009 code example."
+---
+
+This guide is written from the **buyer's perspective**. If you are building the seller side, see [Building a Seller](/guides/building-a-seller). If you want a fully automated setup via Claude Code, see [Claude Code Integration](/guides/claude-code-integration).
+
+By the end of this guide you will understand how to:
+1. Discover a Key0 service and its plans
+2. Request a payment challenge
+3. Sign an EIP-3009 authorization and submit payment
+4. Receive and use the `AccessGrant` token
+5. Handle common errors
+
+<Note>
+  New to Key0? Read [Core Concepts](/introduction/core-concepts) first to understand terms like Plan, Challenge, AccessGrant, and EIP-3009.
+</Note>
+
+## What you need
+
+- A wallet private key with **USDC on Base Sepolia** (testnet) or **Base** (mainnet). Get free testnet USDC from [faucet.circle.com](https://faucet.circle.com) (select Base Sepolia).
+- The seller's base URL (e.g., `https://api.example.com`)
+- **viem** for EIP-3009 signing (`npm install viem`)
+
+<Warning>
+  Never use your mainnet private key for development. Use a dedicated testing wallet with only testnet funds.
+</Warning>
+
+---
+
+## Step 1: Discover the service
+
+Call `GET /discovery` to browse available plans. This returns plan IDs, USDC amounts, the seller's wallet address, and the chain ID — everything you need to construct a payment.
+
+```bash
+curl https://api.example.com/discovery
+```
+
+```json Response
+{
+  "discoveryResponse": {
+    "x402Version": 2,
+    "accepts": [
+      {
+        "scheme": "exact",
+        "network": "eip155:84532",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "amount": "100000",
+        "payTo": "0xSellerWallet...",
+        "maxTimeoutSeconds": 900,
+        "extra": {
+          "name": "USDC",
+          "version": "2",
+          "planId": "basic",
+          "description": "Basic plan - $0.10 USDC"
+        }
+      }
+    ]
+  }
+}
+```
+
+Key fields to extract:
+- `extra.planId` — the ID to use when requesting access
+- `amount` — USDC micro-units (6 decimals): `100000` = $0.10
+- `payTo` — the seller's USDC-receiving wallet address
+- `network` — CAIP-2 (Chain Agnostic Improvement Proposal) chain ID: `eip155:84532` = Base Sepolia, `eip155:8453` = Base mainnet
+- `asset` — the USDC ERC-20 contract address on that chain
+
+Alternatively, fetch the A2A agent card for a human-readable description of the service and its skills:
+
+```bash
+curl https://api.example.com/.well-known/agent.json
+```
+
+---
+
+## Step 2: Request a challenge
+
+Send `POST /x402/access` with the `planId` (and optionally a `requestId` and `resourceId`). The server creates a PENDING challenge and responds with HTTP 402.
+
+```bash
+curl -X POST https://api.example.com/x402/access \
+  -H "Content-Type: application/json" \
+  -d '{
+    "planId": "basic",
+    "requestId": "550e8400-e29b-41d4-a716-446655440000",
+    "resourceId": "photo-42"
+  }'
+```
+
+```json Response (HTTP 402)
+{
+  "x402Version": 2,
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:84532",
+      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "amount": "100000",
+      "payTo": "0xSellerWallet...",
+      "maxTimeoutSeconds": 900
+    }
+  ],
+  "challengeId": "http-a1b2c3d4-...",
+  "error": "Payment required"
+}
+```
+
+<Note>
+  Always supply a stable `requestId` (UUID). If the request fails and you retry with the same `requestId`, the server returns the existing challenge instead of creating a duplicate. If you omit it, the server auto-generates one — but you lose safe retry behavior.
+</Note>
+
+Also check the `payment-required` response header — it contains a base64-encoded copy of the same payment requirements, which some x402-aware clients read automatically.
+
+---
+
+## Step 3: Sign the EIP-3009 authorization
+
+This is where the buyer pays — **without sending a transaction**. You sign an off-chain EIP-712 typed-data message authorizing a USDC transfer. The seller's gas wallet submits the actual on-chain transaction and pays the gas fees.
+
+### The EIP-3009 typed data structure
+
+```typescript
+const TRANSFER_WITH_AUTHORIZATION_TYPES = {
+  TransferWithAuthorization: [
+    { name: "from",        type: "address" },
+    { name: "to",          type: "address" },
+    { name: "value",       type: "uint256" },
+    { name: "validAfter",  type: "uint256" },
+    { name: "validBefore", type: "uint256" },
+    { name: "nonce",       type: "bytes32" },
+  ],
+} as const;
+```
+
+Field explanation:
+- `from` — your wallet address (the payer)
+- `to` — the seller's wallet address (from `payTo` in the discovery response)
+- `value` — USDC amount in micro-units (from `amount` in the discovery response)
+- `validAfter` — earliest time the authorization is valid (use `0` for immediate)
+- `validBefore` — latest time (Unix timestamp); set to `now + 300` seconds (5 minutes)
+- `nonce` — a random 32-byte value that prevents replay attacks; generate a fresh one for every payment
+
+### Full signing example (TypeScript + viem)
+
+```typescript
+import { createWalletClient, http } from "viem";
+import { baseSepolia } from "viem/chains";
+import { privateKeyToAccount } from "viem/accounts";
+import { randomBytes } from "node:crypto";
+
+const account = privateKeyToAccount(process.env.WALLET_PRIVATE_KEY as `0x${string}`);
+const walletClient = createWalletClient({
+  account,
+  chain: baseSepolia,
+  transport: http(),
+});
+
+// Values from Step 1 (discovery) and Step 2 (challenge)
+const USDC_ADDRESS     = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Base Sepolia
+const USDC_DOMAIN      = { name: "USDC", version: "2" };
+const CHAIN_ID         = 84532;
+const payTo            = "0xSellerWallet..." as `0x${string}`;
+const amountRaw        = BigInt("100000");           // $0.10 USDC
+
+// Generate a fresh nonce for this payment
+const nonce = `0x${randomBytes(32).toString("hex")}` as `0x${string}`;
+const validAfter  = 0n;
+const validBefore = BigInt(Math.floor(Date.now() / 1000) + 300); // 5-minute window
+
+const signature = await walletClient.signTypedData({
+  account,
+  domain: {
+    name:              USDC_DOMAIN.name,
+    version:           USDC_DOMAIN.version,
+    chainId:           CHAIN_ID,
+    verifyingContract: USDC_ADDRESS,
+  },
+  types: {
+    TransferWithAuthorization: [
+      { name: "from",        type: "address" },
+      { name: "to",          type: "address" },
+      { name: "value",       type: "uint256" },
+      { name: "validAfter",  type: "uint256" },
+      { name: "validBefore", type: "uint256" },
+      { name: "nonce",       type: "bytes32" },
+    ],
+  },
+  primaryType: "TransferWithAuthorization",
+  message: {
+    from:        account.address,
+    to:          payTo,
+    value:       amountRaw,
+    validAfter,
+    validBefore,
+    nonce,
+  },
+});
+```
+
+### Build the payment-signature header
+
+Once you have the signature, assemble the `X402PaymentPayload` and base64-encode it:
+
+```typescript
+const paymentPayload = {
+  x402Version: 2,
+  network: `eip155:${CHAIN_ID}`,
+  scheme: "exact",
+  payload: {
+    signature,
+    authorization: {
+      from:        account.address,
+      to:          payTo,
+      value:       amountRaw.toString(),
+      validAfter:  validAfter.toString(),
+      validBefore: validBefore.toString(),
+      nonce,
+    },
+    from: account.address,
+  },
+  // Echo the PaymentRequirements from the 402 response
+  accepted: {
+    scheme:            "exact",
+    network:           `eip155:${CHAIN_ID}`,
+    asset:             USDC_ADDRESS,
+    amount:            amountRaw.toString(),
+    payTo,
+    maxTimeoutSeconds: 900,
+    extra: { name: "USDC", version: "2" },
+  },
+};
+
+const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
+```
+
+<Note>
+  The `accepted` field must echo the `PaymentRequirements` from the 402 response. Key0 uses it to verify that the client agreed to the correct terms (amount, destination, network).
+</Note>
+
+---
+
+## Step 4: Submit payment and receive the AccessGrant
+
+Retry `POST /x402/access` with the same `planId`, `requestId`, and `resourceId`, plus the `payment-signature` header:
+
+```typescript
+const response = await fetch("https://api.example.com/x402/access", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "payment-signature": paymentSignature,
+  },
+  body: JSON.stringify({
+    planId:    "basic",
+    requestId: "550e8400-e29b-41d4-a716-446655440000",
+    resourceId: "photo-42",
+    clientAgentId: `agent://${account.address}`,
+  }),
+});
+
+const grant = await response.json();
+```
+
+```json Response (HTTP 200)
+{
+  "type": "AccessGrant",
+  "challengeId": "http-a1b2c3d4-...",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "tokenType": "Bearer",
+  "resourceEndpoint": "https://api.example.com/photos/photo-42",
+  "resourceId": "photo-42",
+  "planId": "basic",
+  "txHash": "0xSettledTx...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx..."
+}
+```
+
+Key fields:
+- `accessToken` — the credential to use on the protected endpoint
+- `resourceEndpoint` — the URL to call with the token
+- `txHash` — the on-chain transaction hash (your receipt)
+- `explorerUrl` — link to view the transaction on Basescan
+
+---
+
+## Step 5: Use the access token
+
+Call `resourceEndpoint` with `Authorization: Bearer <accessToken>`:
+
+```typescript
+const data = await fetch(grant.resourceEndpoint, {
+  headers: {
+    Authorization: `Bearer ${grant.accessToken}`,
+  },
+});
+const result = await data.json();
+```
+
+```bash curl equivalent
+curl https://api.example.com/photos/photo-42 \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..."
+```
+
+---
+
+## Error handling
+
+Key0 errors follow a consistent JSON structure:
+
+```json
+{
+  "type": "Error",
+  "code": "CHALLENGE_EXPIRED",
+  "message": "Challenge TTL elapsed",
+  "httpStatus": 410
+}
+```
+
+Common errors a buyer will encounter:
+
+| Code | HTTP | Cause | Fix |
+|---|---|---|---|
+| `CHALLENGE_EXPIRED` | 410 | The challenge TTL (default 15 minutes) elapsed before payment arrived | Start over: call `POST /x402/access` again to get a fresh challenge |
+| `AMOUNT_MISMATCH` | 400 | `authorization.value` doesn't match the challenge amount | Re-read the `amount` from the 402 response and sign again |
+| `TX_ALREADY_REDEEMED` | 409 | The same transaction hash was submitted twice | Do not reuse `nonce` values; generate a fresh random nonce for every payment |
+| `PROOF_ALREADY_REDEEMED` | 200 | The `requestId` was already settled | The response body contains the cached `AccessGrant` — use it directly |
+| `INVALID_PROOF` | 400 | EIP-3009 signature verification failed | Check that `domain.chainId`, `domain.verifyingContract`, and `domain.version` match the network |
+| `PAYMENT_FAILED` | 402 | Settlement failed on-chain | Verify wallet has sufficient USDC balance and the EIP-3009 `validBefore` has not expired |
+
+See [Error Codes](/sdk-reference/error-codes) for the complete list.
+
+---
+
+## Full working example
+
+The following is a complete runnable TypeScript script that performs the full discovery → challenge → payment → access flow using viem:
+
+```typescript
+import { createPublicClient, createWalletClient, http } from "viem";
+import { baseSepolia } from "viem/chains";
+import { privateKeyToAccount } from "viem/accounts";
+import { randomBytes } from "node:crypto";
+
+const KEY0_URL     = "https://api.example.com";
+const PRIVATE_KEY  = process.env.WALLET_PRIVATE_KEY as `0x${string}`;
+const PLAN_ID      = "basic";
+const RESOURCE_ID  = "photo-42";
+
+// ── Setup ───────────────────────────────────────────────────────────────────
+const account = privateKeyToAccount(PRIVATE_KEY);
+const walletClient = createWalletClient({ account, chain: baseSepolia, transport: http() });
+
+// ── Step 1: Discover plans ──────────────────────────────────────────────────
+const discoveryRes  = await fetch(`${KEY0_URL}/discovery`);
+const discovery     = await discoveryRes.json();
+const requirements  = discovery.discoveryResponse.accepts[0];
+const payTo         = requirements.payTo  as `0x${string}`;
+const amountRaw     = BigInt(requirements.amount);
+const usdcAddress   = requirements.asset  as `0x${string}`;
+const chainId       = parseInt(requirements.network.split(":")[1]);
+console.log(`Plan: ${PLAN_ID} — ${Number(amountRaw) / 1e6} USDC → ${payTo}`);
+
+// ── Step 2: Request a challenge ─────────────────────────────────────────────
+const requestId  = crypto.randomUUID();
+const challengeRes = await fetch(`${KEY0_URL}/x402/access`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ planId: PLAN_ID, requestId, resourceId: RESOURCE_ID }),
+});
+const challenge = await challengeRes.json();
+console.log(`Challenge: ${challenge.challengeId}`);
+
+// ── Step 3: Sign EIP-3009 authorization ────────────────────────────────────
+const nonce       = `0x${randomBytes(32).toString("hex")}` as `0x${string}`;
+const validAfter  = 0n;
+const validBefore = BigInt(Math.floor(Date.now() / 1000) + 300);
+
+const signature = await walletClient.signTypedData({
+  account,
+  domain: { name: "USDC", version: "2", chainId, verifyingContract: usdcAddress },
+  types: {
+    TransferWithAuthorization: [
+      { name: "from",        type: "address" },
+      { name: "to",          type: "address" },
+      { name: "value",       type: "uint256" },
+      { name: "validAfter",  type: "uint256" },
+      { name: "validBefore", type: "uint256" },
+      { name: "nonce",       type: "bytes32" },
+    ],
+  },
+  primaryType: "TransferWithAuthorization",
+  message: { from: account.address, to: payTo, value: amountRaw, validAfter, validBefore, nonce },
+});
+
+const paymentPayload = {
+  x402Version: 2,
+  network: requirements.network,
+  scheme: "exact",
+  payload: {
+    signature,
+    authorization: {
+      from: account.address, to: payTo,
+      value: amountRaw.toString(),
+      validAfter: validAfter.toString(), validBefore: validBefore.toString(),
+      nonce,
+    },
+    from: account.address,
+  },
+  accepted: requirements,
+};
+const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
+
+// ── Step 4: Submit payment ──────────────────────────────────────────────────
+const accessRes = await fetch(`${KEY0_URL}/x402/access`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", "payment-signature": paymentSignature },
+  body: JSON.stringify({
+    planId: PLAN_ID, requestId, resourceId: RESOURCE_ID,
+    clientAgentId: `agent://${account.address}`,
+  }),
+});
+const grant = await accessRes.json();
+console.log(`Access granted! Token: ${grant.accessToken.slice(0, 20)}...`);
+console.log(`Explorer: ${grant.explorerUrl}`);
+
+// ── Step 5: Call the protected resource ────────────────────────────────────
+const data = await fetch(grant.resourceEndpoint, {
+  headers: { Authorization: `Bearer ${grant.accessToken}` },
+});
+console.log("Protected data:", await data.json());
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Claude Code Integration" icon="terminal" href="/guides/claude-code-integration">
+    Use payments-mcp to automate the payment flow from Claude Code or Cursor.
+  </Card>
+  <Card title="x402 HTTP Flow" icon="globe" href="/protocol/x402-http-flow">
+    Full protocol reference: headers, request/response schemas, and three-cases breakdown.
+  </Card>
+  <Card title="A2A Flow" icon="arrows-left-right" href="/protocol/a2a-flow">
+    The JSON-RPC based agent-to-agent payment protocol.
+  </Card>
+  <Card title="Error Codes" icon="triangle-exclamation" href="/sdk-reference/error-codes">
+    Complete list of all Key0 error codes and their meanings.
+  </Card>
+</CardGroup>
