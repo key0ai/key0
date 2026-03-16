@@ -792,10 +792,11 @@ bun run build        # Compile to ./dist
 
 ## Documentation
 
-- [SPEC.md](./SPEC.md) — Protocol specification
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines and development setup (`github.com/key0ai/key0`)
-- [setup-ui.md](./docs/setup-ui.md) — Setup UI: architecture, Docker integration, config flow, plan editor
-- [Refund_flow.md](./docs/Refund_flow.md) — Refund system: state machine, store TTLs, double-refund prevention, failure handling
-- [mcp-integration.md](./docs/mcp-integration.md) — MCP server: transport choice, stateless architecture, tool design, concerns
-- [FLOW.md](./docs/FLOW.md) — Detailed payment flow, state machine diagrams, and health check endpoint
+Full documentation at **[docs.key0.ai](https://docs.key0.ai/introduction/overview)**.
 
+- [SPEC.md](./SPEC.md) — Protocol specification
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guidelines
+- [setup-ui.md](./docs/setup-ui.md) — Setup UI architecture
+- [Refund_flow.md](./docs/Refund_flow.md) — Refund state machine
+- [mcp-integration.md](./docs/mcp-integration.md) — MCP transport
+- [FLOW.md](./docs/FLOW.md) — Payment flow diagrams
