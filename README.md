@@ -132,6 +132,7 @@ Client                Key0                    Seller Server
      │ ◀── protected content                       │
 ```
 
+
 ---
 
 ## Standalone Mode
