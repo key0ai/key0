@@ -14,6 +14,19 @@ By the end of this guide you will have a running Key0 Docker container that:
   New to Key0? Read [Core Concepts](/introduction/core-concepts) first to understand terms like Plan, Challenge, AccessGrant, and EIP-3009. See [Two Modes](/introduction/two-modes) to understand how Standalone differs from Embedded.
 </Note>
 
+<Frame>
+  <iframe
+    width="560"
+    height="315"
+    src="https://www.youtube.com/embed/pEio0ora9GI?si=sM7hzPh58iqAOQwj"
+    title="Key0 Docker Tutorial"
+    frameBorder="0"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerPolicy="strict-origin-when-cross-origin"
+    allowFullScreen
+  />
+</Frame>
+
 Run Key0 as a standalone service in Docker. It handles agent discovery, payment verification, and credential issuance -- your existing API only needs to expose a single token-issuing endpoint.
 
 <Tabs>
@@ -26,8 +39,16 @@ Run Key0 as a standalone service in Docker. It handles agent discovery, payment 
       <Step title="Start the container">
         The `full` profile starts Key0 with managed Redis and Postgres -- batteries included.
 
+        Download the Docker Compose file:
+
         ```bash
-        docker compose -f docker/docker-compose.yml --profile full up
+        curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/key0ai/key0/refs/heads/main/docker/docker-compose.yml
+        ```
+
+        Then start the services:
+
+        ```bash
+        docker compose --profile full up
         ```
       </Step>
 
