@@ -581,7 +581,7 @@ GAS_WALLET_PRIVATE_KEY=0xYourPrivateKey
 
 ## Clients
 
-Any agent that can hold a wallet and sign an on-chain USDC transfer can pay Key0-protected APIs autonomously — no human in the loop.
+Any agent that can hold a wallet and sign an on-chain USDC transfer can access Key0-gated APIs autonomously — no human in the loop, no pre-registration, no manual API key management. Payment is the credential.
 
 ### Coding Agents (e.g. Claude Code)
 
