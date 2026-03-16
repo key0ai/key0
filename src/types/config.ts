@@ -83,7 +83,7 @@ export type SellerConfig = {
 	readonly mcp?: boolean | undefined;
 
 	// Customization
-	readonly basePath?: string; // defaults to "/a2a"
+	readonly basePath?: string; // defaults to "/agent"
 	readonly resourceEndpointTemplate?: string; // e.g. "https://api.example.com/photos/{resourceId}"
 
 	// Settlement strategy (optional — defaults to facilitatorUrl mode)

@@ -12,7 +12,7 @@ export { ChallengeEngine } from "./challenge-engine.js";
 export { validateSellerConfig } from "./config-validation.js";
 export type { RefundConfig, RefundResult } from "./refund.js";
 // Refund Utility
-export { processRefunds } from "./refund.js";
+export { processRefunds, retryFailedRefunds } from "./refund.js";
 export type { PostgresStoreConfig } from "./storage/postgres.js";
 // Storage — Postgres
 export {

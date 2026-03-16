@@ -376,8 +376,11 @@ fastify.listen({ port: 3000 });
 | `network` | `"testnet" \| "mainnet"` | ✅ | — | Base Sepolia or Base |
 | `plans` | `Plan[]` | ✅ | — | Pricing plans |
 | `fetchResourceCredentials` | `(params) => Promise<TokenIssuanceResult>` | ✅ | — | Issue the credential after payment |
+| `tokenIssueTimeoutMs` | `number` | | `15000` | Timeout for `fetchResourceCredentials` callback (ms) |
+| `tokenIssueRetries` | `number` | | `2` | Max retries for `fetchResourceCredentials` on transient failure |
 | `challengeTTLSeconds` | `number` | | `900` | Challenge validity window |
-| `basePath` | `string` | | `"/a2a"` | Path prefix for agent card and A2A routes |
+| `version` | `string` | | `"1.0.0"` | Agent version shown in agent card and MCP discovery |
+| `basePath` | `string` | | `"/agent"` | Path prefix for resource endpoint URLs |
 | `resourceEndpointTemplate` | `string` | | auto | URL template (use `{resourceId}`) |
 | `gasWalletPrivateKey` | `0x${string}` | | — | Private key for self-contained settlement |
 | `redis` | `IRedisLockClient` | | — | Redis client for distributed gas wallet settlement locking across replicas |
@@ -453,6 +456,17 @@ await queue.add("process", {}, { repeat: { every: 60_000 } });
 
 > The `walletPrivateKey` must correspond to `walletAddress` — the wallet that received the USDC payments.
 > Without Redis, a plain `setInterval` works for single-instance deployments (the atomic `PAID → REFUND_PENDING` CAS transition prevents double-refunds even with multiple overlapping ticks).
+
+**Retrying failed refunds:**
+
+If a refund fails (e.g. network error), the record moves to `REFUND_FAILED`. Use `retryFailedRefunds` to re-queue them:
+
+```typescript
+import { retryFailedRefunds } from "@key0ai/key0";
+
+// Re-queue specific failed refunds — they'll be picked up by the next processRefunds run
+const requeued = await retryFailedRefunds(store, ["challengeId-1", "challengeId-2"]);
+```
 
 ### Environment Variables
 
@@ -682,6 +696,21 @@ fetchResourceCredentials: async (params) => {
 const decoded = await issuer.verifyWithFallback(token, [process.env.PREVIOUS_SECRET!]);
 ```
 
+### Lightweight Token Validator (Backend Services)
+
+If your backend only needs to validate Key0 tokens without the full SDK, use `validateKey0Token`:
+
+```typescript
+import { validateKey0Token } from "@key0ai/key0";
+
+const payload = await validateKey0Token(req.headers.authorization, {
+  secret: process.env.ACCESS_TOKEN_SECRET!,
+});
+// payload: { sub, jti, resourceId, planId, txHash, ... }
+```
+
+Supports both HS256 (shared secret) and RS256 (public key) algorithms. No blockchain connection needed.
+
 ### Settlement Strategies
 
 **Facilitator (default)** — Coinbase CDP executes an EIP-3009 `transferWithAuthorization` on-chain:
@@ -701,10 +730,10 @@ The gas wallet must hold ETH on Base to pay transaction fees.
 
 ## Networks
 
-| Network | Chain | Chain ID | USDC Contract | EIP-712 Domain Name |
-|---|---|---|---|---|
-| `testnet` | Base Sepolia | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `USD Coin` |
-| `mainnet` | Base | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | `USD Coin` |
+| Network | Chain | Chain ID | USDC Contract | EIP-712 Domain Name | EIP-712 Version |
+|---|---|---|---|---|---|
+| `testnet` | Base Sepolia | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `USDC` | `2` |
+| `mainnet` | Base | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | `USDC` | `2` |
 
 ---
 
@@ -739,6 +768,7 @@ bun run start
 | [`examples/refund-cron-example`](./examples/refund-cron-example) | BullMQ refund cron with Redis-backed storage |
 | [`examples/backend-integration`](./examples/backend-integration) | Key0 service + backend API coordination |
 | [`examples/client-agent`](./examples/client-agent) | Buyer agent with real on-chain USDC payments |
+| [`examples/simple-x402-client.ts`](./examples/simple-x402-client.ts) | Minimal x402 HTTP client example (single file) |
 
 ---
 

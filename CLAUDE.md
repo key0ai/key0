@@ -44,14 +44,14 @@ Client → Protected API with Bearer JWT
 1. **Types** (`src/types/`) — Protocol-agnostic interfaces: `IPaymentAdapter`, `IChallengeStore`, `ISeenTxStore`, `IAuditStore`, plus all message types (`AccessRequest`, `X402Challenge`, `PaymentProof`, `AccessGrant`).
 
 2. **Core** (`src/core/`) — Business logic:
-   - `challenge-engine.ts` — State machine (PENDING → PAID → DELIVERED | PENDING → EXPIRED | PENDING → CANCELLED | PAID → REFUND_PENDING → REFUNDED | PAID → REFUND_PENDING → REFUND_FAILED). Owns the full challenge lifecycle, on-chain verification dispatch, and token issuance.
+   - `challenge-engine.ts` — State machine (PENDING → PAID → DELIVERED | PENDING → EXPIRED | PENDING → CANCELLED | PAID → REFUND_PENDING → REFUNDED | PAID → REFUND_PENDING → REFUND_FAILED | REFUND_FAILED → PAID via `retryFailedRefunds`). Owns the full challenge lifecycle, on-chain verification dispatch, and token issuance. Key methods: `requestAccess` (A2A), `requestHttpAccess` (HTTP x402 PENDING record), `preSettlementCheck` (avoid burning USDC), `processHttpPayment` (PENDING → PAID → DELIVERED for HTTP/MCP flows), `submitProof` (A2A proof verification).
    - `access-token.ts` — JWT issuance/verification (HS256 or RS256). Supports fallback secrets for zero-downtime rotation.
    - `agent-card.ts` — Auto-generates A2A discovery card from `SellerConfig`.
    - `storage/` — `IChallengeStore` + `ISeenTxStore` + `IAuditStore`. Redis implementations: `RedisChallengeStore`, `RedisSeenTxStore`, `RedisAuditStore`. Postgres implementations: `PostgresChallengeStore`, `PostgresSeenTxStore`, `PostgresAuditStore`. Uses atomic Lua scripts (Redis) for concurrent state transitions. `IChallengeStore` and `ISeenTxStore` are required; `IAuditStore` is optional (audit trail).
 
 3. **Adapter** (`src/adapter/`) — `X402Adapter`: verifies ERC-20 Transfer events on Base via viem. Supports `mainnet` (chainId 8453) and `testnet`/Base Sepolia (chainId 84532).
 
-4. **Integrations** (`src/integrations/`) — Framework adapters mount a unified `POST /x402/access` endpoint (with `X-A2A-Extensions` header routing to A2A JSON-RPC) and export `validateAccessToken` middleware for protecting routes. Available for Express, Hono, Fastify, and MCP (Streamable HTTP transport via `@modelcontextprotocol/sdk`). Settlement helpers (`buildHttpPaymentRequirements`, `decodePaymentSignature`, `settleViaFacilitator`) live in `settlement.ts`.
+4. **Integrations** (`src/integrations/`) — Framework adapters mount a unified `POST /x402/access` endpoint (with `X-A2A-Extensions` header routing to A2A JSON-RPC), `GET /discovery` (plan catalog, no PENDING record), and export `validateAccessToken` middleware for protecting routes. Available for Express, Hono, Fastify, and MCP (Streamable HTTP transport via `@modelcontextprotocol/sdk`). Settlement helpers in `settlement.ts`: `buildHttpPaymentRequirements`, `buildDiscoveryResponse`, `decodePaymentSignature`, `settleViaFacilitator`, `settleViaGasWallet`, and the unified `settlePayment` entry point (auto-selects strategy based on config, serialises gas wallet calls via `withGasWalletLock`).
 
 5. **Executor** (`src/executor.ts`) — `Key0Executor` implements `@a2a-js/sdk`'s `AgentExecutor` for the A2A protocol flow.
 
@@ -61,7 +61,7 @@ Client → Protected API with Bearer JWT
 
 ### Entry Points
 
-- Main: `src/index.ts` — exports all types, core, adapter, helpers, middleware, executor, factory.
+- Main: `src/index.ts` — exports all types, core, adapter, helpers, middleware, executor, factory, and the lightweight `validateKey0Token` validator (`src/validator/index.ts` — for backend services that only need token validation without the full SDK).
 - Framework subpaths: `./express`, `./hono`, `./fastify`, `./mcp` (see `package.json` exports).
 
 ### Storage Abstraction
@@ -70,15 +70,15 @@ Client → Protected API with Bearer JWT
 
 ### Auth Helpers (`src/helpers/`)
 
-`noAuth`, `createSharedSecretAuth`, `createJwtAuth`, `createOAuthAuth` — service-to-service auth strategies for outbound requests from client agents. `noAuth` sends no headers (local dev / trusted networks). `RemoteVerifier` and `RemoteTokenIssuer` wrap remote Key0 endpoints.
+`noAuth`, `sharedSecretAuth`, `signedJwtAuth`, `oauthClientCredentialsAuth` — service-to-service auth strategies for outbound requests from client agents. `noAuth` sends no headers (local dev / trusted networks). `createRemoteTokenIssuer` wraps a remote HTTP endpoint as a `fetchResourceCredentials` callback.
 
 ## Key Configuration
 
-`SellerConfig` drives everything: `walletAddress`, `network`, `plans` (array of plans with `planId`, `unitAmount`, optional `description`).
+`SellerConfig` drives everything: `walletAddress`, `network`, `plans` (array of plans with `planId`, `unitAmount`, optional `description`), `basePath` (default `"/agent"` — used for resource endpoint URLs).
 
-Required callback: `fetchResourceCredentials` (issue credential after payment — JWT, API key, etc.).
+Required callback: `fetchResourceCredentials` (issue credential after payment — JWT, API key, etc.). Configurable via `tokenIssueTimeoutMs` (default 15s) and `tokenIssueRetries` (default 2).
 
-Optional callbacks: `onPaymentReceived`, `onChallengeExpired`.
+Optional: `version` (default `"1.0.0"`), `facilitatorUrl` (override CDP default), `gasWalletPrivateKey` (self-contained settlement), `redis` (distributed gas wallet lock), `onPaymentReceived`, `onChallengeExpired`.
 
 When `mcp: true` is set, the Express router also mounts MCP routes (`/.well-known/mcp.json` discovery + `POST /mcp` Streamable HTTP endpoint) exposing `discover_plans` and `request_access` tools. Payment follows the x402 MCP transport spec (`isError` + `structuredContent` + `_meta`). See `docs/mcp-integration.md`.
 
