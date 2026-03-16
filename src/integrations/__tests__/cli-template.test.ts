@@ -74,7 +74,7 @@ describe("runDiscover", () => {
 		expect(result).toEqual({ exitCode: 0, output: mockBody });
 		expect(globalThis.fetch).toHaveBeenCalledWith("https://api.example.com/discovery", {
 			method: "GET",
-			headers: { "Content-Type": "application/json" },
+			headers: { Accept: "application/json" },
 		});
 	});
 

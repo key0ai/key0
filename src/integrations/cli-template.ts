@@ -20,7 +20,7 @@ export async function runDiscover(baseUrl: string): Promise<CliResult> {
 	try {
 		response = await fetch(`${baseUrl}/discovery`, {
 			method: "GET",
-			headers: { "Content-Type": "application/json" },
+			headers: { Accept: "application/json" },
 		});
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
