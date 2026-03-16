@@ -18,8 +18,8 @@ agent builders are primary audiences.
 - **ASCII diagrams:** Keep all of them. Clean up alignment.
 - **Reference tables:** Keep all of them (env vars, SellerConfig, Plan, etc.).
 - **Docs link:** `https://docs.key0.ai/introduction/overview` must appear
-  prominently — both in the hero nav row and as the lead line in the
-  Documentation section.
+  prominently — both in the hero nav row (full URL including path) and as the
+  lead line in the Documentation section.
 
 ---
 
@@ -67,7 +67,7 @@ the document.
 Commerce infrastructure for the agentic web. Let AI agents discover,
 pay for, and access your APIs autonomously — no human in the loop.
 
-[Docs](https://docs.key0.ai) · [Quick Start](#quick-start) · [Book a Demo](https://key0.ai/book-a-demo)
+[Docs](https://docs.key0.ai/introduction/overview) · [Quick Start](#quick-start) · [Book a Demo](https://key0.ai/book-a-demo)
 
 ---
 
@@ -195,7 +195,10 @@ Intro (1 sentence):
 Topology diagram showing 3-party separation (Client Agent | Key0 Docker | Your Backend).
 
 Then:
-- Quick Start: Option A (Setup UI) + Option B (env vars) — kept as-is
+- Quick Start: Option A (Setup UI) + Option B (env vars) — kept as-is, including
+  the `docker compose` command. The command appears in both section 3 and section 5
+  intentionally — readers landing directly on Standalone Mode need it without
+  scrolling up.
 - Docker Compose profiles table — kept as-is
 - Docker Image section — kept as-is
 - Environment Variables table — kept as-is
@@ -231,6 +234,11 @@ Subsections: Coding Agents, MCP, Autonomous Agents — content kept as-is.
 
 All content kept as-is. No structural changes needed — these sections are
 technically accurate and well-written.
+
+**Heading levels:** Keep existing heading levels exactly. "Settlement Strategies"
+remains `###` under `## Token Issuance` — it is not promoted to `##`. The
+numbered list in the Structure section is a logical reading order, not a directive
+to change heading levels.
 
 ### 13. Running Examples
 
