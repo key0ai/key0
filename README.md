@@ -319,7 +319,7 @@ REFUND_MIN_AGE_MS=300000   # refund after 5-min grace period
 
 ## Embedded Mode
 
-Install the SDK and add Key0 as middleware inside your existing application. You keep full control over token issuance, resource verification, and routing.
+Install the SDK and mount Key0 as middleware inside your existing application. You keep full control over token issuance, routing, and resource verification.
 
 ```
 ┌──────────────┐        ┌──────────────────────────────────────────────────┐
