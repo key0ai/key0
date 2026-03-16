@@ -149,7 +149,7 @@ async function signEIP3009(params: {
 // Main flow
 // ---------------------------------------------------------------------------
 
-async function _main() {
+async function main() {
 	console.log("=== Key0 Client Agent (x402 HTTP flow) ===\n");
 	console.log(`  Network:  ${NETWORK} (${chain.name})`);
 	console.log(`  Wallet:   ${account.address}`);
@@ -338,7 +338,7 @@ async function _main() {
 	console.log("\n=== Flow complete ===");
 }
 
-_main().catch((err) => {
+main().catch((err) => {
 	console.error("Fatal error:", err);
 	process.exit(1);
 });

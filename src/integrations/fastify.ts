@@ -63,16 +63,12 @@ export async function key0Plugin(fastify: FastifyInstance, opts: Key0Config): Pr
 				}
 			}
 
-			// CASE 1: No planId → Discovery
+			// CASE 1: No planId → 400 pointing to GET /discovery
 			if (!planId) {
-				console.log("[x402-access/fastify] → CASE 1: Discovery 402");
-				const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig);
-				const encoded = Buffer.from(JSON.stringify(discoveryResponse)).toString("base64");
-
-				reply.header("payment-required", encoded);
-				reply.header("www-authenticate", `Payment realm="${opts.config.agentUrl}", accept="exact"`);
-
-				return reply.code(402).send({ ...discoveryResponse, error: "Payment required" });
+				return reply.code(400).send({
+					error:
+						"Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery",
+				});
 			}
 
 			// Auto-generate requestId
@@ -175,6 +171,11 @@ export async function key0Plugin(fastify: FastifyInstance, opts: Key0Config): Pr
 		} finally {
 			console.log(`[x402-access/fastify] Request completed in ${Date.now() - startTime}ms`);
 		}
+	});
+
+	fastify.get("/discovery", async (_request: FastifyRequest, reply: FastifyReply) => {
+		const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig);
+		return reply.send({ discoveryResponse });
 	});
 }
 

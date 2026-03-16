@@ -117,6 +117,7 @@ The router mounts the following routes on your Express app:
 | `POST` | `{basePath}/jsonrpc` | A2A JSON-RPC endpoint with x402 middleware. |
 | `POST` | `{basePath}/rest` | A2A REST endpoint. |
 | `POST` | `/x402/access` | Simple x402 HTTP endpoint (no JSON-RPC wrapping). |
+| `GET` | `/discovery` | Plan catalog (all plans and pricing). |
 
 When `mcp: true` is set in `config`, two additional routes are mounted:
 
@@ -131,7 +132,7 @@ This endpoint handles the full x402 payment flow over plain HTTP. It responds di
 
 | Case | Request | Response |
 |------|---------|----------|
-| **Discovery** | Empty body (no `planId`) | `402` with all available plans. |
+| **No planId** | Empty body (no `planId`) | `400` with pointer to `GET /discovery`. |
 | **Challenge** | Body with `planId` | `402` with payment requirements and a `challengeId`. |
 | **Settlement** | Body with `planId` + `payment-signature` header | `200` with an `AccessGrant` (JWT + metadata). |
 

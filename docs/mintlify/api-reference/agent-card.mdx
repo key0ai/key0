@@ -74,11 +74,10 @@ No authentication is required.
     {
       "id": "discover-plans",
       "name": "Discover Plans",
-      "description": "Browse available plans and pricing for Acme Photo API. Returns the product catalog with plan IDs, prices (USDC on base-sepolia), wallet address, and chain ID. POST to https://api.acme.com/x402/access with an empty body or without planId to discover plans.",
+      "description": "Browse available plans and pricing for Acme Photo API. Returns the product catalog with plan IDs, prices (USDC on base-sepolia), wallet address, and chain ID. GET https://api.acme.com/discovery to discover plans.",
       "tags": ["discovery", "catalog", "x402"],
       "examples": [
-        "POST https://api.acme.com/x402/access with empty body {}",
-        "Or call without planId to get 402 response with product catalog"
+        "GET https://api.acme.com/discovery"
       ]
     },
     {
@@ -107,7 +106,7 @@ Key0 automatically generates two A2A-compliant skills:
 
 ### discover-plans
 
-A free discovery skill. Clients call this (or POST to `/x402/access` without a `planId`) to browse the plan catalog. Returns plan IDs, prices, wallet address, and chain ID.
+A free discovery skill. Clients call this (or GET to `/discovery`) to browse the plan catalog. Returns plan IDs, prices, wallet address, and chain ID.
 
 ### request-access
 
@@ -164,6 +163,12 @@ type AgentSkill = {
   examples?: string[];
   inputModes?: string[];
   outputModes?: string[];
+  /** @key0 Direct endpoint URL and HTTP method. */
+  endpoint?: { url: string; method: "GET" | "POST" };
+  /** @key0 JSON Schema for input parameters. */
+  inputSchema?: Record<string, unknown>;
+  /** @key0 Step-by-step workflow for automated clients. */
+  workflow?: string[];
 };
 
 type AgentExtension = {

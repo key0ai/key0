@@ -177,6 +177,7 @@ if (tokenMode === "remote") {
 }
 
 // Product catalog
+// Pricing for demo/testnet — use realistic production values when deploying to mainnet
 const plans = [
 	{
 		planId: "basic",

@@ -93,7 +93,7 @@ export function key0Router(opts: Key0Config): Router {
 				if (!planId) {
 					return res.status(400).json({
 						error:
-							"Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery ",
+							"Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery",
 					});
 				}
 

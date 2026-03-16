@@ -16,12 +16,13 @@ The default base path for A2A endpoints is `/a2a`. You can override this with `b
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/.well-known/agent.json` | None | Returns the A2A Agent Card describing your agent's capabilities, skills, and x402 extension. |
+| `GET` | `/discovery` | None | Returns all available plans and pricing (the plan catalog). |
 
 ### Payment
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/x402/access` | None | The x402 HTTP payment endpoint. Handles three cases: plan discovery (no `planId`), challenge issuance (`planId` without `PAYMENT-SIGNATURE`), and settlement (`planId` with `PAYMENT-SIGNATURE`). |
+| `POST` | `/x402/access` | None | The x402 HTTP payment endpoint. Handles challenge issuance (`planId` without `PAYMENT-SIGNATURE`) and settlement (`planId` with `PAYMENT-SIGNATURE`). Returns 400 if `planId` is missing. |
 
 ### A2A Protocol
 
@@ -47,7 +48,7 @@ The default base path for A2A endpoints is `/a2a`. You can override this with `b
 
 Key0 uses the x402 payment protocol instead of traditional API keys. The flow works as follows:
 
-1. **Discovery** -- The client fetches the Agent Card or calls `/x402/access` without a `planId` to learn available plans and pricing.
+1. **Discovery** -- The client fetches the Agent Card or calls `GET /discovery` to learn available plans and pricing.
 2. **Challenge** -- The client sends a request with a `planId`. The server responds with HTTP 402 and payment requirements (amount, wallet address, chain ID).
 3. **Settlement** -- The client signs an EIP-3009 authorization off-chain, encodes it as a `PAYMENT-SIGNATURE` header, and retries the same request. The server settles the payment on-chain and returns an `AccessGrant` containing a bearer token.
 4. **Access** -- The client uses the bearer token from the `AccessGrant` to call protected resource endpoints.

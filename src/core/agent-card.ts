@@ -70,7 +70,7 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 
 	return {
 		name: config.agentName,
-		description: `${config.agentDescription} To discover plans, you must call the discovery endpoint: GET ${baseUrl}/discovery`,
+		description: config.agentDescription,
 		url: `${baseUrl}/x402/access`,
 		version: config.version ?? "1.0.0",
 		protocolVersion: "0.3.0",
