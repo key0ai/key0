@@ -73,6 +73,67 @@ app.use("/api", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }
 
 ---
 
+## How It Works
+
+Key0 sits between your server and any agent client. It handles the commerce
+handshake — discovery, challenge, on-chain verification, credential issuance
+— then gets out of the way. Your protected routes receive normal Bearer token
+requests.
+
+Two flows are supported. Both follow the same `PENDING → PAID → DELIVERED`
+lifecycle and are eligible for automatic refunds.
+
+### A2A Flow (Agent-to-Agent)
+
+```
+Client Agent          Key0                    Seller Server
+     │  1. GET /.well-known/agent.json             │
+     │ ──────────────────▶│                         │
+     │ ◀── agent card + pricing                    │
+     │                   │                         │
+     │  2. AccessRequest │                         │
+     │ ──────────────────▶│                         │
+     │ ◀── X402Challenge  │                         │
+     │                   │                         │
+     │  3. Pay USDC on Base (on-chain)             │
+     │                   │                         │
+     │  4. PaymentProof  │                         │
+     │ ──────────────────▶│                         │
+     │                   │── verify on-chain        │
+     │                   │── fetchResourceCredentials ──▶│
+     │                   │◀── token                │
+     │ ◀── AccessGrant   │                         │
+     │                   │                         │
+     │  5. Bearer <JWT>  │                         │
+     │ ──────────────────────────────────────────▶│
+     │ ◀── protected content                       │
+```
+
+### HTTP x402 Flow (Gas Wallet / Facilitator)
+
+```
+Client                Key0                    Seller Server
+     │  1. GET /discovery │                         │
+     │ ──────────────────▶│                         │
+     │ ◀── plan catalog   │                         │
+     │                   │                         │
+     │  2. POST /x402/access { planId }            │
+     │ ──────────────────▶│                         │
+     │ ◀── HTTP 402       │                         │
+     │                   │                         │
+     │  3. POST + PAYMENT-SIGNATURE                │
+     │ ──────────────────▶│                         │
+     │                   │── settle on-chain        │
+     │                   │── fetchResourceCredentials ──▶│
+     │ ◀── AccessGrant   │                         │
+     │                   │                         │
+     │  4. Bearer <JWT>  │                         │
+     │ ──────────────────────────────────────────▶│
+     │ ◀── protected content                       │
+```
+
+---
+
 ## Standalone Mode
 
 Run Key0 as a pre-built Docker container. No code required — configure via the built-in Setup UI or environment variables, and point it at your own token-issuance endpoint.
@@ -529,94 +590,6 @@ CDP_API_KEY_SECRET=your-cdp-api-key-secret
 # Optional: self-contained settlement without a facilitator
 GAS_WALLET_PRIVATE_KEY=0xYourPrivateKey
 ```
-
-## How It Works
-
-Key0 supports two payment flows. Both follow the same `ChallengeRecord` lifecycle (`PENDING → PAID → DELIVERED`) and are eligible for automatic refunds.
-
-### A2A Flow (Agent-to-Agent)
-
-A2A-native clients send a `POST /x402/access` with the `X-A2A-Extensions` header, which delegates to the JSON-RPC handler. The payment flow uses the same `PENDING → PAID → DELIVERED` lifecycle.
-
-```
-Client Agent                          Seller Server
-     |                                      |
-     |  1. GET /.well-known/agent.json      |
-     |------------------------------------->|
-     |  <-- Agent card (skills, pricing)    |
-     |                                      |
-     |  2. POST /x402/access               |
-     |     + X-A2A-Extensions header        |
-     |     (JSON-RPC AccessRequest)         |
-     |------------------------------------->|
-     |  <-- X402Challenge (amount, chain,   |
-     |       destination, challengeId)      |
-     |                                      |
-     |  3. Pay USDC on Base (on-chain)      |
-     |----> Blockchain                      |
-     |  <-- txHash                          |
-     |                                      |
-     |  4. POST /x402/access               |
-     |     + X-A2A-Extensions header        |
-     |     (JSON-RPC PaymentProof)          |
-     |------------------------------------->|
-     |      Server verifies tx on-chain --> |
-     |  <-- AccessGrant (JWT + endpoint)    |
-     |                                      |
-     |  5. GET /api/resource/:id            |
-     |     Authorization: Bearer <JWT>      |
-     |------------------------------------->|
-     |  <-- Protected content               |
-```
-
-1. **Discovery** — Client fetches the agent card at `/.well-known/agent.json` to learn about available plans and pricing
-2. **Access Request** — Client sends a JSON-RPC `AccessRequest` to `/x402/access` with the `X-A2A-Extensions` header
-3. **Challenge** — Server creates a `PENDING` record and returns an `X402Challenge` with payment details
-4. **Payment** — Client pays on-chain USDC on Base — a standard ERC-20 transfer, no custom contracts
-5. **Proof** — Client submits a JSON-RPC `PaymentProof` with the transaction hash
-6. **Verification** — Server verifies the payment on-chain (correct recipient, amount, not expired, not double-spent), transitions `PENDING → PAID`
-7. **Grant** — Server calls `fetchResourceCredentials`, transitions `PAID → DELIVERED`, returns an `AccessGrant` with the token and resource endpoint URL
-8. **Access** — Client uses the token as a Bearer header to access the protected resource
-
-### HTTP x402 Flow (Gas Wallet / Facilitator)
-
-```
-Client                                Seller Server
-     |                                      |
-     |  1. GET /discovery                   |
-     |------------------------------------->|
-     |  <-- 200 + all plans                 |
-     |      (discovery, no PENDING record)  |
-     |                                      |
-     |  2. POST /x402/access               |
-     |     { planId, requestId? }           |
-     |------------------------------------->|
-     |  <-- HTTP 402 + PaymentRequirements  |
-     |       + challengeId                  |
-     |      (requestId auto-generated       |
-     |       if omitted)                    |
-     |                                      |
-     |  3. POST /x402/access               |
-     |     { planId, requestId }            |
-     |     + PAYMENT-SIGNATURE header       |
-     |       (signed EIP-3009 auth)         |
-     |------------------------------------->|
-     |      Gas wallet / facilitator        |
-     |      settles on-chain -------------> |
-     |  <-- AccessGrant (JWT + endpoint)    |
-     |                                      |
-     |  4. GET /api/resource/:id            |
-     |     Authorization: Bearer <JWT>      |
-     |------------------------------------->|
-     |  <-- Protected content               |
-```
-
-1. **Discovery (optional)** — Client calls `GET /discovery` to receive a 200 response listing all available plans and pricing. No `PENDING` record is created. `POST /x402/access` without a `planId` returns 400 and directs clients to `GET /discovery`.
-2. **Challenge** — Client POSTs `{ planId }` (and optionally `requestId`, `resourceId`). Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` for that plan. `requestId` is auto-generated if omitted.
-3. **Payment + Settlement** — Client resends with the same `{ planId, requestId }` plus a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles on-chain; server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`.
-4. **Access** — Client uses the token as a Bearer header to access the protected resource.
-
-If `fetchResourceCredentials` fails in either flow, the record stays `PAID` and the automatic refund cron picks it up after the grace period.
 
 ## Clients
 
