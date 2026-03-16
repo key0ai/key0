@@ -8,30 +8,30 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 
-	// Two A2A spec-compliant skills (no pricing, no inputSchema, no outputSchema, no url)
+	const planIds = config.plans.map((p) => p.planId);
+
+	// Two A2A spec-compliant skills
 	// Skill 1: Discovery (free) — browse the product catalog
 	// Skill 2: Purchase (x402-gated) — buy an access token
 	const skills: AgentSkill[] = [
 		{
-			id: "discover-products",
-			name: "Discover Products",
+			id: "discover-plans",
+			name: "Discover Plans",
 			description: [
-				`Browse available products and pricing for ${config.agentName}.`,
+				`Browse available plans and pricing for ${config.agentName}.`,
 				`Returns the product catalog with plan IDs, prices (USDC on ${networkName}), wallet address, and chain ID.`,
-				`POST to ${baseUrl}/x402/access with an empty body or without planId to discover products.`,
+				`GET to ${baseUrl}/discovery to discover plans.`,
 			].join(" "),
 			tags: ["discovery", "catalog", "x402"],
-			examples: [
-				`POST ${baseUrl}/x402/access with empty body {}`,
-				`Or call without planId to get 402 response with product catalog`,
-			],
+			examples: [`GET ${baseUrl}/discovery`],
+			endpoint: { url: `${baseUrl}/discovery`, method: "GET" },
 		},
 		{
 			id: "request-access",
 			name: "Request Access",
 			description: [
 				`Purchase access to a ${config.agentName} product plan via x402 payment on ${networkName}.`,
-				`First call discover-products to get available plans.`,
+				`First call discover-plans to get available plans.`,
 				`Then POST to ${baseUrl}/x402/access with planId and requestId to initiate purchase.`,
 				`Server responds with x402 payment challenge.`,
 				`Complete payment on-chain and include PAYMENT-SIGNATURE header to receive access token.`,
@@ -42,6 +42,22 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 				`Receive 402 with payment challenge`,
 				`Pay USDC on-chain, retry same request with PAYMENT-SIGNATURE header`,
 				`Receive 200 with access token`,
+			],
+			endpoint: { url: `${baseUrl}/x402/access`, method: "POST" },
+			inputSchema: {
+				type: "object",
+				required: ["planId", "requestId"],
+				properties: {
+					planId: { type: "string", enum: planIds },
+					requestId: { type: "string", format: "uuid" },
+				},
+			},
+			workflow: [
+				"POST body with planId + requestId to endpoint.url — expect 402",
+				"Extract payment requirements from 402 response body",
+				`Sign and broadcast USDC transfer on ${networkName}`,
+				"Retry same POST with PAYMENT-SIGNATURE header containing the transaction hash",
+				"Receive 200 with accessToken",
 			],
 		},
 	];

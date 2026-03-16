@@ -89,31 +89,11 @@ export function key0Router(opts: Key0Config): Router {
 					}
 				}
 
-				// ===== CASE 1: No planId → Discovery (402 with all tiers, no PENDING record) =====
+				// ===== CASE 1: No planId → 400 pointing to GET /discovery =====
 				if (!planId) {
-					console.log("[x402-access] → CASE 1: No planId provided, returning discovery 402");
-
-					const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig);
-					console.log(
-						"[x402-access] Discovery response:",
-						JSON.stringify(discoveryResponse, null, 2),
-					);
-
-					// Encode as base64 for PAYMENT-REQUIRED header
-					const encoded = Buffer.from(JSON.stringify(discoveryResponse)).toString("base64");
-					res.setHeader("payment-required", encoded);
-
-					// Add www-authenticate header for HTTP spec compliance
-					const authHeader = `Payment realm="${opts.config.agentUrl}", accept="exact"`;
-					res.setHeader("www-authenticate", authHeader);
-
-					console.log(`[x402-access] payment-required header set (${encoded.length} bytes)`);
-					console.log(`[x402-access] www-authenticate header set`);
-					console.log("[x402-access] → Returning HTTP 402 Payment Required (Discovery)");
-
-					return res.status(402).json({
-						...discoveryResponse,
-						error: "Payment required",
+					return res.status(400).json({
+						error:
+							"Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery",
 					});
 				}
 
@@ -291,6 +271,11 @@ export function key0Router(opts: Key0Config): Router {
 		// A2A JSON-RPC fallback: reached when X-A2A-Extensions header is present
 		jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }),
 	);
+
+	router.get("/discovery", (_req: Request, res: Response) => {
+		const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig);
+		return res.status(200).json({ discoveryResponse });
+	});
 
 	// MCP routes (when mcp: true)
 	if (opts.config.mcp) {

@@ -12,15 +12,15 @@ Content-Type: application/json
 
 The primary x402 HTTP endpoint. It handles three distinct cases depending on the request body and headers:
 
-1. **Discovery** -- No `planId` in the body. Returns HTTP 402 with all available plans.
+1. **No `planId`** -- Returns HTTP 400 directing the client to `GET /discovery`.
 2. **Challenge** -- `planId` in the body, no `PAYMENT-SIGNATURE` header. Returns HTTP 402 with payment requirements and a `challengeId`.
 3. **Settlement** -- `planId` in the body and a `PAYMENT-SIGNATURE` header. Settles the payment on-chain and returns HTTP 200 with an `AccessGrant`.
 
 ---
 
-## Case 1: Discovery
+## Case 1: No planId
 
-Send an empty body or a body without `planId` to discover all available plans and pricing.
+Sending a body without `planId` returns HTTP 400 with a pointer to the discovery endpoint.
 
 <Tabs>
   <Tab title="Request">
@@ -31,94 +31,19 @@ Send an empty body or a body without `planId` to discover all available plans an
     ```
   </Tab>
   <Tab title="Response">
-    **HTTP 402 Payment Required**
-
-    **Headers:**
-
-    | Header | Value |
-    |--------|-------|
-    | `payment-required` | Base64-encoded JSON (same as body below) |
-    | `www-authenticate` | `Payment realm="https://api.example.com", accept="exact"` |
-
-    **Body:**
+    **HTTP 400 Bad Request**
 
     ```json
     {
-      "x402Version": 2,
-      "resource": {
-        "url": "https://api.example.com/x402/access",
-        "method": "POST",
-        "description": "Acme Photo API — Pay-per-use access with USDC. POST with { planId } to start a payment flow, or POST with { planId, requestId } + PAYMENT-SIGNATURE header to complete payment.",
-        "mimeType": "application/json"
-      },
-      "accepts": [
-        {
-          "scheme": "exact",
-          "network": "eip155:84532",
-          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-          "amount": "100000",
-          "payTo": "0xSellerWalletAddress",
-          "maxTimeoutSeconds": 900,
-          "extra": {
-            "name": "USDC",
-            "version": "2",
-            "planId": "basic",
-            "description": "basic — $0.10 USDC"
-          }
-        },
-        {
-          "scheme": "exact",
-          "network": "eip155:84532",
-          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-          "amount": "500000",
-          "payTo": "0xSellerWalletAddress",
-          "maxTimeoutSeconds": 900,
-          "extra": {
-            "name": "USDC",
-            "version": "2",
-            "planId": "pro",
-            "description": "pro — $0.50 USDC"
-          }
-        }
-      ],
-      "extensions": {
-        "key0": {
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "planId": {
-                "type": "string",
-                "description": "Tier to purchase. Available tiers: basic, pro"
-              },
-              "requestId": {
-                "type": "string",
-                "description": "Client-generated UUID for idempotency (auto-generated if omitted)"
-              },
-              "resourceId": {
-                "type": "string",
-                "description": "Optional: Specific resource identifier (defaults to 'default')"
-              }
-            },
-            "required": ["planId"]
-          },
-          "outputSchema": {
-            "type": "object",
-            "properties": {
-              "accessToken": { "type": "string", "description": "JWT token for API access" },
-              "tokenType": { "type": "string", "description": "Token type (usually 'Bearer')" },
-              "resourceEndpoint": { "type": "string", "description": "URL to access the protected resource" },
-              "txHash": { "type": "string", "description": "On-chain transaction hash" },
-              "explorerUrl": { "type": "string", "description": "Blockchain explorer URL" }
-            }
-          },
-          "description": "Pay-per-use access to high-resolution stock photos via USDC on Base."
-        }
-      },
-      "error": "Payment required"
+      "error": "Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery"
     }
     ```
 
-    The `accepts` array contains one entry per plan. Each entry's `extra.planId` tells you the plan ID to use in the next step. The `extensions.key0.inputSchema` describes the expected request body format.
+    Use `GET /discovery` to browse available plans:
+
+    ```bash
+    curl https://api.example.com/discovery
+    ```
   </Tab>
 </Tabs>
 

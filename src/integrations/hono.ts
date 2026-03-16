@@ -62,16 +62,15 @@ export function key0App(opts: Key0Config): Hono {
 				}
 			}
 
-			// CASE 1: No planId → Discovery
+			// CASE 1: No planId → 400 pointing to GET /discovery
 			if (!planId) {
-				console.log("[x402-access/hono] → CASE 1: Discovery 402");
-				const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig);
-				const encoded = Buffer.from(JSON.stringify(discoveryResponse)).toString("base64");
-
-				c.header("payment-required", encoded);
-				c.header("www-authenticate", `Payment realm="${opts.config.agentUrl}", accept="exact"`);
-
-				return c.json({ ...discoveryResponse, error: "Payment required" }, 402);
+				return c.json(
+					{
+						error:
+							"Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery",
+					},
+					400,
+				);
 			}
 
 			// Auto-generate requestId
@@ -175,6 +174,11 @@ export function key0App(opts: Key0Config): Hono {
 		} finally {
 			console.log(`[x402-access/hono] Request completed in ${Date.now() - startTime}ms`);
 		}
+	});
+
+	app.get("/discovery", (c) => {
+		const discoveryResponse = buildDiscoveryResponse(opts.config, networkConfig);
+		return c.json({ discoveryResponse });
 	});
 
 	return app;

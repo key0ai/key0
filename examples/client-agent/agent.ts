@@ -2,7 +2,7 @@
  * Client agent demonstrating the full Key0 x402 payment flow on Base Sepolia testnet:
  *
  *   1. Discover the seller's agent card
- *   2. Discover available products (POST /x402/access with empty body → 402 Discovery)
+ *   2. Discover available plans (GET /discovery → 200)
  *   3. Request a challenge    (POST /x402/access with { planId } → 402 Challenge)
  *   4. Sign EIP-3009 authorization off-chain
  *   5. Submit payment         (POST /x402/access with { planId } + PAYMENT-SIGNATURE → 200 Grant)
@@ -182,34 +182,32 @@ async function main() {
 	console.log(`   Skills: ${card.skills.map((s) => s.id).join(", ")}\n`);
 
 	// -----------------------------------------------------------------------
-	// Step 2: Discover products (POST /x402/access with empty body → 402)
+	// Step 2: Discover available plans via GET /discovery
 	// -----------------------------------------------------------------------
-	console.log("2. Discovering products...");
-	const discoveryRes = await fetch(X402_ENDPOINT, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({}),
-	});
+	console.log("2. Discovering plans...");
+	const discoveryRes = await fetch(`${SELLER_URL}/discovery`);
 
-	if (discoveryRes.status !== 402) {
-		console.error(`   Expected HTTP 402 for discovery, got ${discoveryRes.status}`);
+	if (discoveryRes.status !== 200) {
+		console.error(`   Expected HTTP 200 for discovery, got ${discoveryRes.status}`);
 		process.exit(1);
 	}
 
-	const discoveryBody = (await discoveryRes.json()) as {
-		accepts: Array<{ amount: string; payTo: string; extra?: Record<string, string> }>;
+	const { discoveryResponse } = (await discoveryRes.json()) as {
+		discoveryResponse: {
+			accepts: Array<{ amount: string; payTo: string; extra?: Record<string, string> }>;
+		};
 	};
-	if (!discoveryBody.accepts || discoveryBody.accepts.length === 0) {
-		console.error("   No products found in discovery response");
+	if (!discoveryResponse.accepts || discoveryResponse.accepts.length === 0) {
+		console.error("   No plans found in discovery response");
 		process.exit(1);
 	}
 
 	// Pick the first tier
-	const tierInfo = discoveryBody.accepts[0]!;
+	const tierInfo = discoveryResponse.accepts[0]!;
 	const planId = tierInfo.extra?.["planId"] ?? "default";
 	const tierDescription = tierInfo.extra?.["description"] ?? tierInfo.amount;
 
-	console.log(`   Available products: ${discoveryBody.accepts.length}`);
+	console.log(`   Available plans: ${discoveryResponse.accepts.length}`);
 	console.log(`   Using: ${planId} — ${tierDescription}\n`);
 
 	// -----------------------------------------------------------------------

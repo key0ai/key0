@@ -19,7 +19,7 @@ describe("Agent Card", () => {
 		expect(Array.isArray(card.skills)).toBe(true);
 		expect(card.skills.length).toBe(2);
 
-		const discoverSkill = card.skills.find((s) => s.id === "discover-products");
+		const discoverSkill = card.skills.find((s) => s.id === "discover-plans");
 		expect(discoverSkill).toBeDefined();
 		expect(discoverSkill?.tags).toContain("discovery");
 
@@ -38,9 +38,9 @@ describe("Agent Card", () => {
 		const res = await fetch(`${KEY0_URL}/.well-known/agent.json`);
 		const card = (await res.json()) as AgentCard;
 
-		// Discovery must be done via the /x402/access endpoint, not from the agent card
+		// Discovery must be done via GET /discovery, not from the agent card
 		// Agent card skills should NOT have pricing (A2A spec compliance)
-		const discoverSkill = card.skills.find((s) => s.id === "discover-products");
+		const discoverSkill = card.skills.find((s) => s.id === "discover-plans");
 		expect(discoverSkill).toBeDefined();
 		expect((discoverSkill as any)?.pricing).toBeUndefined();
 

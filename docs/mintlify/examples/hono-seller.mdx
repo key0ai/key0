@@ -6,7 +6,7 @@ description: "A Photo Gallery Agent built with Hono that sells photo access to A
 A lightweight seller agent built with [Hono](https://hono.dev) that monetizes a photo gallery API. AI agents discover the seller via its A2A agent card, pay USDC on Base, and receive a JWT to access protected photo endpoints.
 
 <Warning>
-  This example uses the **legacy product/tier API** (`products`, `tierId`, `onIssueToken`) rather than the current `plans`/`planId`/`fetchResourceCredentials` API. The payment flow is identical -- only the configuration shape differs. See the [Hono integration guide](/integrations/hono) and the [Express Seller example](/examples/express-seller) for the current API.
+  This example uses the **legacy product/tier API** (`plans`, `tierId`, `onIssueToken`) rather than the current `plans`/`planId`/`fetchResourceCredentials` API. The payment flow is identical -- only the configuration shape differs. See the [Hono integration guide](/integrations/hono) and the [Express Seller example](/examples/express-seller) for the current API.
 </Warning>
 
 ## What It Demonstrates
@@ -100,7 +100,7 @@ const gate = key0App({
 		walletAddress: WALLET,
 		network: NETWORK,
 		challengeTTLSeconds: 900,
-		products: [
+		plans: [
 			{
 				tierId: "single-photo",
 				label: "Single Photo",
@@ -123,7 +123,7 @@ const gate = key0App({
 });
 ```
 
-`key0App` returns a Hono sub-app that mounts the A2A agent card at `/.well-known/agent.json` and the JSON-RPC endpoint at `/a2a/jsonrpc`. The `products` array defines two tiers -- a single photo for \$0.10 and a full album for \$1.00.
+`key0App` returns a Hono sub-app that mounts the A2A agent card at `/.well-known/agent.json` and the JSON-RPC endpoint at `/a2a/jsonrpc`. The `plans` array defines two tiers -- a single photo for \$0.10 and a full album for \$1.00.
 
 ### 4. Token issuance
 

@@ -158,7 +158,7 @@ describe("E2E: Full Key0 lifecycle (x402 Extension)", () => {
 		// Agent card check — two A2A spec-compliant skills
 		expect(agentCard.name).toBe("E2E Test Agent");
 		expect(agentCard.skills).toHaveLength(2);
-		expect(agentCard.skills[0]!.id).toBe("discover-products");
+		expect(agentCard.skills[0]!.id).toBe("discover-plans");
 		expect(agentCard.skills[1]!.id).toBe("request-access");
 
 		// Skills should NOT have pricing (A2A spec compliance)

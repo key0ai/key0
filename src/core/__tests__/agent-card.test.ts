@@ -62,26 +62,25 @@ describe("buildAgentCard", () => {
 	test("has two A2A spec-compliant skills", () => {
 		const card = buildAgentCard(makeConfig());
 		expect(card.skills).toHaveLength(2);
-		expect(card.skills[0]!.id).toBe("discover-products");
+		expect(card.skills[0]!.id).toBe("discover-plans");
 		expect(card.skills[1]!.id).toBe("request-access");
 	});
 
-	test("discover-products skill has correct structure", () => {
+	test("discover-plans skill has correct structure", () => {
 		const card = buildAgentCard(makeConfig());
 		const skill = card.skills[0]!;
 
-		expect(skill.id).toBe("discover-products");
-		expect(skill.name).toBe("Discover Products");
-		expect(skill.description).toContain("Browse available products");
-		expect(skill.description).toContain("/x402/access");
+		expect(skill.id).toBe("discover-plans");
+		expect(skill.name).toBe("Discover Plans");
+		expect(skill.description).toContain("Browse available");
+		expect(skill.description).toContain("/discovery");
 		expect(skill.tags).toContain("discovery");
 		expect(skill.tags).toContain("catalog");
 		expect(skill.examples).toBeDefined();
 		expect(skill.examples!.length).toBeGreaterThan(0);
 
-		// A2A spec: skills should NOT have pricing, inputSchema, outputSchema, url
+		// A2A spec: skills should NOT have pricing, outputSchema, url
 		expect((skill as any).pricing).toBeUndefined();
-		expect((skill as any).inputSchema).toBeUndefined();
 		expect((skill as any).outputSchema).toBeUndefined();
 		expect((skill as any).url).toBeUndefined();
 	});
@@ -100,9 +99,13 @@ describe("buildAgentCard", () => {
 		expect(skill.examples).toBeDefined();
 		expect(skill.examples!.length).toBeGreaterThan(0);
 
-		// A2A spec: skills should NOT have pricing, inputSchema, outputSchema, url
+		// inputSchema is present for machine-readable validation
+		expect((skill as any).inputSchema).toBeDefined();
+		expect((skill as any).inputSchema.required).toContain("planId");
+		expect((skill as any).inputSchema.required).toContain("requestId");
+
+		// A2A spec: skills should NOT have pricing, outputSchema, url
 		expect((skill as any).pricing).toBeUndefined();
-		expect((skill as any).inputSchema).toBeUndefined();
 		expect((skill as any).outputSchema).toBeUndefined();
 		expect((skill as any).url).toBeUndefined();
 	});
@@ -113,7 +116,7 @@ describe("buildAgentCard", () => {
 		const discoverSkill = card.skills[0]!;
 		expect(discoverSkill.examples).toBeDefined();
 		expect(discoverSkill.examples!.length).toBeGreaterThan(0);
-		expect(discoverSkill.examples!.some((ex) => ex.includes("/x402/access"))).toBe(true);
+		expect(discoverSkill.examples!.some((ex) => ex.includes("/discovery"))).toBe(true);
 
 		const requestSkill = card.skills[1]!;
 		expect(requestSkill.examples).toBeDefined();
@@ -150,7 +153,7 @@ describe("buildAgentCard", () => {
 
 		// Still just two skills regardless of tier count
 		expect(card.skills).toHaveLength(2);
-		expect(card.skills[0]!.id).toBe("discover-products");
+		expect(card.skills[0]!.id).toBe("discover-plans");
 		expect(card.skills[1]!.id).toBe("request-access");
 	});
 

@@ -3,9 +3,9 @@ title: "x402 HTTP Flow"
 description: "The simplest way to interact with Key0 -- a single POST /x402/access endpoint that handles discovery, challenge creation, and payment settlement."
 ---
 
-The x402 HTTP flow is the simplest way to interact with Key0. A single endpoint `POST /x402/access` handles three cases based on the request body and headers:
+The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery uses `GET /discovery`, and the `POST /x402/access` endpoint handles challenge and settlement:
 
-1. **Discovery** -- no `planId` in the body, returns all available plans.
+1. **Discovery** -- `GET /discovery` returns all available plans (HTTP 200). `POST /x402/access` without `planId` returns HTTP 400.
 2. **Challenge** -- `planId` present, no `payment-signature` header, creates a PENDING record.
 3. **Settlement** -- `planId` present with a `payment-signature` header, settles on-chain and returns an `AccessGrant`.
 
@@ -18,8 +18,8 @@ sequenceDiagram
     participant Base as Base (L2)
 
     Note over Client,Server: Phase 1 -- Discovery
-    Client->>Server: POST /x402/access {}
-    Server->>Client: 402 + all plans (no PENDING record)
+    Client->>Server: GET /discovery
+    Server->>Client: 200 + all plans
 
     Note over Client,Server: Phase 2 -- Challenge
     Client->>Server: POST /x402/access { planId }
@@ -42,45 +42,44 @@ sequenceDiagram
 
 <Tabs>
   <Tab title="Case 1: Discovery">
-    Send an empty body (or omit `planId`) to discover all available plans. No PENDING record is created -- this is a pure pricing query.
+    Use `GET /discovery` to browse all available plans. No PENDING record is created -- this is a pure pricing query.
+
+    Note: `POST /x402/access` without `planId` returns HTTP 400 with a pointer to this endpoint.
 
     ### Request
 
     ```bash
-    curl -X POST https://api.example.com/x402/access \
-      -H "Content-Type: application/json" \
-      -d '{}'
+    curl https://api.example.com/discovery
     ```
 
     ### Response
 
     ```http
-    HTTP/1.1 402 Payment Required
-    payment-required: eyJ4NDAyVm... (base64-encoded JSON)
-    www-authenticate: Payment realm="https://api.example.com", accept="exact"
+    HTTP/1.1 200 OK
     Content-Type: application/json
     ```
 
     ```json
     {
-      "x402Version": 2,
-      "resource": { "url": "...", "method": "POST" },
-      "accepts": [
-        {
-          "scheme": "exact",
-          "network": "eip155:84532",
-          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-          "amount": "100000",
-          "payTo": "0xSellerWallet...",
-          "maxTimeoutSeconds": 900,
-          "extra": {
-            "name": "USDC",
-            "version": "2",
-            "description": "Basic plan - $0.10 USDC"
+      "discoveryResponse": {
+        "x402Version": 2,
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "amount": "100000",
+            "payTo": "0xSellerWallet...",
+            "maxTimeoutSeconds": 900,
+            "extra": {
+              "name": "USDC",
+              "version": "2",
+              "planId": "basic",
+              "description": "Basic plan - $0.10 USDC"
+            }
           }
-        }
-      ],
-      "error": "Payment required"
+        ]
+      }
     }
     ```
 

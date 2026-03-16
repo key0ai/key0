@@ -25,21 +25,17 @@ describe("Invalid Plan", () => {
 		expect(body["code"]).toBe("TIER_NOT_FOUND");
 	});
 
-	test("missing planId returns 402 discovery response with all plans", async () => {
-		// POST /x402/access with no planId triggers discovery mode:
-		// returns 402 with all available plans (no PENDING record created)
+	test("missing planId returns 400 pointing to GET /discovery", async () => {
+		// POST /x402/access with no planId returns 400 — clients should use GET /discovery instead
 		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ requestId: crypto.randomUUID() }),
 		});
 
-		expect(res.status).toBe(402);
+		expect(res.status).toBe(400);
 		const body = (await res.json()) as Record<string, unknown>;
-		// Discovery response contains all plans in accepts array
-		expect(Array.isArray(body["accepts"])).toBe(true);
-		expect((body["accepts"] as unknown[]).length).toBeGreaterThan(0);
-		// No challengeId — this is pure discovery, no PENDING record
-		expect(body["challengeId"]).toBeUndefined();
+		expect(typeof body["error"]).toBe("string");
+		expect((body["error"] as string).toLowerCase()).toContain("discovery");
 	});
 });

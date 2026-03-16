@@ -523,9 +523,9 @@ Client Agent                          Seller Server
 ```
 Client                                Seller Server
      |                                      |
-     |  1. POST /x402/access  {}            |
+     |  1. GET /discovery                   |
      |------------------------------------->|
-     |  <-- HTTP 402 + all plans            |
+     |  <-- 200 + all plans                 |
      |      (discovery, no PENDING record)  |
      |                                      |
      |  2. POST /x402/access               |
@@ -551,7 +551,7 @@ Client                                Seller Server
      |  <-- Protected content               |
 ```
 
-1. **Discovery (optional)** — Client POSTs to `/x402/access` with no body to receive a 402 listing all available plans and pricing. No `PENDING` record is created.
+1. **Discovery (optional)** — Client calls `GET /discovery` to receive a 200 response listing all available plans and pricing. No `PENDING` record is created. `POST /x402/access` without a `planId` returns 400 and directs clients to `GET /discovery`.
 2. **Challenge** — Client POSTs `{ planId }` (and optionally `requestId`, `resourceId`). Server creates a `PENDING` record and returns HTTP 402 with x402 `PaymentRequirements` for that plan. `requestId` is auto-generated if omitted.
 3. **Payment + Settlement** — Client resends with the same `{ planId, requestId }` plus a `PAYMENT-SIGNATURE` header containing a signed EIP-3009 authorization. The gas wallet or facilitator settles on-chain; server transitions `PENDING → PAID → DELIVERED` and returns an `AccessGrant`.
 4. **Access** — Client uses the token as a Bearer header to access the protected resource.
