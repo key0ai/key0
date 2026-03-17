@@ -105,6 +105,46 @@ const TRANSFER_WITH_AUTHORIZATION_TYPES = {
 	],
 } as const;
 
+// ─── Retry helper ────────────────────────────────────────────────────────────
+
+/**
+ * Retry an async operation up to `maxAttempts` times on transient failures.
+ * Only retries when `shouldRetry` returns true for the caught error.
+ * Uses exponential backoff starting at `baseDelayMs`.
+ */
+async function _withRetry<T>(
+	fn: () => Promise<T>,
+	maxAttempts: number,
+	baseDelayMs: number,
+	shouldRetry: (err: unknown) => boolean,
+): Promise<T> {
+	let lastError: unknown;
+	for (let attempt = 0; attempt < maxAttempts; attempt++) {
+		try {
+			return await fn();
+		} catch (err) {
+			lastError = err;
+			if (!shouldRetry(err) || attempt === maxAttempts - 1) throw err;
+			await Bun.sleep(baseDelayMs * 2 ** attempt);
+		}
+	}
+	throw lastError;
+}
+
+/** Returns true for network-level errors (fetch failures, not HTTP errors). */
+function _isNetworkError(err: unknown): boolean {
+	if (!(err instanceof Error)) return false;
+	const msg = err.message.toLowerCase();
+	return (
+		msg.includes("econnrefused") ||
+		msg.includes("econnreset") ||
+		msg.includes("fetch failed") ||
+		msg.includes("network") ||
+		msg.includes("socket") ||
+		msg.includes("timeout")
+	);
+}
+
 // ─── E2eTestClient ──────────────────────────────────────────────────────────
 
 export class E2eTestClient {
@@ -130,33 +170,40 @@ export class E2eTestClient {
 		requestId: string;
 		resourceId?: string;
 	}): Promise<ChallengeResponse> {
-		const res = await fetch(`${this.key0Url}/x402/access`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				planId: opts.planId,
-				requestId: opts.requestId,
-				resourceId: opts.resourceId ?? "default",
-				clientAgentId: `agent://${this.account}`,
-			}),
-		});
+		return _withRetry(
+			async () => {
+				const res = await fetch(`${this.key0Url}/x402/access`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						planId: opts.planId,
+						requestId: opts.requestId,
+						resourceId: opts.resourceId ?? "default",
+						clientAgentId: `agent://${this.account}`,
+					}),
+				});
 
-		if (res.status !== 402) {
-			const text = await res.text();
-			throw new Error(`Expected HTTP 402, got ${res.status}: ${text}`);
-		}
+				if (res.status !== 402) {
+					const text = await res.text();
+					throw new Error(`Expected HTTP 402, got ${res.status}: ${text}`);
+				}
 
-		const body = (await res.json()) as Record<string, unknown>;
-		const challengeId = body["challengeId"] as string;
+				const body = (await res.json()) as Record<string, unknown>;
+				const challengeId = body["challengeId"] as string;
 
-		// Decode PAYMENT-REQUIRED header
-		const header = res.headers.get("payment-required");
-		if (!header) throw new Error("Missing PAYMENT-REQUIRED header");
-		const paymentRequired = JSON.parse(
-			Buffer.from(header, "base64").toString("utf-8"),
-		) as ChallengeResponse["paymentRequired"];
+				// Decode PAYMENT-REQUIRED header
+				const header = res.headers.get("payment-required");
+				if (!header) throw new Error("Missing PAYMENT-REQUIRED header");
+				const paymentRequired = JSON.parse(
+					Buffer.from(header, "base64").toString("utf-8"),
+				) as ChallengeResponse["paymentRequired"];
 
-		return { challengeId, paymentRequired };
+				return { challengeId, paymentRequired };
+			},
+			3,
+			1000,
+			(err) => _isNetworkError(err) || (err instanceof Error && err.message.includes("503")),
+		);
 	}
 
 	// ── Step 2: Sign EIP-3009 authorization ──────────────────────────────
@@ -231,25 +278,36 @@ export class E2eTestClient {
 
 		const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
 
-		const res = await fetch(`${this.key0Url}/x402/access`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				"payment-signature": paymentSignature,
-			},
-			body: JSON.stringify({
-				planId: opts.planId,
-				requestId: opts.requestId,
-				resourceId: opts.resourceId ?? "default",
-				clientAgentId: `agent://${this.account}`,
-			}),
-		});
+		return _withRetry(
+			async () => {
+				const res = await fetch(`${this.key0Url}/x402/access`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"payment-signature": paymentSignature,
+					},
+					body: JSON.stringify({
+						planId: opts.planId,
+						requestId: opts.requestId,
+						resourceId: opts.resourceId ?? "default",
+						clientAgentId: `agent://${this.account}`,
+					}),
+				});
 
-		const body = await res.json();
-		if (res.ok) {
-			return { grant: body as AccessGrant, status: res.status };
-		}
-		return { error: body as Record<string, unknown>, status: res.status };
+				const body = await res.json();
+				if (res.ok) {
+					return { grant: body as AccessGrant, status: res.status };
+				}
+				// 503 = server temporarily overloaded — worth retrying
+				if (res.status === 503) {
+					throw new Error(`Transient server error: ${res.status}`);
+				}
+				return { error: body as Record<string, unknown>, status: res.status };
+			},
+			3,
+			1000,
+			(err) => _isNetworkError(err) || (err instanceof Error && err.message.includes("503")),
+		);
 	}
 
 	// ── Convenience: full purchase ────────────────────────────────────────

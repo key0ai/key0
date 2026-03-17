@@ -151,7 +151,9 @@ export function createMcpServer(
 	config: SellerConfig,
 	perRequestRoutes?: Map<string, PlanRouteInfo[]>,
 ): McpServer {
-	const networkConfig = CHAIN_CONFIGS[config.network];
+	const networkConfig = config.rpcUrl
+		? { ...CHAIN_CONFIGS[config.network], rpcUrl: config.rpcUrl }
+		: CHAIN_CONFIGS[config.network];
 
 	const server = new McpServer({
 		name: config.agentName,

@@ -74,7 +74,9 @@ export type Key0Fastify = {
  */
 export function createKey0Fastify(opts: Key0Config): Key0Fastify {
 	const { engine, agentCard } = createKey0(opts);
-	const networkConfig = CHAIN_CONFIGS[opts.config.network];
+	const networkConfig = opts.config.rpcUrl
+		? { ...CHAIN_CONFIGS[opts.config.network], rpcUrl: opts.config.rpcUrl }
+		: CHAIN_CONFIGS[opts.config.network];
 
 	const pprDeps = {
 		config: opts.config,

@@ -92,7 +92,9 @@ export type Key0Router = Router & {
 export function key0Router(opts: Key0Config): Key0Router {
 	const { requestHandler, engine } = createKey0(opts);
 	const router = Router() as Key0Router;
-	const networkConfig = CHAIN_CONFIGS[opts.config.network];
+	const networkConfig = opts.config.rpcUrl
+		? { ...CHAIN_CONFIGS[opts.config.network], rpcUrl: opts.config.rpcUrl }
+		: CHAIN_CONFIGS[opts.config.network];
 
 	// ── Pay-per-request factory ──────────────────────────────────────────
 	// Shares config, stores, and networkConfig with this router instance.

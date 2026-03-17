@@ -13,6 +13,7 @@ services:
       REDIS_URL: redis://redis:6379
       REFUND_INTERVAL_MS: 5000
       REFUND_MIN_AGE_MS: 3000
+      ALCHEMY_BASE_SEPOLIA_RPC_URL: ${ALCHEMY_BASE_SEPOLIA_RPC_URL:-}
       CHALLENGE_TTL_SECONDS: 300
       AGENT_URL: http://localhost:3000
       BASE_PATH: /a2a

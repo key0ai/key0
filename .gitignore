@@ -13,3 +13,4 @@ bun.lock
 CLAUDE.local.md
 .mcp.json
 package-lock.json
+.gstack/

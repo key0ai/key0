@@ -4,7 +4,7 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"test": "bun test --preload ./global-setup.ts --timeout 60000",
+		"test": "bun test --preload ./global-setup.ts --timeout 120000",
 		"test:card": "bun test scenarios/agent-card.test.ts --timeout 30000",
 		"test:happy": "bun test scenarios/happy-path.test.ts --timeout 120000",
 		"test:postgres": "E2E_STORAGE_BACKEND=postgres bun test scenarios/ --preload ./global-setup.ts --timeout 120000"

@@ -19,8 +19,6 @@ export const REFUND_FAIL_REDIS_URL = "redis://localhost:6381";
 /** Refund cron timing (matches docker-compose.e2e.yml) */
 export const REFUND_INTERVAL_MS = 5000;
 export const REFUND_MIN_AGE_MS = 3000;
-/** Poll timeout for refund assertions: interval + min age + buffer */
-export const REFUND_POLL_TIMEOUT_MS = 30_000;
 
 /** PPR plan IDs (standalone docker stack on port 3002) */
 export const PPR_WEATHER_PLAN_ID = "weather-query";
@@ -28,3 +26,12 @@ export const PPR_JOKE_PLAN_ID = "joke-of-the-day";
 export const PPR_WEATHER_AMOUNT_MICRO = 10_000n; // $0.01 USDC
 export const PPR_JOKE_AMOUNT_MICRO = 5_000n; // $0.005 USDC
 export const PPR_KEY0_URL = "http://localhost:3002";
+/**
+ * Poll timeout for refund assertions.
+ * Refunds go through the gas wallet lock (serialised), and each on-chain
+ * transferWithAuthorization on Base Sepolia can take up to 30 s.
+ * The batch test writes 3 records; with serialised settlement the worst-case
+ * wall-clock time is ~3 × 30 s = 90 s, plus the cron interval (5 s) and
+ * min-age guard (3 s).  Use 120 s to give a comfortable margin.
+ */
+export const REFUND_POLL_TIMEOUT_MS = 120_000;

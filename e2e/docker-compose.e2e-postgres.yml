@@ -15,6 +15,7 @@ services:
       # Postgres storage backend
       STORAGE_BACKEND: postgres
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/key0
+      ALCHEMY_BASE_SEPOLIA_RPC_URL: ${ALCHEMY_BASE_SEPOLIA_RPC_URL:-}
       REFUND_INTERVAL_MS: 5000
       REFUND_MIN_AGE_MS: 3000
       CHALLENGE_TTL_SECONDS: 300

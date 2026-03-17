@@ -11,6 +11,7 @@ services:
       ISSUE_TOKEN_API: http://host.docker.internal:3001/internal/issue-token
       KEY0_NETWORK: testnet
       REDIS_URL: redis://redis-short-ttl:6379
+      ALCHEMY_BASE_SEPOLIA_RPC_URL: ${ALCHEMY_BASE_SEPOLIA_RPC_URL:-}
       CHALLENGE_TTL_SECONDS: ${E2E_SHORT_CHALLENGE_TTL:-5}
       AGENT_URL: http://localhost:3010
       BASE_PATH: /a2a

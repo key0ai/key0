@@ -89,7 +89,9 @@ export type Key0HonoApp = Hono & {
 export function key0App(opts: Key0Config): Key0HonoApp {
 	const { engine, agentCard } = createKey0(opts);
 	const app = new Hono() as Key0HonoApp;
-	const networkConfig = CHAIN_CONFIGS[opts.config.network];
+	const networkConfig = opts.config.rpcUrl
+		? { ...CHAIN_CONFIGS[opts.config.network], rpcUrl: opts.config.rpcUrl }
+		: CHAIN_CONFIGS[opts.config.network];
 
 	// ── Pay-per-request factory ──────────────────────────────────────────
 	const pprDeps = {

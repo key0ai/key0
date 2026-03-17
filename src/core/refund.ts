@@ -14,6 +14,12 @@ export type RefundConfig = {
 	 */
 	readonly gasWalletPrivateKey?: `0x${string}`;
 	readonly network: NetworkName;
+	/**
+	 * Optional RPC URL override. When provided, overrides the default public RPC
+	 * for on-chain refund transactions. Use to pass a private/Alchemy RPC for
+	 * better reliability (e.g. avoid stale nonces from public RPCs).
+	 */
+	readonly rpcUrl?: string;
 	/** Grace period before a PAID record is eligible for refund. Default: 300_000 (5 mins). */
 	readonly minAgeMs?: number;
 	/** Max records to process per cron run. Default: 50. */
@@ -52,11 +58,12 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 		walletPrivateKey,
 		gasWalletPrivateKey,
 		network,
+		rpcUrl,
 		minAgeMs = 300_000,
 		batchSize = 50,
 		redis,
 	} = config;
-	const networkConfig = CHAIN_CONFIGS[network];
+	const networkConfig = rpcUrl ? { ...CHAIN_CONFIGS[network], rpcUrl } : CHAIN_CONFIGS[network];
 	const results: RefundResult[] = [];
 
 	// Compute the lock key once — shared with settlePayment so refunds and

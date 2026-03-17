@@ -319,6 +319,8 @@ if (!isConfigured) {
 	const TOKEN_ISSUE_RETRIES = Number(process.env.TOKEN_ISSUE_RETRIES ?? 2);
 	const STORAGE_BACKEND = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
 	const DATABASE_URL = process.env.DATABASE_URL;
+	const _RPC_URL_OVERRIDE =
+		process.env.ALCHEMY_BASE_SEPOLIA_RPC_URL || process.env.RPC_URL_OVERRIDE;
 	const _MCP_ENABLED = process.env.MCP_ENABLED === "true";
 
 	// Plans — support both PLANS (raw JSON) and PLANS_B64 (base64-encoded JSON)
@@ -388,7 +390,10 @@ if (!isConfigured) {
 	});
 
 	// Adapter & routes
-	const adapter = new X402Adapter({ network: NETWORK });
+	const adapter = new X402Adapter({
+		network: NETWORK,
+		...(_RPC_URL_OVERRIDE ? { rpcUrl: _RPC_URL_OVERRIDE } : {}),
+	});
 
 	app.get("/health", (_req, res) => {
 		res.json({ status: "ok", network: NETWORK, wallet: WALLET_ADDRESS, storage: STORAGE_BACKEND });
@@ -613,6 +618,7 @@ if (!isConfigured) {
 				tokenIssueTimeoutMs: TOKEN_ISSUE_TIMEOUT_MS,
 				tokenIssueRetries: TOKEN_ISSUE_RETRIES,
 				mcp: _MCP_ENABLED,
+				...(_RPC_URL_OVERRIDE ? { rpcUrl: _RPC_URL_OVERRIDE } : {}),
 				...(GAS_WALLET_PRIVATE_KEY && redis
 					? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY, redis }
 					: {}),
@@ -648,6 +654,7 @@ if (!isConfigured) {
 			walletPrivateKey: WALLET_PRIVATE_KEY,
 			gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY,
 			network: NETWORK,
+			...(_RPC_URL_OVERRIDE ? { rpcUrl: _RPC_URL_OVERRIDE } : {}),
 			minAgeMs: REFUND_MIN_AGE_MS,
 			batchSize: REFUND_BATCH_SIZE,
 			// Share the same Redis client used by settlePayment so the distributed

@@ -78,7 +78,7 @@ Client → Protected API with Bearer JWT
 
 Required callback: `fetchResourceCredentials` (issue credential after payment — JWT, API key, etc.). Configurable via `tokenIssueTimeoutMs` (default 15s) and `tokenIssueRetries` (default 2).
 
-Optional: `version` (default `"1.0.0"`), `facilitatorUrl` (override CDP default), `gasWalletPrivateKey` (self-contained settlement), `redis` (distributed gas wallet lock), `onPaymentReceived`, `onChallengeExpired`.
+Optional: `version` (default `"1.0.0"`), `facilitatorUrl` (override CDP default), `gasWalletPrivateKey` (self-contained settlement), `redis` (distributed gas wallet lock), `rpcUrl` (override public RPC for all on-chain ops — recommended in production), `onPaymentReceived`, `onChallengeExpired`.
 
 When `mcp: true` is set, the Express router also mounts MCP routes (`/.well-known/mcp.json` discovery + `POST /mcp` Streamable HTTP endpoint) exposing `discover_plans` and `request_access` tools. Payment follows the x402 MCP transport spec (`isError` + `structuredContent` + `_meta`). See `docs/mcp-integration.md`.
 
