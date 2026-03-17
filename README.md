@@ -790,7 +790,7 @@ bun run typecheck    # Type-check
 bun run lint         # Lint with Biome v2
 bun test src/        # Run unit tests
                      # E2E tests require Docker + funded wallets - see e2e/README.md
-                     # CI runs e2e/preflight.ts first to verify wallet balances
+                     # CI runs e2e/preflight.ts first — auto-funds wallets via Circle faucet if low
 bun run build        # Compile to ./dist
 ```
 
