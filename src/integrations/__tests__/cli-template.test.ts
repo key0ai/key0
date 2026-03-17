@@ -39,8 +39,18 @@ describe("parseCli", () => {
 		expect(result).toEqual({ command: "help" });
 	});
 
+	test("parses '-h' shorthand", () => {
+		const result = parseCli(["-h"]);
+		expect(result).toEqual({ command: "help" });
+	});
+
 	test("parses '--version'", () => {
 		const result = parseCli(["--version"]);
+		expect(result).toEqual({ command: "version" });
+	});
+
+	test("parses '-v' shorthand", () => {
+		const result = parseCli(["-v"]);
 		expect(result).toEqual({ command: "version" });
 	});
 
@@ -52,6 +62,35 @@ describe("parseCli", () => {
 	test("returns error when request missing --plan", () => {
 		const result = parseCli(["request"]);
 		expect(result).toEqual({ command: "error", message: "Missing required flag: --plan" });
+	});
+
+	test("returns error when --plan flag has no value", () => {
+		// "--plan" is the last arg, value is undefined
+		const result = parseCli(["request", "--plan"]);
+		expect(result).toEqual({ command: "error", message: "Missing required flag: --plan" });
+	});
+
+	test("ignores unknown flags in request command", () => {
+		const result = parseCli(["request", "--plan", "basic", "--unknown", "value"]);
+		expect(result).toEqual({ command: "request", plan: "basic" });
+	});
+
+	test("parses request with all optional flags", () => {
+		const result = parseCli([
+			"request",
+			"--plan",
+			"pro",
+			"--resource",
+			"res-456",
+			"--payment-signature",
+			"eyJhbGciOiJIUzI1NiJ9",
+		]);
+		expect(result).toEqual({
+			command: "request",
+			plan: "pro",
+			resource: "res-456",
+			paymentSignature: "eyJhbGciOiJIUzI1NiJ9",
+		});
 	});
 
 	test("returns help for no arguments", () => {
@@ -72,10 +111,13 @@ describe("runDiscover", () => {
 		) as unknown as typeof fetch;
 		const result = await runDiscover("https://api.example.com");
 		expect(result).toEqual({ exitCode: 0, output: mockBody });
-		expect(globalThis.fetch).toHaveBeenCalledWith("https://api.example.com/discovery", {
-			method: "GET",
-			headers: { Accept: "application/json" },
-		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"https://api.example.com/discovery",
+			expect.objectContaining({
+				method: "GET",
+				headers: { Accept: "application/json" },
+			}),
+		);
 	});
 
 	test("returns NETWORK_ERROR on fetch failure", async () => {
@@ -151,6 +193,19 @@ describe("runRequest", () => {
 		);
 	});
 
+	test("sends planId in body", async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(
+				new Response(JSON.stringify({ x402Version: 2, accepts: [] }), { status: 402 }),
+			),
+		) as unknown as typeof fetch;
+		await runRequest("https://api.example.com", "single-photo");
+		const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
+		const fetchOpts = call![1] as RequestInit;
+		const body = JSON.parse(fetchOpts.body as string);
+		expect(body.planId).toBe("single-photo");
+	});
+
 	test("passes resourceId in body when provided", async () => {
 		globalThis.fetch = mock(() =>
 			Promise.resolve(
@@ -162,6 +217,21 @@ describe("runRequest", () => {
 		const fetchOpts = call![1] as RequestInit;
 		const body = JSON.parse(fetchOpts.body as string);
 		expect(body.resourceId).toBe("img-123");
+	});
+
+	test("sends both resourceId and payment-signature when both provided", async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(new Response(JSON.stringify({ accessToken: "jwt..." }), { status: 200 })),
+		) as unknown as typeof fetch;
+		await runRequest("https://api.example.com", "pro", "res-456", "eyJhbGciOiJIUzI1NiJ9");
+		const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
+		const fetchOpts = call![1] as RequestInit;
+		const body = JSON.parse(fetchOpts.body as string);
+		expect(body.planId).toBe("pro");
+		expect(body.resourceId).toBe("res-456");
+		expect((fetchOpts.headers as Record<string, string>)["payment-signature"]).toBe(
+			"eyJhbGciOiJIUzI1NiJ9",
+		);
 	});
 
 	test("returns server error with exit 1 on 4xx/5xx", async () => {
@@ -200,6 +270,7 @@ describe("runMain", () => {
 				"--plan": "Plan ID (required for request)",
 				"--resource": "Resource ID (optional, defaults to 'default')",
 				"--payment-signature": "Base64-encoded x402 payment payload from payments-mcp",
+				"--install": "Install this binary to PATH (~/.local/bin or /usr/local/bin)",
 			},
 		});
 	});
