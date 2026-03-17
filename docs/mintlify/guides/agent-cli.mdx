@@ -1,0 +1,189 @@
+---
+title: "Agent CLI"
+description: "Generate a branded CLI binary for your Key0 service that agents can install and use autonomously."
+---
+
+The Agent CLI lets you ship a standalone binary for your service. Agents download it once, run `--install`, and then interact with your API by name — no HTTP knowledge required.
+
+```bash
+# Agent installs once
+./my-service-darwin-arm64 --install
+# → { "installed": "/Users/alice/.local/bin/my-service", "inPath": true }
+
+# Then uses it from anywhere
+my-service discover
+my-service request --plan basic
+```
+
+---
+
+## For Sellers: Generating the Binary
+
+The `buildCli()` function compiles a self-contained binary with your service URL baked in. Agents receive a binary that already knows where to connect — no configuration required on their end.
+
+### 1. Install the CLI builder
+
+The CLI builder is included in the Key0 SDK. No extra install needed.
+
+```bash
+bun add @key0ai/key0
+```
+
+### 2. Create a build script
+
+Add a `build-cli.ts` to your project:
+
+```typescript
+import { buildCli } from "@key0ai/key0/cli";
+
+const result = await buildCli({
+  name: "my-service",
+  url: process.env.KEY0_PUBLIC_URL ?? "https://api.example.com",
+
+  // Cross-compile for all platforms your agents run on.
+  // Omit targets (or pass []) to build for the current platform only.
+  targets: ["bun-linux-x64", "bun-darwin-arm64", "bun-darwin-x64"],
+
+  outputDir: "./dist/cli",
+});
+
+for (const bin of result.binaries) {
+  const mb = (bin.size / 1024 / 1024).toFixed(1);
+  console.log(`✓ ${bin.path}  (${mb} MB)`);
+}
+```
+
+### 3. Build
+
+```bash
+bun run build-cli.ts
+# ✓ ./dist/cli/my-service-linux-x64  (63.2 MB)
+# ✓ ./dist/cli/my-service-darwin-arm64  (57.9 MB)
+# ✓ ./dist/cli/my-service-darwin-x64  (66.1 MB)
+```
+
+### 4. Distribute
+
+Upload the binaries to your CDN or GitHub Releases. Each agent downloads the binary for their platform.
+
+<Tip>
+Tell agents the download URL for their platform in your service's README or agent card description. A platform-specific URL like `https://cdn.example.com/cli/my-service-darwin-arm64` is all they need.
+</Tip>
+
+---
+
+## For Agents: Installing and Using the CLI
+
+### Install
+
+```bash
+# 1. Download the binary for your platform
+curl -fsSL https://cdn.example.com/cli/my-service-darwin-arm64 -o my-service
+chmod +x ./my-service
+
+# 2. Self-install to PATH
+./my-service --install
+# → { "installed": "/Users/alice/.local/bin/my-service", "inPath": true, "addToPath": "export PATH=\"/Users/alice/.local/bin:$PATH\"" }
+```
+
+If `inPath` is `false`, add the `addToPath` line to your shell config (`~/.bashrc` or `~/.zshrc`):
+
+```bash
+export PATH="/Users/alice/.local/bin:$PATH"
+```
+
+If both `~/.local/bin` and `/usr/local/bin` fail (permissions), run with sudo:
+
+```bash
+sudo ./my-service --install
+```
+
+### Commands
+
+Once installed, the binary is available by name from anywhere:
+
+```bash
+# Discover available plans and pricing
+my-service discover
+
+# Request access to a plan (returns 402 challenge or access grant)
+my-service request --plan basic
+
+# Request with a payment signature (from payments-mcp)
+my-service request --plan basic --payment-signature <base64-payload>
+
+# Show help
+my-service --help
+
+# Show version and URL
+my-service --version
+```
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success — access granted |
+| `1` | Error — see `error` and `code` fields in JSON output |
+| `42` | Payment required — `402` challenge returned, pay and retry |
+
+All output is machine-readable JSON, making it easy to parse from an agent:
+
+```json
+// discover
+{ "agentName": "My Service", "plans": [{ "planId": "basic", "unitAmount": "$0.10" }] }
+
+// request (payment required)
+{ "challengeId": "abc123", "amount": "100000", "destination": "0x...", "chainId": 84532 }
+
+// request (access granted)
+{ "token": "eyJ...", "resourceUrl": "https://api.example.com/resource/default" }
+```
+
+### Full install + use flow (Claude Code example)
+
+```bash
+# Claude discovers the service, downloads the right binary, and installs it
+curl -fsSL https://cdn.example.com/cli/my-service-darwin-arm64 -o my-service
+chmod +x ./my-service
+./my-service --install
+
+# Discover plans
+my-service discover
+
+# Request access (will return 402 with payment challenge)
+my-service request --plan basic
+
+# After paying via payments-mcp, submit the signature
+my-service request --plan basic --payment-signature <sig>
+
+# Use the returned token to call the API
+curl -H "Authorization: Bearer <token>" https://api.example.com/resource/default
+```
+
+---
+
+## Reference
+
+### `buildCli(opts)`
+
+| Option | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | `string` | ✅ | — | Binary name (e.g. `"my-service"`) |
+| `url` | `string` | ✅ | — | Your service's public URL |
+| `targets` | `string[]` | | `["bun-linux-x64", "bun-darwin-arm64", "bun-darwin-x64"]` | Bun compile targets. Pass `[]` for current platform only. |
+| `outputDir` | `string` | | `"./dist/cli"` | Where to write binaries |
+
+Returns `{ binaries: Array<{ path, target, size }> }`.
+
+### Binary flags
+
+| Flag | Description |
+|---|---|
+| `discover` | `GET /discovery` — list plans |
+| `request --plan <id>` | `POST /x402/access` — request access or submit payment |
+| `--payment-signature <sig>` | Include with `request` to submit a signed payment |
+| `--resource <id>` | Resource ID (defaults to `"default"`) |
+| `--install` | Install binary to `~/.local/bin` (or `/usr/local/bin` as fallback) |
+| `--help` | Show usage |
+| `--version` | Show name, version, and URL |

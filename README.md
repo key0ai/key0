@@ -871,6 +871,40 @@ This adds:
 
 See [`docs/mcp-integration.md`](./docs/mcp-integration.md) for architecture details and transport rationale.
 
+### Agent CLI
+
+Sellers can distribute a branded CLI binary — a standalone executable with your service URL baked in. Agents download it once, install it, and interact with your API by name.
+
+**For sellers — generate the binary:**
+
+```typescript
+import { buildCli } from "@key0ai/key0/cli";
+
+await buildCli({
+  name: "my-service",
+  url: "https://api.example.com",
+  targets: ["bun-linux-x64", "bun-darwin-arm64", "bun-darwin-x64"],
+  outputDir: "./dist/cli",
+});
+```
+
+**For agents — install and use:**
+
+```bash
+# Download and install once
+curl -fsSL https://cdn.example.com/cli/my-service-darwin-arm64 -o my-service
+chmod +x ./my-service
+./my-service --install
+# → { "installed": "/Users/alice/.local/bin/my-service", "inPath": true }
+
+# Use from anywhere
+my-service discover
+my-service request --plan basic
+my-service request --plan basic --payment-signature <sig>
+```
+
+All output is machine-readable JSON. Exit code `42` signals a 402 payment challenge; `0` is success.
+
 ### Autonomous Agents (e.g. OpenClaw)
 
 Headless autonomous agents can do the same. Any agent runtime that supports wallet signing (via an embedded wallet, a KMS-backed key, or an MCP-compatible tool) can interact with key0 without modification - the protocol is standard HTTP + on-chain USDC.

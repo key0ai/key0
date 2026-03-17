@@ -99,17 +99,12 @@
 			]
 		},
 		{
-			"group": "Integrations & Guides",
-			"pages": [
-				"integrations/express",
-				"integrations/hono",
-				"integrations/fastify",
-				"integrations/mcp",
-				"guides/paying-for-access",
-				"guides/building-a-seller",
-				"guides/claude-code-integration",
-				"guides/production-checklist"
-			]
+			"group": "Integrations",
+			"pages": ["integrations/express", "integrations/hono", "integrations/fastify"]
+		},
+		{
+			"group": "Guides",
+			"pages": ["guides/building-a-seller", "guides/agent-cli", "guides/claude-code-integration"]
 		},
 		{
 			"group": "Deployment",
