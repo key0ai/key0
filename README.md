@@ -552,6 +552,7 @@ await queue.add("process", {}, { repeat: { every: 60_000 } });
 
 > The `walletPrivateKey` must correspond to `walletAddress` - the wallet that received the USDC payments.
 > Without Redis, a plain `setInterval` works for single-instance deployments (the atomic `PAID → REFUND_PENDING` CAS transition prevents double-refunds even with multiple overlapping ticks).
+> Pass `rpcUrl` to use a private RPC (e.g. Alchemy) instead of the default public endpoint — recommended for production to avoid stale-nonce errors when processing multiple sequential refunds.
 
 **Retrying failed refunds:**
 
