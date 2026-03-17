@@ -481,6 +481,7 @@ fastify.listen({ port: 3000 });
 | `gasWalletPrivateKey` | `0x${string}` | | - | Private key for self-contained settlement |
 | `redis` | `IRedisLockClient` | | - | Redis client for distributed gas wallet settlement locking across replicas |
 | `facilitatorUrl` | `string` | | CDP default | Override the x402 facilitator URL |
+| `rpcUrl` | `string` | | public RPC | Override the RPC endpoint for on-chain operations — use Alchemy or other private RPC in production |
 | `onPaymentReceived` | `(grant) => Promise<void>` | | - | Fired after successful payment |
 | `onChallengeExpired` | `(challengeId) => Promise<void>` | | - | Fired when a challenge expires |
 | `mcp` | `boolean` | | `false` | Enable MCP server - mounts `/.well-known/mcp.json` and `POST /mcp` (Streamable HTTP) |
