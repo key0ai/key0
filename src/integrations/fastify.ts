@@ -24,7 +24,9 @@ import {
  */
 export async function key0Plugin(fastify: FastifyInstance, opts: Key0Config): Promise<void> {
 	const { engine, agentCard } = createKey0(opts);
-	const networkConfig = CHAIN_CONFIGS[opts.config.network];
+	const networkConfig = opts.config.rpcUrl
+		? { ...CHAIN_CONFIGS[opts.config.network], rpcUrl: opts.config.rpcUrl }
+		: CHAIN_CONFIGS[opts.config.network];
 
 	// Agent Card
 	fastify.get(`/${AGENT_CARD_PATH}`, async (_request: FastifyRequest, reply: FastifyReply) => {

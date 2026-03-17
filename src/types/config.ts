@@ -89,6 +89,12 @@ export type SellerConfig = {
 	// Settlement strategy (optional — defaults to facilitatorUrl mode)
 	readonly gasWalletPrivateKey?: `0x${string}`; // enables gas wallet mode (self-contained settlement)
 	readonly facilitatorUrl?: string; // override default facilitatorUrl from CHAIN_CONFIGS
+	/**
+	 * Optional RPC URL override for on-chain operations (settlement and verification).
+	 * When provided, overrides the default public RPC from CHAIN_CONFIGS.
+	 * Use a private/Alchemy endpoint for better reliability in production.
+	 */
+	readonly rpcUrl?: string;
 
 	/**
 	 * Redis client for distributed gas wallet settlement locking.

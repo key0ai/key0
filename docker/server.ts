@@ -617,6 +617,7 @@ if (!isConfigured) {
 				tokenIssueTimeoutMs: TOKEN_ISSUE_TIMEOUT_MS,
 				tokenIssueRetries: TOKEN_ISSUE_RETRIES,
 				mcp: _MCP_ENABLED,
+				...(_RPC_URL_OVERRIDE ? { rpcUrl: _RPC_URL_OVERRIDE } : {}),
 				...(GAS_WALLET_PRIVATE_KEY && redis
 					? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY, redis }
 					: {}),

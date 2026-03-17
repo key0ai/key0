@@ -30,7 +30,9 @@ import {
 export function key0Router(opts: Key0Config): Router {
 	const { requestHandler, engine } = createKey0(opts);
 	const router = Router();
-	const networkConfig = CHAIN_CONFIGS[opts.config.network];
+	const networkConfig = opts.config.rpcUrl
+		? { ...CHAIN_CONFIGS[opts.config.network], rpcUrl: opts.config.rpcUrl }
+		: CHAIN_CONFIGS[opts.config.network];
 
 	// Agent Card
 	router.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: requestHandler }));

@@ -140,7 +140,9 @@ function deriveRequestId(paymentPayload: X402PaymentPayload): string {
  * @see https://github.com/coinbase/x402/blob/main/specs/transports-v2/mcp.md
  */
 export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): McpServer {
-	const networkConfig = CHAIN_CONFIGS[config.network];
+	const networkConfig = config.rpcUrl
+		? { ...CHAIN_CONFIGS[config.network], rpcUrl: config.rpcUrl }
+		: CHAIN_CONFIGS[config.network];
 
 	const server = new McpServer({
 		name: config.agentName,

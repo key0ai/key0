@@ -25,7 +25,9 @@ import {
 export function key0App(opts: Key0Config): Hono {
 	const { engine, agentCard } = createKey0(opts);
 	const app = new Hono();
-	const networkConfig = CHAIN_CONFIGS[opts.config.network];
+	const networkConfig = opts.config.rpcUrl
+		? { ...CHAIN_CONFIGS[opts.config.network], rpcUrl: opts.config.rpcUrl }
+		: CHAIN_CONFIGS[opts.config.network];
 
 	// Agent Card
 	app.get(`/${AGENT_CARD_PATH}`, (c) => c.json(agentCard));
