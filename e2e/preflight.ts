@@ -1,12 +1,20 @@
 /**
  * Pre-flight wallet balance check and top-up.
  *
- * Checks USDC and ETH balances for all test wallets.  If the KEY0 wallet USDC
- * balance is below the minimum required to run the full suite, it transfers
- * USDC from the CLIENT wallet to cover the deficit.
+ * Checks USDC and ETH balances for all test wallets.  Tops up any wallet
+ * whose USDC balance falls below the minimum required to run the full suite:
  *
- * Run before the e2e test suite to prevent REFUND_FAILED failures caused by an
- * empty KEY0 wallet.
+ *   CLIENT wallet — must have ≥ $1.00 USDC to fund all test purchases.
+ *   KEY0 wallet   — must have ≥ $0.10 USDC for refund tests (cron sends USDC
+ *                   FROM KEY0 back to the payer).
+ *   GAS wallet    — must have ≥ $0.20 USDC because concurrent-purchases.test.ts
+ *                   uses the GAS wallet as a second buyer (makeGasE2eClient).
+ *                   Without USDC the transferWithAuthorization reverts, leaving
+ *                   clientA's settlement in-flight which blocks the gas wallet
+ *                   lock and cascades into refund failures.
+ *
+ * Run before the e2e test suite to prevent spurious failures caused by
+ * depleted wallets.
  *
  * Exit codes:
  *   0  All balances OK (or top-up succeeded)
@@ -33,10 +41,24 @@ const KEY0_MIN_USDC = parseUnits("0.10", 6); // $0.10
 const KEY0_TOPUP_USDC = parseUnits("0.50", 6); // $0.50
 
 /**
+ * Minimum USDC the GAS wallet must hold to participate as a buyer in
+ * concurrent-purchases.test.ts (makeGasE2eClient — second concurrent buyer).
+ * One purchase costs $0.10; we keep a small buffer.
+ */
+const GAS_MIN_USDC = parseUnits("0.20", 6); // $0.20
+
+/**
+ * Amount to transfer to GAS wallet if it falls below the minimum.
+ */
+const GAS_TOPUP_USDC = parseUnits("0.50", 6); // $0.50
+
+/**
  * Minimum USDC the CLIENT wallet must hold to make purchases.
  * Suite purchases: ~$0.80 per run (happy-path, double-spend, concurrent, etc.)
+ * This check runs BEFORE any top-ups so the threshold must account for
+ * potential transfers to KEY0 and GAS wallets.
  */
-const CLIENT_MIN_USDC = parseUnits("1.00", 6); // $1.00
+const CLIENT_MIN_USDC = parseUnits("2.00", 6); // $2.00 (covers top-ups + suite)
 
 /** Minimum ETH (wei) for gas — warns if below but doesn't abort. */
 const MIN_ETH_WEI = parseUnits("0.002", 18); // 0.002 ETH
@@ -81,10 +103,10 @@ const rpcUrl = process.env["ALCHEMY_BASE_SEPOLIA_RPC_URL"] ?? "https://sepolia.b
 
 const clientKey = requireEnv("CLIENT_WALLET_PRIVATE_KEY") as `0x${string}`;
 const key0Key = requireEnv("KEY0_WALLET_KEY") as `0x${string}`;
+const gasWalletAddress = requireEnv("GAS_WALLET_ADDRESS") as `0x${string}`;
 
 const clientAccount = privateKeyToAccount(clientKey);
 const key0Account = privateKeyToAccount(key0Key);
-const gasWalletAddress = requireEnv("GAS_WALLET_ADDRESS") as `0x${string}`;
 const key0Address = key0Account.address;
 
 const transport = http(rpcUrl);
@@ -104,14 +126,53 @@ async function getEth(address: `0x${string}`): Promise<bigint> {
 	return publicClient.getBalance({ address });
 }
 
+async function topUp(
+	label: string,
+	destination: `0x${string}`,
+	currentBalance: bigint,
+	targetBalance: bigint,
+): Promise<boolean> {
+	const topUpAmount = targetBalance - currentBalance;
+	console.log(
+		`⬆  ${label} USDC low (${fmt(currentBalance)}), topping up ${fmt(topUpAmount)} from CLIENT wallet...`,
+	);
+
+	const currentClientUsdc = await getUsdc(clientAccount.address);
+	if (currentClientUsdc < topUpAmount) {
+		console.error(
+			`✗  CLIENT wallet doesn't have enough USDC to top up ${label} (have ${fmt(currentClientUsdc)}, need ${fmt(topUpAmount)})`,
+		);
+		return false;
+	}
+
+	try {
+		const hash = await clientWallet.writeContract({
+			address: USDC_ADDRESS,
+			abi: ERC20_ABI,
+			functionName: "transfer",
+			args: [destination, topUpAmount],
+		});
+		console.log(`   tx: ${hash}`);
+		const receipt = await publicClient.waitForTransactionReceipt({ hash });
+		if (receipt.status !== "success") throw new Error("transfer reverted");
+		const newBal = await getUsdc(destination);
+		console.log(`✓  ${label} USDC after top-up: ${fmt(newBal)}`);
+		return true;
+	} catch (err) {
+		console.error(`✗  Top-up failed: ${err instanceof Error ? err.message : String(err)}`);
+		return false;
+	}
+}
+
 console.log("─── Pre-flight wallet check ───────────────────────────────");
 
 // Read all balances in parallel
-const [clientUsdc, clientEth, key0Usdc, key0Eth, gasEth] = await Promise.all([
+const [clientUsdc, clientEth, key0Usdc, key0Eth, gasUsdc, gasEth] = await Promise.all([
 	getUsdc(clientAccount.address),
 	getEth(clientAccount.address),
 	getUsdc(key0Address),
 	getEth(key0Address),
+	getUsdc(gasWalletAddress),
 	getEth(gasWalletAddress),
 ]);
 
@@ -119,7 +180,7 @@ console.log(
 	`CLIENT  ${clientAccount.address}  USDC: ${fmt(clientUsdc)}  ETH: ${formatUnits(clientEth, 18)}`,
 );
 console.log(`KEY0    ${key0Address}  USDC: ${fmt(key0Usdc)}  ETH: ${formatUnits(key0Eth, 18)}`);
-console.log(`GAS     ${gasWalletAddress}  ETH: ${formatUnits(gasEth, 18)}`);
+console.log(`GAS     ${gasWalletAddress}  USDC: ${fmt(gasUsdc)}  ETH: ${formatUnits(gasEth, 18)}`);
 console.log("───────────────────────────────────────────────────────────");
 
 let failed = false;
@@ -135,7 +196,7 @@ for (const [name, bal] of [
 	}
 }
 
-// ── CLIENT USDC check ────────────────────────────────────────────────────────
+// ── CLIENT USDC check (must run first — it funds all top-ups) ────────────────
 if (clientUsdc < CLIENT_MIN_USDC) {
 	console.error(
 		`✗  CLIENT USDC too low (${fmt(clientUsdc)}, need ${fmt(CLIENT_MIN_USDC)}) — top up via https://faucet.circle.com`,
@@ -145,36 +206,18 @@ if (clientUsdc < CLIENT_MIN_USDC) {
 
 // ── KEY0 USDC top-up ─────────────────────────────────────────────────────────
 if (key0Usdc < KEY0_MIN_USDC) {
-	const topUp = KEY0_TOPUP_USDC - key0Usdc;
-	console.log(
-		`⬆  KEY0 USDC low (${fmt(key0Usdc)}), topping up ${fmt(topUp)} from CLIENT wallet...`,
-	);
-
-	if (clientUsdc < topUp) {
-		console.error(
-			`✗  CLIENT wallet doesn't have enough USDC to top up KEY0 (have ${fmt(clientUsdc)}, need ${fmt(topUp)})`,
-		);
-		failed = true;
-	} else {
-		try {
-			const hash = await clientWallet.writeContract({
-				address: USDC_ADDRESS,
-				abi: ERC20_ABI,
-				functionName: "transfer",
-				args: [key0Address, topUp],
-			});
-			console.log(`   tx: ${hash}`);
-			const receipt = await publicClient.waitForTransactionReceipt({ hash });
-			if (receipt.status !== "success") throw new Error("transfer reverted");
-			const newBal = await getUsdc(key0Address);
-			console.log(`✓  KEY0 USDC after top-up: ${fmt(newBal)}`);
-		} catch (err) {
-			console.error(`✗  Top-up failed: ${err instanceof Error ? err.message : String(err)}`);
-			failed = true;
-		}
-	}
+	const ok = await topUp("KEY0", key0Address, key0Usdc, KEY0_TOPUP_USDC);
+	if (!ok) failed = true;
 } else {
 	console.log(`✓  KEY0 USDC OK (${fmt(key0Usdc)})`);
+}
+
+// ── GAS USDC top-up ──────────────────────────────────────────────────────────
+if (gasUsdc < GAS_MIN_USDC) {
+	const ok = await topUp("GAS", gasWalletAddress, gasUsdc, GAS_TOPUP_USDC);
+	if (!ok) failed = true;
+} else {
+	console.log(`✓  GAS USDC OK (${fmt(gasUsdc)})`);
 }
 
 console.log("───────────────────────────────────────────────────────────");
