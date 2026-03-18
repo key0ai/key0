@@ -43,6 +43,27 @@ export type Plan = {
 	readonly mode?: "subscription" | "per-request";
 	/** Declared routes for per-request plans — surfaced in discovery, agent card, and MCP discover_plans. */
 	readonly routes?: readonly PlanRouteInfo[];
+
+	// ── Free plan ──────────────────────────────────────────────────────────────
+	/**
+	 * When true, this plan skips x402 payment entirely.
+	 * Key0 proxies directly to the backend and returns the result.
+	 */
+	readonly free?: true;
+
+	// ── Per-plan static proxy ──────────────────────────────────────────────────
+	/**
+	 * Backend path template to proxy to after payment (or immediately for free plans).
+	 * Supports `{param}` placeholders interpolated from agent-supplied `params`.
+	 * Resolved against `proxyTo.baseUrl` from SellerConfig.
+	 * @example "/signal/{asset}"  → GET baseUrl/signal/BTC
+	 * @example "/health"          → GET baseUrl/health
+	 */
+	readonly proxyPath?: string;
+	/** HTTP method for the proxied request. Defaults to "GET". */
+	readonly proxyMethod?: "GET" | "POST";
+	/** Static query params appended to every proxied URL. */
+	readonly proxyQuery?: Readonly<Record<string, string>>;
 };
 
 // ---------------------------------------------------------------------------
@@ -87,6 +108,12 @@ export type ProxyToConfig = {
 	readonly headers?: Record<string, string>;
 	/** Optional path rewrite applied before forwarding (e.g. strip a prefix). */
 	readonly pathRewrite?: (path: string) => string;
+	/**
+	 * When set, attached as `X-Key0-Internal-Token` header on every proxied request.
+	 * The backend validates this to ensure all traffic originates from Key0.
+	 * Set via `KEY0_PROXY_SECRET` env var in the standalone Docker.
+	 */
+	readonly proxySecret?: string;
 };
 
 /**
@@ -123,7 +150,7 @@ export type SellerConfig = {
 	 * The implementation is fully up to you — generate a JWT, call another service, return an API key, etc.
 	 * Not called for per-request plans when fetchResource/proxyTo is configured.
 	 */
-	readonly fetchResourceCredentials: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+	readonly fetchResourceCredentials?: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 	/** Timeout for fetchResourceCredentials callback in ms. Default: 15000. */
 	readonly tokenIssueTimeoutMs?: number;
 	/** Max retries for fetchResourceCredentials on failure. Default: 2. */

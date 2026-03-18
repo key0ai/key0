@@ -64,7 +64,7 @@ export class ChallengeEngine {
 		const callWithTimeout = () => {
 			let timer: ReturnType<typeof setTimeout>;
 			return Promise.race([
-				this.config.fetchResourceCredentials(params).finally(() => clearTimeout(timer)),
+				this.config.fetchResourceCredentials!(params).finally(() => clearTimeout(timer)),
 				new Promise<never>((_, reject) => {
 					timer = setTimeout(
 						() => reject(new Key0Error("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)),

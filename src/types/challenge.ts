@@ -78,6 +78,12 @@ export type ResourceResponse = {
 	};
 };
 
+/**
+ * Alias for ResourceResponse — used in specs and docs as "ProxyGrant".
+ * Represents the data returned by Key0 after proxying a paid or free plan call.
+ */
+export type ProxyGrant = ResourceResponse;
+
 // Internal challenge record (stored in IChallengeStore)
 export type ChallengeRecord = {
 	readonly challengeId: string;
