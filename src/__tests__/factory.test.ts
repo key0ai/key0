@@ -10,14 +10,19 @@ function makeTestSeenTxStore() {
 	return new TestSeenTxStore();
 }
 
+// Create a config that omits fetchResourceCredentials entirely
+function configWithoutFrc(overrides: object = {}) {
+	const { fetchResourceCredentials: _fc, ...rest } = makeSellerConfig();
+	return { ...rest, ...overrides };
+}
+
 describe("createKey0 — startup validation", () => {
 	test("throws if fetchResourceCredentials absent and a subscription plan has no proxyPath", () => {
 		expect(() =>
 			createKey0({
 				config: {
-					...makeSellerConfig(),
+					...configWithoutFrc(),
 					plans: [{ planId: "basic", unitAmount: "$0.01" }],
-					fetchResourceCredentials: undefined,
 				},
 				store: makeTestStore(),
 				seenTxStore: makeTestSeenTxStore(),
@@ -29,7 +34,9 @@ describe("createKey0 — startup validation", () => {
 		expect(() =>
 			createKey0({
 				config: {
-					...makeSellerConfig(),
+					...configWithoutFrc({
+						proxyTo: { baseUrl: "https://backend.internal" },
+					}),
 					plans: [
 						{
 							planId: "signal",
@@ -38,8 +45,6 @@ describe("createKey0 — startup validation", () => {
 							proxyPath: "/signal/{asset}",
 						},
 					],
-					fetchResourceCredentials: undefined,
-					proxyTo: { baseUrl: "https://backend.internal" },
 				},
 				store: makeTestStore(),
 				seenTxStore: makeTestSeenTxStore(),
@@ -51,10 +56,10 @@ describe("createKey0 — startup validation", () => {
 		expect(() =>
 			createKey0({
 				config: {
-					...makeSellerConfig(),
+					...configWithoutFrc({
+						proxyTo: { baseUrl: "https://backend.internal" },
+					}),
 					plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
-					fetchResourceCredentials: undefined,
-					proxyTo: { baseUrl: "https://backend.internal" },
 				},
 				store: makeTestStore(),
 				seenTxStore: makeTestSeenTxStore(),
@@ -66,10 +71,10 @@ describe("createKey0 — startup validation", () => {
 		const warnSpy = spyOn(console, "warn");
 		createKey0({
 			config: {
-				...makeSellerConfig(),
+				...configWithoutFrc({
+					proxyTo: { baseUrl: "https://backend.internal" },
+				}),
 				plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
-				fetchResourceCredentials: undefined,
-				proxyTo: { baseUrl: "https://backend.internal" }, // no proxySecret
 			},
 			store: makeTestStore(),
 			seenTxStore: makeTestSeenTxStore(),
@@ -81,10 +86,10 @@ describe("createKey0 — startup validation", () => {
 		const warnSpy = spyOn(console, "warn").mockReset();
 		createKey0({
 			config: {
-				...makeSellerConfig(),
+				...configWithoutFrc({
+					proxyTo: { baseUrl: "https://backend.internal", proxySecret: "secret-at-least-32-chars-long!!" },
+				}),
 				plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
-				fetchResourceCredentials: undefined,
-				proxyTo: { baseUrl: "https://backend.internal", proxySecret: "secret-at-least-32-chars-long!!" },
 			},
 			store: makeTestStore(),
 			seenTxStore: makeTestSeenTxStore(),

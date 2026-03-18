@@ -11,7 +11,7 @@ import type {
 
 export type Key0Config = {
 	readonly config: SellerConfig;
-	readonly adapter: IPaymentAdapter;
+	readonly adapter?: IPaymentAdapter;
 	readonly store: IChallengeStore;
 	readonly seenTxStore: ISeenTxStore;
 };
@@ -24,6 +24,15 @@ export type Key0Instance = {
 };
 
 export function createKey0(opts: Key0Config): Key0Instance {
+	// Guard: fetchResourceCredentials required unless all plans have proxyPath or are free
+	const plansNeedingCredentials = opts.config.plans.filter((p) => !p.free && !p.proxyPath);
+	if (plansNeedingCredentials.length > 0 && !opts.config.fetchResourceCredentials) {
+		throw new Error(
+			`fetchResourceCredentials is required when any plan lacks both 'free: true' and 'proxyPath'. ` +
+				`Affected plans: ${plansNeedingCredentials.map((p) => p.planId).join(", ")}`,
+		);
+	}
+
 	// Warn if proxyTo is configured without proxySecret
 	if (opts.config.proxyTo && !opts.config.proxyTo.proxySecret) {
 		console.warn(
@@ -54,7 +63,7 @@ export function createKey0(opts: Key0Config): Key0Instance {
 		config: opts.config,
 		store,
 		seenTxStore,
-		adapter: opts.adapter,
+		adapter: opts.adapter as IPaymentAdapter, // safe: only used when plan has no proxyPath
 	});
 
 	const executor = new Key0Executor(engine, opts.config);
