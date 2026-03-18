@@ -178,8 +178,8 @@ All routes — paid and free — are also accessible via `POST /x402/access` and
 For free routes, `txHash` and `explorerUrl` are absent. For backend non-2xx responses via A2A: refund is initiated, and the backend error is surfaced inside `resource` (status + body from backend unchanged).
 
 **MCP tools:**
-- `discover_plans` → renamed to `discover_api` — returns both plans and routes
-- `request_access` → handles both `planId` (subscription) and `routeId` (route); exactly one required
+- `discover_plans` → renamed to `discover` — returns both plans and routes
+- `request_access` → renamed to `access` — handles both `planId` (subscription) and `routeId` (route); exactly one required
 
 ### Error Pass-Through Contract
 
@@ -192,7 +192,7 @@ In both cases, the backend status code and body are preserved. Key0 never replac
 
 ### Discovery Endpoint
 
-`GET /discovery` returns both plans and routes. The response is unwrapped (no `discoveryResponse` wrapper — this is a fix from the current branch):
+`GET /discover` returns both plans and routes. The response is unwrapped (no `discoveryResponse` wrapper — this is a fix from the current branch):
 
 ```json
 {
@@ -330,7 +330,7 @@ AND all paths start with /
 
 **Experience tab — Agent Card subtab:** Update `generateAgentCard()` to include `routes` array in the discovery preview. Show route entries with `routeId`, method, path, and price (or "free"). The terminal walkthrough should demonstrate a route call via `/x402/access` in addition to the existing subscription plan flow.
 
-**Experience tab — MCP subtab:** Update `generateMcpTerminal()` to show `discover_api` (renamed from `discover_plans`) returning both plans and routes.
+**Experience tab — MCP subtab:** Update `generateMcpTerminal()` to show `discover` (renamed from `discover_plans`) returning both plans and routes.
 
 **Deploy tab — .env subtab:** `generateEnv()` must write:
 - `ROUTES_B64` — base64 JSON of routes array (when routes are configured), matching `PLANS_B64` pattern
@@ -417,7 +417,8 @@ This is a **breaking change** to the `feat/pay-per-request` branch (not to `main
 | `Plan.routes` | Top-level `SellerConfig.routes` |
 | `SellerConfig.fetchResource` | `proxyTo` (custom logic moves to backend) |
 | `key0.payPerRequest(planId)` | `key0.payPerRequest(routeId)` (parameter rename) |
-| `discoveryResponse` wrapper on `GET /discovery` | Unwrapped response object |
+| `GET /discovery` endpoint | Renamed to `GET /discover` |
+| `discoveryResponse` wrapper on `GET /discover` | Unwrapped response object |
 
 The subscription flow (`Plan` → payment → JWT) is **unchanged**. Sellers using only subscription plans today are unaffected.
 
@@ -451,10 +452,10 @@ The subscription flow (`Plan` → payment → JWT) is **unchanged**. Sellers usi
 
 ### MCP Tools
 
-16. **`discover_api` tool:** Returns both plans and routes with correct schema; free routes have no `unitAmount`
-17. **`request_access` with routeId — paid:** Settles payment → `ResourceResponse`
-18. **`request_access` with routeId — free:** No payment → `ResourceResponse`
-19. **`request_access` with planId:** Subscription flow unchanged → `AccessGrant` JWT
+16. **`discover` tool:** Returns both plans and routes with correct schema; free routes have no `unitAmount`
+17. **`access` with routeId — paid:** Settles payment → `ResourceResponse`
+18. **`access` with routeId — free:** No payment → `ResourceResponse`
+19. **`access` with planId:** Subscription flow unchanged → `AccessGrant` JWT
 
 ### Subscription Plans (Regression)
 
@@ -471,12 +472,12 @@ The subscription flow (`Plan` → payment → JWT) is **unchanged**. Sellers usi
 ### Coexistence
 
 26. **Seller with both plans and routes:** Subscription clients and per-request clients coexist
-27. **Discovery returns both:** `GET /discovery` includes both `plans` and `routes` arrays, no wrapper
+27. **Discovery returns both:** `GET /discover` includes both `plans` and `routes` arrays, no wrapper
 
 ### Docker Setup UI
 
 28. **Routes persist across restart:** Routes saved via `/api/setup/save` are written to `ROUTES_B64` and survive container restart
-29. **Discovery reflects saved routes:** After saving routes via UI, `GET /discovery` returns them correctly
+29. **Discovery reflects saved routes:** After saving routes via UI, `GET /discover` returns them correctly
 30. **Free route in UI:** Route saved with blank price → discovery shows no `unitAmount` → transparent proxy requires no payment
 
 ---
