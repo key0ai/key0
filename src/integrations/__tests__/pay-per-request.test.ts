@@ -989,6 +989,127 @@ describe("ChallengeEngine.markDelivered", () => {
 const { key0Router } = await import("../express.js");
 
 // ---------------------------------------------------------------------------
+// Module-level helpers for Express key0Router integration tests
+// ---------------------------------------------------------------------------
+
+type MockExpressReq = {
+	method: string;
+	url: string;
+	path: string;
+	headers: Record<string, string | undefined>;
+	body: Record<string, unknown>;
+	params: Record<string, string>;
+	query: Record<string, string>;
+};
+
+type MockExpressRes = {
+	statusCode: number;
+	sentStatus: number | null;
+	sentBody: unknown;
+	_headers: Record<string, string>;
+	_resolve: (() => void) | null;
+	status: (code: number) => { json: (data: unknown) => unknown };
+	json: (data: unknown) => unknown;
+	setHeader: (name: string, value: string) => void;
+	getHeader: (name: string) => string | undefined;
+	header: (name: string, value: string) => void;
+	on: (event: string, cb: () => void) => void;
+	end: () => void;
+};
+
+function makeMockExpressRes(): MockExpressRes {
+	const res: MockExpressRes = {
+		statusCode: 200,
+		sentStatus: null,
+		sentBody: undefined,
+		_headers: {},
+		_resolve: null,
+		status(code: number) {
+			res.sentStatus = code;
+			res.statusCode = code;
+			return {
+				json(data: unknown) {
+					res.sentBody = data;
+					res._resolve?.();
+					return data;
+				},
+			};
+		},
+		json(data: unknown) {
+			res.sentBody = data;
+			res._resolve?.();
+			return data;
+		},
+		setHeader(name: string, value: string) {
+			res._headers[name.toLowerCase()] = value;
+		},
+		getHeader(name: string) {
+			return res._headers[name.toLowerCase()];
+		},
+		header(name: string, value: string) {
+			res._headers[name.toLowerCase()] = value;
+		},
+		on(_event: string, _cb: () => void) {},
+		end() {
+			res._resolve?.();
+		},
+	};
+	return res;
+}
+
+// Simulate sending a POST /x402/access through the express router
+async function callX402Access(
+	router: ReturnType<typeof key0Router>,
+	body: Record<string, unknown>,
+	headers: Record<string, string> = {},
+): Promise<MockExpressRes> {
+	const res = makeMockExpressRes();
+	const req: MockExpressReq = {
+		method: "POST",
+		url: "/x402/access",
+		path: "/x402/access",
+		headers: { "content-type": "application/json", ...headers },
+		body,
+		params: {},
+		query: {},
+	};
+
+	await new Promise<void>((resolve) => {
+		res._resolve = resolve;
+
+		// Walk the router's stack to find the /x402/access POST handler
+		const stack: Array<{
+			route?: {
+				path: string;
+				methods: Record<string, boolean>;
+				stack: Array<{ handle: (...args: never) => unknown }>;
+			};
+		}> = (router as any).stack ?? [];
+		const route = stack
+			.map((layer) => layer.route)
+			.find((r) => r && r.path === "/x402/access" && r.methods["post"]);
+
+		if (!route) {
+			res.status(500).json({ error: "route not found in test" });
+			return;
+		}
+
+		// First handler is the x402 handler; second is the A2A JSON-RPC fallback
+		const handler = route.stack[0]?.handle;
+		if (!handler) {
+			res.status(500).json({ error: "handler not found in test" });
+			return;
+		}
+
+		// next() also resolves (e.g. when A2A path is taken)
+		const typedHandler = handler as (req: unknown, res: unknown, next: unknown) => unknown;
+		Promise.resolve(typedHandler(req, res, resolve)).catch(() => resolve());
+	});
+
+	return res;
+}
+
+// ---------------------------------------------------------------------------
 // Integration: key0Router /x402/access — free plan fast-path (Express)
 // ---------------------------------------------------------------------------
 
@@ -1013,123 +1134,6 @@ describe("key0Router /x402/access — free plan fast-path", () => {
 			// fetchResourceCredentials not required when all plans are free
 			...overrides,
 		};
-	}
-
-	// Build a minimal mock req/res for the express handler
-	type MockExpressReq = {
-		method: string;
-		url: string;
-		path: string;
-		headers: Record<string, string | undefined>;
-		body: Record<string, unknown>;
-		params: Record<string, string>;
-		query: Record<string, string>;
-	};
-
-	type MockExpressRes = {
-		statusCode: number;
-		sentStatus: number | null;
-		sentBody: unknown;
-		_headers: Record<string, string>;
-		_resolve: (() => void) | null;
-		status: (code: number) => { json: (data: unknown) => unknown };
-		json: (data: unknown) => unknown;
-		setHeader: (name: string, value: string) => void;
-		getHeader: (name: string) => string | undefined;
-		header: (name: string, value: string) => void;
-		on: (event: string, cb: () => void) => void;
-		end: () => void;
-	};
-
-	function makeMockExpressRes(): MockExpressRes {
-		const res: MockExpressRes = {
-			statusCode: 200,
-			sentStatus: null,
-			sentBody: undefined,
-			_headers: {},
-			_resolve: null,
-			status(code: number) {
-				res.sentStatus = code;
-				res.statusCode = code;
-				return {
-					json(data: unknown) {
-						res.sentBody = data;
-						res._resolve?.();
-						return data;
-					},
-				};
-			},
-			json(data: unknown) {
-				res.sentBody = data;
-				res._resolve?.();
-				return data;
-			},
-			setHeader(name: string, value: string) {
-				res._headers[name.toLowerCase()] = value;
-			},
-			getHeader(name: string) {
-				return res._headers[name.toLowerCase()];
-			},
-			header(name: string, value: string) {
-				res._headers[name.toLowerCase()] = value;
-			},
-			on(_event: string, _cb: () => void) {},
-			end() {
-				res._resolve?.();
-			},
-		};
-		return res;
-	}
-
-	// Simulate sending a POST /x402/access through the express router
-	async function callX402Access(
-		router: ReturnType<typeof key0Router>,
-		body: Record<string, unknown>,
-		headers: Record<string, string> = {},
-	): Promise<MockExpressRes> {
-		const res = makeMockExpressRes();
-		const req: MockExpressReq = {
-			method: "POST",
-			url: "/x402/access",
-			path: "/x402/access",
-			headers: { "content-type": "application/json", ...headers },
-			body,
-			params: {},
-			query: {},
-		};
-
-		await new Promise<void>((resolve) => {
-			res._resolve = resolve;
-
-			// Walk the router's stack to find the /x402/access POST handler
-			const stack: Array<{
-				route?: {
-					path: string;
-					methods: Record<string, boolean>;
-					stack: Array<{ handle: (...args: never) => unknown }>;
-				};
-			}> = (router as any).stack ?? [];
-			const route = stack
-				.map((layer) => layer.route)
-				.find((r) => r && r.path === "/x402/access" && r.methods["post"]);
-
-			if (!route) {
-				res.status(500).json({ error: "route not found in test" });
-				return;
-			}
-
-			// First handler is the x402 handler; second is the A2A JSON-RPC fallback
-			const handler = route.stack[0]?.handle;
-			if (!handler) {
-				res.status(500).json({ error: "handler not found in test" });
-				return;
-			}
-
-			// next() also resolves (e.g. when A2A path is taken)
-			Promise.resolve(handler(req, res, resolve)).catch(() => resolve());
-		});
-
-		return res;
 	}
 
 	test("returns 200 ResourceResponse for a free plan (no PAYMENT-SIGNATURE)", async () => {
@@ -1224,6 +1228,101 @@ describe("key0Router /x402/access — free plan fast-path", () => {
 		expect(res.sentStatus).toBe(400);
 		const body = res.sentBody as any;
 		expect(body.error).toBe("FREE_PLAN_MISCONFIGURED");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Integration: key0Router /x402/access — proxy error handling (paid plans)
+// ---------------------------------------------------------------------------
+
+describe("key0Router /x402/access — proxy error handling (paid plans)", () => {
+	// Build a fake PAYMENT-SIGNATURE header for the mocked settlement path
+	function makeFakePaymentSignature(): string {
+		const payload = {
+			x402Version: 2,
+			network: "eip155:84532",
+			payload: { signature: `0x${"dd".repeat(32)}` },
+		};
+		return Buffer.from(JSON.stringify(payload)).toString("base64");
+	}
+
+	function makePerRequestConfig(
+		fetchResource: (p: FetchResourceParams) => Promise<FetchResourceResult>,
+	): SellerConfig {
+		return {
+			agentName: "Test Agent",
+			agentDescription: "Test",
+			agentUrl: "https://agent.example.com",
+			providerName: "Provider",
+			providerUrl: "https://provider.example.com",
+			walletAddress: `0x${"ab".repeat(20)}` as `0x${string}`,
+			network: "testnet",
+			plans: [
+				{
+					planId: "signal",
+					unitAmount: "$0.001",
+					mode: "per-request" as const,
+					proxyPath: "/signal/{asset}",
+				},
+			],
+			fetchResourceCredentials: async (p) => ({ token: `tok_${p.challengeId}`, tokenType: "Bearer" }),
+			fetchResource,
+		};
+	}
+
+	test("transitions PAID → REFUND_PENDING when proxy returns non-2xx", async () => {
+		const store = new TestChallengeStore();
+		const seenTxStore = new TestSeenTxStore();
+		const mockFetchResource = async (): Promise<FetchResourceResult> => ({
+			status: 503,
+			body: { error: "backend down" },
+		});
+		const config = makePerRequestConfig(mockFetchResource);
+		const router = key0Router({ config, store, seenTxStore });
+
+		const res = await callX402Access(
+			router,
+			{
+				planId: "signal",
+				resource: { method: "GET", path: "/signal/BTC" },
+			},
+			{ "payment-signature": makeFakePaymentSignature() },
+		);
+
+		expect(res.sentStatus).toBe(502);
+		const body = res.sentBody as any;
+		expect(body.error).toBe("PROXY_ERROR");
+
+		// Challenge must have been transitioned to REFUND_PENDING
+		const refundPending = await store.listByState("REFUND_PENDING");
+		expect(refundPending.length).toBeGreaterThan(0);
+	});
+
+	test("transitions PAID → REFUND_PENDING on proxy timeout (AbortError)", async () => {
+		const store = new TestChallengeStore();
+		const seenTxStore = new TestSeenTxStore();
+		const mockFetchResource = async (): Promise<FetchResourceResult> => {
+			throw new DOMException("The operation was aborted.", "AbortError");
+		};
+		const config = makePerRequestConfig(mockFetchResource);
+		const router = key0Router({ config, store, seenTxStore });
+
+		const res = await callX402Access(
+			router,
+			{
+				planId: "signal",
+				resource: { method: "GET", path: "/signal/BTC" },
+			},
+			{ "payment-signature": makeFakePaymentSignature() },
+		);
+
+		expect(res.sentStatus).toBe(502);
+		const body = res.sentBody as any;
+		expect(body.error).toBe("PROXY_TIMEOUT");
+
+		// Challenge must have been transitioned to REFUND_PENDING
+		const refundPending = await store.listByState("REFUND_PENDING");
+		expect(refundPending.length).toBeGreaterThan(0);
 	});
 });
 

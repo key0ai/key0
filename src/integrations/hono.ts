@@ -399,28 +399,72 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 					}
 				}
 
-				const backendResult = await fetchResourceFn({
-					paymentInfo: {
-						txHash,
-						payer: payer ?? undefined,
-						planId,
-						amount: plan.unitAmount!,
+				// Pre-proxy guard: confirm challenge is still PAID
+				await engine.assertPaidState(challengeId);
+
+				// Proxy to backend — handle errors explicitly so we can trigger refunds.
+				let backendResult: Awaited<ReturnType<typeof fetchResourceFn>>;
+				try {
+					backendResult = await fetchResourceFn({
+						paymentInfo: {
+							txHash,
+							payer: payer ?? undefined,
+							planId,
+							amount: plan.unitAmount!,
+							method: resource.method,
+							path: resource.path,
+							challengeId,
+						},
 						method: resource.method,
 						path: resource.path,
-						challengeId,
-					},
-					method: resource.method,
-					path: resource.path,
-					headers: forwardHeaders,
-					body: resource.body,
-				});
+						headers: forwardHeaders,
+						body: resource.body,
+					});
+				} catch (err) {
+					const isTimeout = err instanceof DOMException && err.name === "AbortError";
+					engine
+						.initiateRefund(
+							challengeId,
+							isTimeout ? "proxy timeout" : `proxy threw: ${(err as Error).message}`,
+						)
+						.catch(() => {
+							/* best-effort */
+						});
+					return c.json(
+						{
+							error: isTimeout ? "PROXY_TIMEOUT" : "PROXY_ERROR",
+							message: isTimeout
+								? "Backend timed out. A refund has been initiated."
+								: `Backend error: ${(err as Error).message}. A refund has been initiated.`,
+							challengeId,
+							txHash,
+						},
+						502,
+					);
+				}
 				console.log(`[x402-access/hono] Backend responded with status ${backendResult.status}`);
 
 				if (backendResult.status >= 200 && backendResult.status < 300) {
-					await engine.markDelivered(challengeId);
+					engine.markDelivered(challengeId).catch(() => {
+						/* best-effort */
+					});
 				} else {
 					console.warn(
-						`[x402-access/hono] Backend returned ${backendResult.status} — challenge stays PAID (refund cron eligible)`,
+						`[x402-access/hono] Backend returned ${backendResult.status} — triggering REFUND_PENDING`,
+					);
+					engine
+						.initiateRefund(challengeId, `proxy returned ${backendResult.status}`)
+						.catch(() => {
+							/* best-effort */
+						});
+					return c.json(
+						{
+							error: "PROXY_ERROR",
+							message: `Backend returned ${backendResult.status}. A refund has been initiated.`,
+							challengeId,
+							txHash,
+						},
+						502,
 					);
 				}
 
