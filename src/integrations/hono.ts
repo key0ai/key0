@@ -452,11 +452,9 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 					console.warn(
 						`[x402-access/hono] Backend returned ${backendResult.status} — triggering REFUND_PENDING`,
 					);
-					engine
-						.initiateRefund(challengeId, `proxy returned ${backendResult.status}`)
-						.catch(() => {
-							/* best-effort */
-						});
+					engine.initiateRefund(challengeId, `proxy returned ${backendResult.status}`).catch(() => {
+						/* best-effort */
+					});
 					return c.json(
 						{
 							error: "PROXY_ERROR",

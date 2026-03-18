@@ -436,11 +436,9 @@ function mountFastifyRoutes(
 					console.warn(
 						`[x402-access/fastify] Backend returned ${backendResult.status} — triggering REFUND_PENDING`,
 					);
-					engine
-						.initiateRefund(challengeId, `proxy returned ${backendResult.status}`)
-						.catch(() => {
-							/* best-effort */
-						});
+					engine.initiateRefund(challengeId, `proxy returned ${backendResult.status}`).catch(() => {
+						/* best-effort */
+					});
 					return reply.code(502).send({
 						error: "PROXY_ERROR",
 						message: `Backend returned ${backendResult.status}. A refund has been initiated.`,

@@ -1265,7 +1265,10 @@ describe("key0Router /x402/access — proxy error handling (paid plans)", () => 
 					proxyPath: "/signal/{asset}",
 				},
 			],
-			fetchResourceCredentials: async (p) => ({ token: `tok_${p.challengeId}`, tokenType: "Bearer" }),
+			fetchResourceCredentials: async (p) => ({
+				token: `tok_${p.challengeId}`,
+				tokenType: "Bearer",
+			}),
 			fetchResource,
 		};
 	}
