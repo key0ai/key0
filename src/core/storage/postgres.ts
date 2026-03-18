@@ -456,6 +456,7 @@ export class PostgresChallengeStore implements IChallengeStore {
 			WHERE state = 'PAID'
 			  AND paid_at <= NOW() - make_interval(secs => ${minAgeSec})
 			  AND from_address IS NOT NULL
+			  AND access_grant IS NULL
 			  AND deleted_at IS NULL
 			ORDER BY paid_at ASC
 		`;

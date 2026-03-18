@@ -72,7 +72,8 @@ export interface IChallengeStore {
 	): Promise<boolean>;
 
 	/**
-	 * Return PAID records where paidAt + minAgeMs <= now and fromAddress is set.
+	 * Return PAID records where paidAt + minAgeMs <= now, fromAddress is set,
+	 * and no accessGrant has been persisted yet.
 	 * Used by the refund cron to find undelivered payments eligible for refund.
 	 */
 	findPendingForRefund(minAgeMs: number): Promise<ChallengeRecord[]>;

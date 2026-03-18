@@ -110,12 +110,16 @@ function createMockSql() {
 		// SELECT * WHERE state = 'PAID'
 		else if (query.includes("select * from") && query.includes("where state = 'paid'")) {
 			const tableName = values[0];
+			const requiresMissingAccessGrant = query.includes("access_grant is null");
 			result = findRows(
 				tableName,
 				(r) =>
 					r["state"] === "PAID" &&
 					r["from_address"] !== null &&
 					r["from_address"] !== undefined &&
+					(!requiresMissingAccessGrant ||
+						r["access_grant"] === null ||
+						r["access_grant"] === undefined) &&
 					(r["deleted_at"] === null || r["deleted_at"] === undefined),
 			);
 			count = 0;
@@ -568,6 +572,23 @@ describe("PostgresChallengeStore", () => {
 		const results = await store.findPendingForRefund(300_000);
 		expect(results.length).toBe(1);
 		expect(results[0]!.challengeId).toBe(record.challengeId);
+	});
+
+	test("findPendingForRefund excludes PAID records with accessGrant", async () => {
+		const sql = createMockSql();
+		const store = new PostgresChallengeStore({ sql: sql as never });
+
+		const paidAt = new Date("2025-01-01T11:00:00.000Z");
+		const record = makeChallengeRecord({
+			state: "PAID",
+			paidAt,
+			fromAddress: `0x${"cc".repeat(20)}` as `0x${string}`,
+			accessGrant: makeGrant(),
+		});
+		await store.create(record);
+
+		const results = await store.findPendingForRefund(300_000);
+		expect(results).toEqual([]);
 	});
 
 	test("cleanup soft-deletes old records", async () => {
