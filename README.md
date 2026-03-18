@@ -48,7 +48,7 @@ docker compose -f docker/docker-compose.yml --profile full up
 # Open http://localhost:3000 → configure via browser
 ```
 
-### Embedded - Express
+### Embedded - Express (Subscription)
 
 ```bash
 bun add @key0ai/key0
@@ -67,6 +67,28 @@ app.use(key0Router({
   adapter, store, seenTxStore,
 }));
 app.use("/api", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }));
+```
+
+### Embedded - Express (Pay-Per-Request)
+
+```typescript
+import { key0Router } from "@key0ai/key0/express";
+
+const key0 = key0Router({
+  config: {
+    walletAddress: "0xYour...",
+    network: "testnet",
+    plans: [{ planId: "weather-query", unitAmount: "$0.01", mode: "per-request" }],
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params),
+  },
+  adapter, store, seenTxStore,
+});
+app.use(key0);
+
+// Every call requires a PAYMENT-SIGNATURE header — no JWT issued
+app.get("/api/weather/:city", key0.payPerRequest("weather-query"), (req, res) => {
+  res.json({ city: req.params.city, temp: 72 });
+});
 ```
 
 `adapter`, `store`, and `seenTxStore` are constructed in the [Embedded Mode](#embedded-mode) section.
@@ -132,12 +154,33 @@ Client                key0                    Seller Server
      │ ◀── protected content                       │
 ```
 
+### Per-Request Variant
+
+For `mode: "per-request"` plans, no JWT is issued. Instead, key0 returns the API response directly. **Embedded mode** settles inline and calls your route handler. **Standalone mode** settles and proxies the request to your backend, returning a `ResourceResponse`:
+
+```
+Client                key0                    Backend
+     │  POST /x402/access { planId, resource: { method, path } }  │
+     │ ──────────────────▶│                         │
+     │ ◀── HTTP 402       │                         │
+     │                   │                         │
+     │  POST + PAYMENT-SIGNATURE                   │
+     │ ──────────────────▶│                         │
+     │                   │── settle on-chain        │
+     │                   │── proxy request ────────▶│
+     │                   │◀── backend response      │
+     │ ◀── ResourceResponse (backend data, no token)│
+```
+
+Both paths share the same `PENDING → PAID → DELIVERED` lifecycle with automatic refunds if the backend call fails after a successful payment.
 
 ---
 
 ## Standalone Mode
 
 Run key0 as a Docker container alongside your existing backend. No code changes required.
+
+**Subscription plans** — key0 calls your `ISSUE_TOKEN_API` and returns a JWT:
 
 ```
 ┌──────────────┐     ┌──────────────────────┐     ┌──────────────────┐
@@ -148,6 +191,21 @@ Run key0 as a Docker container alongside your existing backend. No code changes 
 │              │     │  verify on-chain      │     │                  │
 │              │     │  POST /issue-token ───│────▶│  issue-token     │
 │              │◀────│  AccessGrant          │◀────│  {token, ...}    │
+└──────────────┘     └──────────────────────┘     └──────────────────┘
+```
+
+**Per-request plans** (set `PROXY_TO_BASE_URL`) — key0 proxies to your backend and returns the response directly:
+
+```
+┌──────────────┐     ┌──────────────────────┐     ┌──────────────────┐
+│ Client Agent │     │    key0 (Docker)      │     │  Your Backend    │
+│              │────▶│  POST /x402/access    │     │                  │
+│              │◀────│  { planId, resource } │     │                  │
+│              │     │  402 + requirements   │     │                  │
+│              │     │                       │     │                  │
+│              │     │  verify on-chain      │     │                  │
+│              │     │  proxy request ───────│────▶│  GET /api/...    │
+│              │◀────│  ResourceResponse     │◀────│  200 {data}      │
 └──────────────┘     └──────────────────────┘     └──────────────────┘
 ```
 
@@ -249,7 +307,7 @@ Build from source: `docker build -t key0ai/key0 .`
 | `REFUND_BATCH_SIZE` | | `50` | Max number of `PAID` records processed per refund cron tick |
 | `TOKEN_ISSUE_TIMEOUT_MS` | | `15000` | Timeout (ms) for each `ISSUE_TOKEN_API` call |
 | `TOKEN_ISSUE_RETRIES` | | `2` | Number of retries for transient `ISSUE_TOKEN_API` failures (does not retry on deterministic errors) |
-
+| `PROXY_TO_BASE_URL` | | - | Enable per-request gateway mode. Requests to `POST /x402/access` with a `mode: "per-request"` plan are proxied to this base URL after payment settlement. Enables standalone PPR without `ISSUE_TOKEN_API` being called for per-request plans |
 
 See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 
@@ -457,6 +515,50 @@ fastify.addHook("onRequest", fastifyValidateAccessToken({ secret: process.env.AC
 fastify.listen({ port: 3000 });
 ```
 
+### Pay-Per-Request Routes (Embedded)
+
+Gate individual routes behind micro-payments with `key0.payPerRequest(planId, opts?)`. After settlement the middleware calls `next()` — no JWT is issued.
+
+```typescript
+// Declare per-request plans with mode: "per-request"
+const key0 = key0Router({
+  config: {
+    // ...
+    plans: [
+      { planId: "weather-query", unitAmount: "$0.01", mode: "per-request",
+        routes: [{ method: "GET", path: "/api/weather/:city" }] },
+      { planId: "joke-of-the-day", unitAmount: "$0.005", mode: "per-request",
+        routes: [{ method: "GET", path: "/api/joke" }] },
+    ],
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params),
+  },
+  adapter, store, seenTxStore,
+});
+app.use(key0);
+
+// Gate each route — every call must include a PAYMENT-SIGNATURE header
+app.get(
+  "/api/weather/:city",
+  key0.payPerRequest("weather-query", {
+    onPayment: (info) => console.log(`Settled: ${info.txHash}`),
+  }),
+  (req, res) => {
+    const payment = req.key0Payment; // PaymentInfo — txHash, planId, amount, etc.
+    res.json({ city: req.params.city, temp: 72, txHash: payment?.txHash });
+  },
+);
+
+app.get("/api/joke", key0.payPerRequest("joke-of-the-day"), (req, res) => {
+  res.json({ joke: "Why do programmers prefer dark mode? Bugs." });
+});
+```
+
+For Hono, use `key0.payPerRequest(planId)` as Hono middleware. For Fastify, use `{ preHandler: key0.payPerRequest(planId) }` in the route options.
+
+The standalone gateway alternative (no route registrations, all traffic via `/x402/access`) is covered in the [Standalone Mode](#standalone-mode) section.
+
+---
+
 ### Configuration Reference
 
 #### SellerConfig
@@ -482,17 +584,73 @@ fastify.listen({ port: 3000 });
 | `redis` | `IRedisLockClient` | | - | Redis client for distributed gas wallet settlement locking across replicas |
 | `facilitatorUrl` | `string` | | CDP default | Override the x402 facilitator URL |
 | `rpcUrl` | `string` | | public RPC | Override the RPC endpoint for on-chain operations — use Alchemy or other private RPC in production |
+| `fetchResource` | `(params: FetchResourceParams) => Promise<FetchResourceResult>` | | - | Per-request proxy: called after settlement to fetch backend content. Enables standalone mode for `mode: "per-request"` plans |
+| `proxyTo` | `ProxyToConfig` | | - | Per-request proxy shorthand: builds a `fetchResource` that forwards to `baseUrl`. Supports optional `headers` (e.g. shared secret) and `pathRewrite` |
 | `onPaymentReceived` | `(grant) => Promise<void>` | | - | Fired after successful payment |
 | `onChallengeExpired` | `(challengeId) => Promise<void>` | | - | Fired when a challenge expires |
 | `mcp` | `boolean` | | `false` | Enable MCP server - mounts `/.well-known/mcp.json` and `POST /mcp` (Streamable HTTP) |
 
 #### Plan
 
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `planId` | `string` | ✅ | - | Unique plan identifier |
+| `unitAmount` | `string` | ✅ | - | Price (e.g. `"$0.10"`) |
+| `description` | `string` | | - | Free-form description of what the plan includes |
+| `mode` | `"subscription" \| "per-request"` | | `"subscription"` | Billing mode. `"subscription"` issues a JWT; `"per-request"` gates individual calls |
+| `routes` | `PlanRouteInfo[]` | | `[]` | Routes guarded by this per-request plan — used in the agent card and discovery response |
+
+#### PaymentInfo
+
+Available as `req.key0Payment` in embedded route handlers after successful per-request settlement.
+
+| Field | Type | Description |
+|---|---|---|
+| `txHash` | `0x${string}` | On-chain transaction hash |
+| `payer` | `string \| undefined` | Paying wallet address (when available) |
+| `planId` | `string` | Plan that was charged |
+| `amount` | `string` | Amount charged (e.g. `"$0.01"`) |
+| `method` | `string` | HTTP method of the request |
+| `path` | `string` | Route path of the request |
+| `challengeId` | `string` | Internal challenge ID (use for audit / refund tracking) |
+
+#### PlanRouteInfo
+
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `planId` | `string` | ✅ | Unique plan identifier |
-| `unitAmount` | `string` | ✅ | Price (e.g. `"$0.10"`) |
-| `description` | `string` | | Free-form description of what the plan includes |
+| `method` | `string` | ✅ | HTTP method (e.g. `"GET"`) |
+| `path` | `string` | ✅ | Route path (e.g. `"/api/weather/:city"`) |
+| `description` | `string` | | Human-readable description of the route |
+
+#### ProxyToConfig
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `baseUrl` | `string` | ✅ | Base URL of the backend service to proxy to |
+| `headers` | `Record<string, string>` | | Extra headers to inject (e.g. a shared secret so the backend rejects requests that bypass the gateway) |
+| `pathRewrite` | `(path: string) => string` | | Optional function to rewrite the path before forwarding |
+
+#### FetchResourceParams
+
+Passed to your `fetchResource` callback after on-chain settlement.
+
+| Field | Type | Description |
+|---|---|---|
+| `paymentInfo` | `PaymentInfo` | Payment metadata (txHash, payer, planId, amount) |
+| `method` | `string` | HTTP method of the original request |
+| `path` | `string` | Path of the original request |
+| `headers` | `Record<string, string>` | Forwarded request headers |
+| `body` | `unknown` | Request body (if any) |
+
+#### FetchResourceResult
+
+Returned by your `fetchResource` callback — used to build the `ResourceResponse` the client receives.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `status` | `number` | ✅ | HTTP status code from the backend |
+| `body` | `unknown` | ✅ | Response body |
+| `headers` | `Record<string, string>` | | Response headers to forward to the client |
 
 #### IssueTokenParams
 
@@ -563,17 +721,6 @@ If a refund fails (e.g. network error), the record moves to `REFUND_FAILED`. Use
 import { retryFailedRefunds } from "@key0ai/key0";
 
 // Re-queue specific failed refunds - they'll be picked up by the next processRefunds run
-const requeued = await retryFailedRefunds(store, ["challengeId-1", "challengeId-2"]);
-```
-
-**Retrying failed refunds:**
-
-If a refund fails (e.g. network error), the record moves to `REFUND_FAILED`. Use `retryFailedRefunds` to re-queue them:
-
-```typescript
-import { retryFailedRefunds } from "@key0ai/key0";
-
-// Re-queue specific failed refunds — they'll be picked up by the next processRefunds run
 const requeued = await retryFailedRefunds(store, ["challengeId-1", "challengeId-2"]);
 ```
 
@@ -788,6 +935,8 @@ bun run start
 | [`examples/standalone-service`](./examples/standalone-service) | key0 as a separate service with Redis + gas wallet |
 | [`examples/refund-cron-example`](./examples/refund-cron-example) | BullMQ refund cron with Redis-backed storage |
 | [`examples/backend-integration`](./examples/backend-integration) | key0 service + backend API coordination |
+| [`examples/ppr-embedded`](./examples/ppr-embedded) | Pay-per-request in embedded mode — weather + joke routes, inline settlement, no JWT |
+| [`examples/ppr-standalone`](./examples/ppr-standalone) | Pay-per-request in standalone gateway mode — key0 proxies to a backend after payment |
 | [`examples/client-agent`](./examples/client-agent) | Buyer agent with real on-chain USDC payments |
 | [`examples/simple-x402-client.ts`](./examples/simple-x402-client.ts) | Minimal x402 HTTP client example (single file) |
 

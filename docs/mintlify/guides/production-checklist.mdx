@@ -97,6 +97,41 @@ Use this checklist before you launch a Key0-powered service to real users. Produ
 
 ---
 
+## Pay-Per-Request
+
+<Steps>
+  <Step title="Allow PAYMENT-SIGNATURE on per-request routes">
+    For subscription plans, the `payment-signature` header only appears on `POST /x402/access`. For embedded PPR, it appears on **any route guarded by `payPerRequest()`** (e.g. `GET /api/weather/:city`). Make sure your reverse proxy and CORS config pass this header through on those paths.
+
+    Also confirm your CORS `allowedHeaders` includes `payment-signature` for browser-accessible routes.
+  </Step>
+
+  <Step title="Set a backend timeout budget for proxyTo">
+    The `proxyTo` shorthand uses a hardcoded **30-second timeout** when proxying to the backend. If your backend endpoint can take longer than 30 seconds, use a custom `fetchResource` callback with a higher timeout, or optimize the backend endpoint to respond within the budget.
+
+    Requests that exceed the timeout leave the challenge in `PAID` state — the refund cron will refund the buyer.
+  </Step>
+
+  <Step title="Pass a store for embedded PPR">
+    `key0.payPerRequest()` accepts an optional `store` (`IChallengeStore`). Without it, no `ChallengeRecord` is created and on-chain settlements that result in a crashed route handler are **not refundable**.
+
+    ```typescript
+    app.use("/api/weather/:city", key0.payPerRequest({
+      planId: "weather-query",
+      store: challengeStore,
+    }));
+    ```
+
+    The same `IChallengeStore` instance used by the main engine can be reused here.
+  </Step>
+
+  <Step title="Monitor PAID records that never reach DELIVERED">
+    Per-request challenges that stay in `PAID` indicate backend failures — they're refunded by the cron, but they also signal problems with your proxied service. Set up an alert if the count of stale `PAID` PPR records grows.
+
+    The same refund cron that handles subscription failures also processes per-request ones — no separate cron needed.
+  </Step>
+</Steps>
+
 ## Settlement
 
 <Steps>

@@ -59,12 +59,21 @@ type AccessRequest = {
   readonly planId: string;         // Must match a Plan.planId in the seller's catalog
   readonly clientAgentId: string;  // DID or URL of the client agent
   readonly callbackUrl?: string;   // Optional async webhook for status updates
+  readonly resource?: {            // Per-request standalone: the backend route to call after payment
+    readonly method: string;
+    readonly path: string;
+    readonly body?: unknown;
+  };
 };
 ```
 
+<Note>
+  The `resource` field is only used for `mode: "per-request"` plans in **standalone** mode (when `proxyTo`/`fetchResource` is set on `SellerConfig`). After payment Key0 proxies to the specified method + path and returns a `ResourceResponse` instead of an `AccessGrant`. Omit it for subscription plans and for embedded per-request plans.
+</Note>
+
 **Used in:** A2A Executor `message/send` (as a data part), x402 HTTP request parsing.
 
-**Example:**
+**Subscription example:**
 
 ```json
 {
@@ -73,6 +82,21 @@ type AccessRequest = {
   "planId": "basic",
   "resourceId": "default",
   "clientAgentId": "did:example:client-agent"
+}
+```
+
+**Per-request standalone example:**
+
+```json
+{
+  "type": "AccessRequest",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "planId": "weather-query",
+  "clientAgentId": "did:example:client-agent",
+  "resource": {
+    "method": "GET",
+    "path": "/api/weather/london"
+  }
 }
 ```
 
@@ -156,9 +180,70 @@ type PaymentProof = {
 
 ---
 
+## ResourceResponse
+
+Returned instead of `AccessGrant` for `mode: "per-request"` plans in standalone mode. Contains the proxied backend API response — **no JWT is issued**.
+
+```typescript
+type ResourceResponse = {
+  readonly type: "ResourceResponse";
+  readonly challengeId: string;
+  readonly requestId: string;
+  readonly planId: string;
+  readonly txHash: `0x${string}`;
+  readonly explorerUrl: string;
+  readonly resource: {
+    readonly status: number;
+    readonly headers?: Record<string, string>;
+    readonly body: unknown;
+  };
+};
+```
+
+**Used in:** x402 HTTP 200 response body for per-request standalone plans; A2A Executor and MCP `request_access` tool result when plan `mode` is `"per-request"`.
+
+**Example:**
+
+```json
+{
+  "type": "ResourceResponse",
+  "challengeId": "http-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "planId": "weather-query",
+  "txHash": "0x7f9fade1...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0x7f9fade1...",
+  "resource": {
+    "status": 200,
+    "body": { "city": "london", "tempF": 65, "condition": "Cloudy" }
+  }
+}
+```
+
+If the backend returns a non-2xx status, the challenge stays in `PAID` state (pending refund). The `resource.status` and `resource.body` reflect the backend's error response.
+
+---
+
+## PaymentInfo
+
+Available as `req.key0Payment` in embedded per-request route handlers and as `params.paymentInfo` in `fetchResource` callbacks.
+
+```typescript
+type PaymentInfo = {
+  readonly txHash: `0x${string}`;
+  readonly payer?: string;
+  readonly planId: string;
+  readonly amount: string;   // e.g. "$0.01"
+  readonly method: string;   // HTTP method of the gated request
+  readonly path: string;     // Route path of the gated request
+  readonly challengeId: string;
+};
+```
+
+---
+
 ## AccessGrant
 
-Returned after successful payment verification. Contains the bearer token for accessing protected resources.
+Returned after successful payment verification for **subscription** plans. Contains the bearer token for accessing protected resources.
 
 ```typescript
 type AccessGrant = {
@@ -284,13 +369,23 @@ Defines a pricing plan in the seller's catalog.
 
 ```typescript
 type Plan = {
-  readonly planId: string;        // Unique identifier for this plan
-  readonly unitAmount: string;    // Dollar string, e.g. "$0.10"
-  readonly description?: string;  // Human-readable description
+  readonly planId: string;                          // Unique identifier for this plan
+  readonly unitAmount: string;                      // Dollar string, e.g. "$0.10"
+  readonly description?: string;                    // Human-readable description
+  readonly mode?: "subscription" | "per-request";  // default: "subscription"
+  readonly routes?: readonly PlanRouteInfo[];       // Routes guarded by this per-request plan
 };
 ```
 
-**Example:**
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `planId` | `string` | Yes | Unique plan identifier. |
+| `unitAmount` | `string` | Yes | Dollar-formatted price string (e.g. `"$0.10"`). |
+| `description` | `string` | No | Human-readable description of the plan. |
+| `mode` | `"subscription" \| "per-request"` | No | Billing mode. `"subscription"` (default) issues a JWT; `"per-request"` gates individual API calls without issuing a token. |
+| `routes` | `PlanRouteInfo[]` | No | Routes guarded by this per-request plan. Used in the agent card, discovery response, and MCP `discover_plans` tool. |
+
+**Subscription plan example:**
 
 ```json
 {
@@ -299,6 +394,40 @@ type Plan = {
   "description": "Single photo download"
 }
 ```
+
+**Per-request plan example:**
+
+```json
+{
+  "planId": "weather-query",
+  "unitAmount": "$0.01",
+  "mode": "per-request",
+  "description": "Current weather for any city",
+  "routes": [
+    { "method": "GET", "path": "/api/weather/:city", "description": "Current weather conditions" }
+  ]
+}
+```
+
+---
+
+## PlanRouteInfo
+
+Describes a route guarded by a per-request plan.
+
+```typescript
+type PlanRouteInfo = {
+  readonly method: string;        // HTTP method, e.g. "GET"
+  readonly path: string;          // Route path, e.g. "/api/weather/:city"
+  readonly description?: string;  // Human-readable description
+};
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `method` | `string` | Yes | HTTP method (e.g. `"GET"`, `"POST"`). |
+| `path` | `string` | Yes | Route path including Express-style parameters (e.g. `"/api/weather/:city"`). |
+| `description` | `string` | No | Human-readable description of the route. |
 
 ---
 

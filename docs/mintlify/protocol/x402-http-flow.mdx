@@ -7,13 +7,14 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
 
 1. **Discovery** -- `GET /discovery` returns all available plans (HTTP 200). `POST /x402/access` without `planId` returns HTTP 400.
 2. **Challenge** -- `planId` present, no `payment-signature` header, creates a PENDING record.
-3. **Settlement** -- `planId` present with a `payment-signature` header, settles on-chain and returns an `AccessGrant`.
+3. **Settlement (subscription)** -- `planId` + `payment-signature`, settles on-chain, returns an `AccessGrant` (JWT).
+4. **Settlement (per-request standalone)** -- `planId` + `resource` + `payment-signature`, settles on-chain, proxies to the backend, returns a `ResourceResponse` (API data, no token).
 
 <Note>
   For a full sequence diagram of the Discovery → Challenge → Settlement flow, see [How It Works](/introduction/how-it-works#sequence-diagram).
 </Note>
 
-## Three Cases
+## Four Cases
 
 <Tabs>
   <Tab title="Case 1: Discovery">
@@ -187,6 +188,87 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
     ```
 
     The `payment-response` header contains the full `X402SettleResponse` from the on-chain settlement, base64-encoded. The JSON body is the `AccessGrant` with the JWT and resource endpoint URL.
+  </Tab>
+
+  <Tab title="Case 4: Per-Request Settlement">
+    For `mode: "per-request"` plans in standalone mode (seller has `proxyTo` or `fetchResource` configured), include a `resource` field in the body. After payment, Key0 proxies the request to the backend and returns a `ResourceResponse` — **no JWT issued**.
+
+    ### Challenge request
+
+    ```bash
+    curl -X POST https://api.example.com/x402/access \
+      -H "Content-Type: application/json" \
+      -d '{
+        "planId": "weather-query",
+        "requestId": "550e8400-e29b-41d4-a716-446655440001",
+        "resource": { "method": "GET", "path": "/api/weather/london" }
+      }'
+    ```
+
+    ### Response (HTTP 402 — same shape as subscription)
+
+    ```json
+    {
+      "x402Version": 2,
+      "accepts": [
+        {
+          "scheme": "exact",
+          "network": "eip155:84532",
+          "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "amount": "10000",
+          "payTo": "0xSellerWallet...",
+          "maxTimeoutSeconds": 900,
+          "extra": { "name": "USDC", "version": "2", "planId": "weather-query" }
+        }
+      ],
+      "challengeId": "http-a1b2c3d4-...",
+      "error": "Payment required"
+    }
+    ```
+
+    ### Settlement request (with resource + payment-signature)
+
+    ```bash
+    curl -X POST https://api.example.com/x402/access \
+      -H "Content-Type: application/json" \
+      -H "payment-signature: eyJ4NDAyVm..." \
+      -d '{
+        "planId": "weather-query",
+        "requestId": "550e8400-e29b-41d4-a716-446655440001",
+        "resource": { "method": "GET", "path": "/api/weather/london" }
+      }'
+    ```
+
+    ### Response (HTTP 200 — ResourceResponse, not AccessGrant)
+
+    ```http
+    HTTP/1.1 200 OK
+    payment-response: eyJzdWNjZXNz... (base64-encoded X402SettleResponse)
+    Content-Type: application/json
+    ```
+
+    ```json
+    {
+      "type": "ResourceResponse",
+      "challengeId": "http-a1b2c3d4-...",
+      "requestId": "550e8400-e29b-41d4-a716-446655440001",
+      "planId": "weather-query",
+      "txHash": "0xSettledTx...",
+      "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx...",
+      "resource": {
+        "status": 200,
+        "body": { "city": "london", "tempF": 65, "condition": "Cloudy" }
+      }
+    }
+    ```
+
+    Use `resource.body` directly — no Bearer token, no follow-up request. Every call requires a fresh payment.
+
+    If the backend returns a non-2xx status, the `ResourceResponse` still contains the backend's error body and status. The challenge stays in `PAID` state so the refund cron can process it.
+
+    <Note>
+      The `resource` field is required for per-request standalone plans. For embedded per-request plans, the `payment-signature` header is sent directly on the route (e.g. `GET /api/weather/london`) — no `/x402/access` involved. See [Paying for Access](/guides/paying-for-access#embedded-per-request).
+    </Note>
   </Tab>
 </Tabs>
 

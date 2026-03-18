@@ -79,14 +79,64 @@ The client signs an EIP-3009 authorization off-chain and retries `POST /x402/acc
 
 All state transitions go through `ChallengeEngine`, which enforces the state machine invariants and logs every transition for auditability.
 
+## Per-Request Variant
+
+For `mode: "per-request"` plans, the flow differs slightly: **no JWT is issued**. Instead, Key0 returns the API response directly.
+
+### Standalone (proxy mode)
+
+Add `proxyTo` (or `fetchResource`) to `SellerConfig`. Clients include a `resource` field in the `POST /x402/access` body specifying the route they want to call.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Key0
+    participant Backend
+
+    Note over Client,Key0: Phase 1 — Challenge
+    Client->>Key0: POST /x402/access { planId, resource: { method, path } }
+    Key0-->>Key0: Create PENDING challenge
+    Key0->>Client: 402 + PaymentRequirements
+
+    Note over Client,Backend: Phase 2 — Settlement & Proxy
+    Client->>Key0: POST /x402/access + payment-signature
+    Key0->>Key0: Settle on-chain (PENDING → PAID)
+    Key0->>Backend: Forward request (injects x-key0-tx-hash, x-key0-plan-id)
+    Backend->>Key0: Response data
+    Key0-->>Key0: PAID → DELIVERED
+    Key0->>Client: ResourceResponse (backend data, no token)
+```
+
+### Embedded (inline settlement)
+
+Use `key0.payPerRequest(planId)` middleware on each route. No `proxyTo` needed — Key0 settles on-chain and calls `next()`, so your route handler runs as normal.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant App
+
+    Note over Client,App: No payment header → 402
+    Client->>App: GET /api/weather/london
+    App->>Client: 402 + PaymentRequirements
+
+    Note over Client,App: With PAYMENT-SIGNATURE header
+    Client->>App: GET /api/weather/london + payment-signature
+    App->>App: Settle on-chain, PAID → DELIVERED
+    App->>Client: 200 { city, temp } (your handler's response)
+```
+
+Both variants share the same `PENDING → PAID → DELIVERED` lifecycle with automatic refunds if delivery fails after on-chain settlement. See [Payment Flow](/architecture/payment-flow) for the full state machine.
+
 ## Two Endpoints, One Engine
 
 Both entry points share the same `ChallengeEngine` instance, so payment logic, state management, and security invariants are identical regardless of how the client connects.
 
 | Endpoint | Use Case |
 |---|---|
-| `POST /x402/access` | Unified: x402 HTTP flow (default) or A2A JSON-RPC (with `X-A2A-Extensions` header, Express only) |
+| `POST /x402/access` | Unified: x402 HTTP flow (default), A2A JSON-RPC (with `X-A2A-Extensions` header), or standalone per-request proxy |
 | `POST /mcp` | MCP Streamable HTTP (opt-in via `mcp: true`) |
+| `GET /api/*` | Embedded per-request — each route has `key0.payPerRequest()` middleware |
 
 ## Next Steps
 

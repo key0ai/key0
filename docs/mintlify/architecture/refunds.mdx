@@ -4,12 +4,14 @@ sidebarTitle: "Refunds"
 description: "When token issuance fails after payment, Key0 automatically refunds USDC to the buyer. Learn how the refund state machine, cron job, and double-refund prevention work."
 ---
 
-When a buyer pays for a resource, the SDK records the payment in a `ChallengeRecord`. After on-chain verification succeeds, token issuance (`fetchResourceCredentials`) and the `PAID -> DELIVERED` transition happen in the same request.
+When a buyer pays for a resource, the SDK records the payment in a `ChallengeRecord`. After on-chain verification succeeds, delivery and the `PAID -> DELIVERED` transition happen in the same request.
 
-If `fetchResourceCredentials` throws -- or the server crashes between payment verification and delivery -- the record stays in `PAID` state. The refund cron picks it up after a configurable grace period and sends USDC back to the buyer's wallet.
+For **subscription plans**, delivery means `fetchResourceCredentials` succeeds and the `AccessGrant` is returned. For **per-request plans**, delivery means the route handler responds successfully (embedded) or the proxied backend request returns 2xx (standalone).
+
+If delivery fails — for any reason — the record stays in `PAID` state. The refund cron picks it up after a configurable grace period and sends USDC back to the buyer's wallet.
 
 <Note>
-  `PAID` is transient in the happy path -- it lasts milliseconds between payment verification and token issuance. The refund cron is a **safety net** for failures only.
+  `PAID` is transient in the happy path -- it lasts milliseconds between payment verification and delivery. The refund cron is a **safety net** for failures only.
 </Note>
 
 ## Refund State Machine
@@ -22,6 +24,23 @@ stateDiagram-v2
 ```
 
 In the full lifecycle, `PAID` is reached via `PENDING -> PAID` after on-chain payment verification. In the happy path, `PAID -> DELIVERED` happens immediately. The refund path only activates when delivery fails.
+
+## Per-Request Refund Path
+
+Pay-per-request plans share the same refund state machine but have different failure triggers:
+
+**Standalone PPR** (seller uses `proxyTo`/`fetchResource`):
+- If the backend returns a **non-2xx status**, the challenge stays in `PAID` for refund eligibility. The `ResourceResponse` containing the backend's error body is still returned to the client so it knows what went wrong.
+- If `fetchResource` **throws** (e.g. timeout, network error), the challenge stays in `PAID` and the refund cron will process it.
+- `DELIVERED` is only set when the backend returns a 2xx response.
+
+**Embedded PPR** (seller uses `key0.payPerRequest()` middleware):
+- When a `store` is provided: `markDelivered` is called via `res.on("finish")` (Express/Fastify) or after `await next()` (Hono) when the response status is 2xx. This is **best-effort** — if the process crashes between settlement and `DELIVERED`, the refund cron may refund the payment even though the response was already served. This is a safe fallback: a small risk of over-refunding is preferable to the buyer losing funds.
+- When **no `store` is provided**: no `ChallengeRecord` is created. The payment is recorded on-chain but Key0 has no state to track delivery or trigger a refund. If settlement succeeds and your route handler crashes, the buyer cannot be automatically refunded.
+
+<Warning>
+  For embedded PPR in production, always pass a `store` to `key0Router` / `key0App` / `key0Plugin`. Without it, settlement failures after on-chain payment are not recoverable via the refund cron.
+</Warning>
 
 ## Deployment Modes
 

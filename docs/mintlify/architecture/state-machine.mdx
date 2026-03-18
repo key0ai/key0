@@ -60,6 +60,24 @@ There are two branches from `PAID`:
 The `PAID` to `PAID` self-transition is the **outbox pattern**: the SDK persists the `accessGrant` to the record before returning it to the client, so a failure in the subsequent `DELIVERED` transition does not lose the grant. The refund cron skips records that already have `accessGrant` set.
 </Note>
 
+## Per-Request Challenges
+
+Per-request plans create `ChallengeRecord`s and use the same state machine, but with different delivery triggers:
+
+**Standalone PPR** (seller uses `proxyTo`/`fetchResource`):
+- `PENDING` is created when `POST /x402/access` receives a `resource` field but no `payment-signature`.
+- `PENDING → PAID` transitions immediately after on-chain settlement.
+- `PAID → DELIVERED` is triggered when the proxied backend request returns a **2xx** response.
+- If the backend returns **non-2xx**, the challenge stays in `PAID` — no `DELIVERED` transition occurs, and the refund cron picks it up.
+
+**Embedded PPR** (seller uses `key0.payPerRequest()` middleware):
+- `PENDING` is created when the middleware returns a 402 (no `payment-signature` on the route).
+- `PENDING → PAID` transitions immediately when the `payment-signature` is present and settlement succeeds.
+- `PAID → DELIVERED` is triggered via `res.on("finish")` (Express/Fastify) or after `await next()` (Hono) when the response status is 2xx.
+- When **no `store`** is passed to the middleware: no `ChallengeRecord` is created. State transitions do not occur. The payment is settled on-chain but refunds are not possible.
+
+The `PAID` table note about the outbox pattern (`accessGrant`) does **not** apply to PPR records — per-request challenges do not store an `accessGrant` since no token is issued. The refund cron identifies them by the absence of `accessGrant` and presence of a `resource` field.
+
 ## Atomic Transitions -- Lua Script
 
 All state transitions use a single Lua script executed atomically by Redis. If the current state does not match the expected `fromState`, the transition is rejected and no fields are written.

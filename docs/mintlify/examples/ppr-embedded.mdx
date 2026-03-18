@@ -1,0 +1,193 @@
+---
+title: "Pay-Per-Request: Embedded"
+sidebarTitle: "PPR (Embedded)"
+description: "Key0 embedded inside your application — weather and joke routes gated behind per-request USDC micro-payments. No JWT issued; payment settles inline."
+---
+
+A complete Express server that charges $0.01 per weather query and $0.005 per joke — settled on-chain every time a route is called. No long-lived token is issued; the route handler runs normally after payment.
+
+**Source:** [`examples/ppr-embedded`](https://github.com/key0ai/key0/tree/main/examples/ppr-embedded)
+
+## What it demonstrates
+
+- Defining `mode: "per-request"` plans alongside `fetchResourceCredentials` (required for the `/x402/access` endpoint, though not called for per-request routes)
+- Using `key0.payPerRequest(planId, opts?)` middleware to gate individual routes
+- Accessing `req.key0Payment` (containing `txHash`, `planId`, `amount`, `challengeId`) in route handlers
+- Discovery via `GET /discovery` and agent card showing per-request skills with route metadata
+- Automatic `PENDING → PAID → DELIVERED` state transitions with refund safety (pass a `store` to enable)
+
+## Architecture
+
+```
+Client                    Your Application (Express)
+  |                              |
+  |-- GET /.well-known/agent.json|  Discover per-request skills + pricing
+  |<-- agent card + routes       |
+  |                              |
+  |-- GET /api/weather/london    |  No PAYMENT-SIGNATURE header
+  |<-- HTTP 402 + requirements  |  (payment-required header set)
+  |                              |
+  |  ... signs EIP-3009 off-chain ...
+  |                              |
+  |-- GET /api/weather/london    |  PAYMENT-SIGNATURE header present
+  |   + PAYMENT-SIGNATURE       |
+  |                              |-- settle on-chain
+  |                              |-- req.key0Payment set (txHash, etc.)
+  |                              |-- route handler runs
+  |<-- 200 { city, tempF, ... } |  Direct API response (no JWT)
+```
+
+## Key differences from subscription mode
+
+| | Subscription | Per-Request (Embedded) |
+|---|---|---|
+| **Response** | `AccessGrant` (JWT) | Your route handler's response |
+| **Token issued** | Yes | No |
+| **Follow-up auth** | Bearer JWT needed for each call | Each call includes `PAYMENT-SIGNATURE` |
+| **Route protection** | `validateAccessToken` middleware | `key0.payPerRequest()` middleware |
+| **Payment metadata** | In `IssueTokenParams` callback | In `req.key0Payment` |
+
+## Running locally
+
+### Prerequisites
+
+- Bun v1.3+ or Node 18+
+- Redis running locally
+- A wallet address on Base Sepolia
+- A gas wallet private key (ETH-funded) for self-contained settlement
+
+### Setup
+
+```bash
+cd examples/ppr-embedded
+cp .env.example .env
+# Edit .env: set KEY0_WALLET_ADDRESS and GAS_WALLET_PRIVATE_KEY
+bun run start
+```
+
+Server starts on `http://localhost:3000`.
+
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `KEY0_WALLET_ADDRESS` | Wallet that receives USDC payments |
+| `GAS_WALLET_PRIVATE_KEY` | ETH-funded wallet for settlement |
+| `KEY0_NETWORK` | `"testnet"` (default) or `"mainnet"` |
+| `REDIS_URL` | Redis connection URL (default: `redis://localhost:6379`) |
+| `PORT` | Server port (default: `3000`) |
+| `PUBLIC_URL` | Public-facing server URL (used in agent card) |
+
+## Code walkthrough
+
+### 1. Define plans with `mode: "per-request"`
+
+```typescript
+plans: [
+  {
+    planId: "weather-query",
+    unitAmount: "$0.01",
+    description: "Current weather for any city — $0.01 per request.",
+    mode: "per-request",
+    routes: [
+      {
+        method: "GET",
+        path: "/api/weather/:city",
+        description: "Current weather conditions for a given city",
+      },
+    ],
+  },
+  {
+    planId: "joke-of-the-day",
+    unitAmount: "$0.005",
+    description: "A random programming joke — $0.005 per request.",
+    mode: "per-request",
+    routes: [{ method: "GET", path: "/api/joke" }],
+  },
+],
+// fetchResourceCredentials is required by SellerConfig for the /x402/access endpoint
+// (subscription flow), but is NOT called for per-request routes.
+fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),
+```
+
+### 2. Mount `key0Router` and gate routes
+
+```typescript
+const key0 = key0Router({ config, adapter, store, seenTxStore });
+app.use(key0);
+
+// Gate the route — every call needs a PAYMENT-SIGNATURE header
+app.get(
+  "/api/weather/:city",
+  key0.payPerRequest("weather-query", {
+    onPayment: (info) => console.log(`Settled: tx=${info.txHash}`),
+  }),
+  (req, res) => {
+    const payment = req.key0Payment; // PaymentInfo: { txHash, planId, amount, challengeId, ... }
+    res.json({
+      city: req.params.city,
+      tempF: Math.round(55 + Math.random() * 35),
+      txHash: payment?.txHash,
+    });
+  },
+);
+```
+
+### 3. Discovery response
+
+Agents call `GET /discovery` and see per-request plans with their routes:
+
+```json
+{
+  "plans": [
+    {
+      "planId": "weather-query",
+      "unitAmount": "$0.01",
+      "mode": "per-request",
+      "routes": [{ "method": "GET", "path": "/api/weather/:city" }]
+    }
+  ]
+}
+```
+
+The agent card at `/.well-known/agent.json` includes these as skills with `"pay-per-request"` tags.
+
+## Testing with curl
+
+```bash
+# Step 1: Check what routes are available
+curl http://localhost:3000/discovery
+
+# Step 2: Call the route without payment (expect 402)
+curl -v http://localhost:3000/api/weather/london
+# HTTP/1.1 402 Payment Required
+# payment-required: eyJ4...
+
+# Step 3: Sign and submit payment (use examples/client-agent or simple-x402-client.ts)
+# After payment, the response is your route handler's output:
+# { "city": "london", "tempF": 64, "txHash": "0x..." }
+```
+
+## Extending the example
+
+- Add more routes with different plans
+- Use `req.key0Payment.challengeId` for your own audit records
+- Pass `store` to `key0.payPerRequest()` to enable refund safety on per-request routes (when settlement succeeds but the handler crashes)
+- Combine with subscription plans on the same server — agents can use both flows
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="PPR Standalone Example" icon="arrow-right-arrow-left" href="/examples/ppr-standalone">
+    Key0 as a gateway that proxies to a separate backend service.
+  </Card>
+  <Card title="Express Integration" icon="server" href="/integrations/express">
+    Full reference for key0Router and payPerRequest options.
+  </Card>
+  <Card title="SellerConfig Reference" icon="sliders" href="/sdk-reference/seller-config">
+    Plan mode, routes, and ProxyToConfig type definitions.
+  </Card>
+  <Card title="Building a Seller" icon="rocket" href="/guides/building-a-seller">
+    End-to-end guide from install to production.
+  </Card>
+</CardGroup>

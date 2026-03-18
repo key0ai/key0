@@ -8,11 +8,12 @@ POST /x402/access
 Content-Type: application/json
 ```
 
-The primary x402 HTTP endpoint. It handles three distinct cases depending on the request body and headers:
+The primary x402 HTTP endpoint. It handles four distinct cases depending on the request body and headers:
 
 1. **No `planId`** -- Returns HTTP 400 directing the client to `GET /discovery`.
 2. **Challenge** -- `planId` in the body, no `PAYMENT-SIGNATURE` header. Returns HTTP 402 with payment requirements and a `challengeId`.
-3. **Settlement** -- `planId` in the body and a `PAYMENT-SIGNATURE` header. Settles the payment on-chain and returns HTTP 200 with an `AccessGrant`.
+3. **Settlement (subscription)** -- `planId` in the body and a `PAYMENT-SIGNATURE` header. Settles the payment on-chain and returns HTTP 200 with an `AccessGrant` (JWT).
+4. **Settlement (per-request standalone)** -- Same as (3) but with a `resource` field in the body for `mode: "per-request"` plans. Key0 proxies to the backend and returns a `ResourceResponse` (backend data, no token).
 
 ---
 
@@ -51,8 +52,12 @@ Sending a body without `planId` returns HTTP 400 with a pointer to the discovery
 
 Send a `planId` in the body without a `PAYMENT-SIGNATURE` header. The server creates a PENDING challenge record and returns payment requirements.
 
+For `mode: "per-request"` plans in standalone mode, also include a `resource` field specifying the route you want to call. Omitting `resource` for a per-request plan in standalone mode returns a `400 RESOURCE_REQUIRED` error.
+
 <Tabs>
   <Tab title="Request">
+    **Subscription plan:**
+
     ```bash
     curl -X POST https://api.example.com/x402/access \
       -H "Content-Type: application/json" \
@@ -63,11 +68,23 @@ Send a `planId` in the body without a `PAYMENT-SIGNATURE` header. The server cre
       }'
     ```
 
+    **Per-request plan (standalone mode):**
+
+    ```bash
+    curl -X POST https://api.example.com/x402/access \
+      -H "Content-Type: application/json" \
+      -d '{
+        "planId": "weather-query",
+        "resource": { "method": "GET", "path": "/api/weather/london" }
+      }'
+    ```
+
     | Field | Type | Required | Description |
     |-------|------|----------|-------------|
     | `planId` | string | Yes | Must match a `Plan.planId` from the seller's catalog. |
     | `requestId` | string | No | Client-generated UUID. Auto-generated if omitted. Used as an idempotency key. |
-    | `resourceId` | string | No | Defaults to `"default"`. |
+    | `resourceId` | string | No | Defaults to `"default"`. Ignored for per-request plans. |
+    | `resource` | `{ method, path }` | Per-request only | Required for `mode: "per-request"` plans in standalone mode. Specifies the backend route to call after payment. |
   </Tab>
   <Tab title="Response">
     **HTTP 402 Payment Required**
@@ -147,7 +164,7 @@ Send a `planId` in the body without a `PAYMENT-SIGNATURE` header. The server cre
 
 ## Case 3: Settlement
 
-Resend the same request with a `PAYMENT-SIGNATURE` header containing a base64url-encoded `X402PaymentPayload`. The server settles the payment on-chain and returns an `AccessGrant`.
+Resend the same request with a `PAYMENT-SIGNATURE` header containing a base64url-encoded `X402PaymentPayload`. The server settles the payment on-chain and returns either an `AccessGrant` (subscription) or a `ResourceResponse` (per-request standalone).
 
 <Tabs>
   <Tab title="Request">
@@ -246,6 +263,29 @@ Key0 supports two settlement strategies, configured via `SellerConfig`:
 | **Facilitator** (default) | `facilitatorUrl` or network default | Sends the EIP-3009 authorization to the Coinbase facilitator for verification and on-chain settlement. The facilitator pays gas. |
 | **Gas Wallet** | `gasWalletPrivateKey` | Verifies and settles the EIP-3009 authorization directly using your own gas wallet. You pay gas. Supports distributed locking via Redis for multi-instance deployments. |
 
+## Case 4: Per-Request Standalone Response
+
+When settlement succeeds for a `mode: "per-request"` plan (with `proxyTo`/`fetchResource` configured), the response is a `ResourceResponse` containing the backend's data — **no JWT is issued**:
+
+```json
+{
+  "type": "ResourceResponse",
+  "challengeId": "http-a1b2c3d4-...",
+  "requestId": "550e8400-...",
+  "planId": "weather-query",
+  "txHash": "0xSettledTx...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx...",
+  "resource": {
+    "status": 200,
+    "body": { "city": "london", "tempF": 65, "condition": "Cloudy" }
+  }
+}
+```
+
+If the backend returns a non-2xx status, the challenge remains `PAID` (awaiting refund) and the response includes the backend's error body.
+
+---
+
 ## Pre-Settlement Check
 
 Before settling a payment, the server checks for existing challenge records:
@@ -262,6 +302,7 @@ This prevents burning USDC on duplicate settlements.
 |-------------|------------|------|
 | 400 | `TIER_NOT_FOUND` | `planId` does not match any plan in the catalog. |
 | 400 | `INVALID_REQUEST` | Malformed `PAYMENT-SIGNATURE` header or request body. |
+| 400 | `RESOURCE_REQUIRED` | Per-request plan in standalone mode but `resource` field missing from request body. |
 | 402 | `PAYMENT_FAILED` | EIP-3009 verification or on-chain settlement failed. |
 | 409 | `TX_ALREADY_REDEEMED` | The transaction hash was already used for a different challenge. |
 | 410 | `CHALLENGE_EXPIRED` | The challenge expired or was cancelled before payment arrived. |

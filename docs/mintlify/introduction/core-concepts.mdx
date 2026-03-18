@@ -74,13 +74,34 @@ This page defines every domain-specific term you will encounter in the Key0 docs
     A short-lived payment session created when a buyer requests access to a plan. A challenge has a unique `challengeId`, records the expected USDC amount, the destination wallet, and the expiry timestamp. It starts in the `PENDING` state and moves through the state machine as the payment progresses. See [State Machine](/architecture/state-machine).
   </Accordion>
   <Accordion title="AccessGrant">
-    The response returned to the buyer after a successful payment. It contains:
+    The response returned to the buyer after a successful **subscription** payment. It contains:
     - `accessToken` — a signed JWT (or other credential) for the protected resource
     - `tokenType` — always `"Bearer"`
     - `resourceEndpoint` — the URL to call with the token
     - `txHash` — the on-chain transaction hash as proof of payment
     - `expiresAt` — when the token expires
     - `challengeId` / `requestId` — for correlation and idempotency
+
+    For **per-request** plans Key0 returns a `ResourceResponse` (the backend API data) instead of an `AccessGrant`.
+  </Accordion>
+  <Accordion title="ResourceResponse">
+    The response returned to the buyer after a successful **per-request** payment in standalone mode. Instead of a JWT, Key0 returns the actual backend response:
+
+    ```json
+    {
+      "type": "ResourceResponse",
+      "challengeId": "uuid",
+      "requestId": "uuid",
+      "planId": "weather-query",
+      "txHash": "0x...",
+      "resource": {
+        "status": 200,
+        "body": { "city": "London", "tempF": 65, "condition": "Cloudy" }
+      }
+    }
+    ```
+
+    If the backend returns a non-2xx status, the challenge stays in `PAID` state (awaiting refund) and the `ResourceResponse` still contains the backend's error body so the client knows what went wrong.
   </Accordion>
   <Accordion title="Settlement">
     The act of executing the USDC transfer on-chain and confirming it. After settlement, Key0 verifies the ERC-20 `Transfer` event matches the expected amount and destination, then transitions the challenge from `PAID` to `DELIVERED`. Settlement can happen via a gas wallet (EIP-3009) or a direct on-chain transfer (txHash proof). See [Settlement Strategies](/architecture/settlement-strategies).
@@ -99,7 +120,47 @@ This page defines every domain-specific term you will encounter in the Key0 docs
 
 <AccordionGroup>
   <Accordion title="Plan">
-    A configured pricing tier offered by the seller. Each plan has a `planId`, a `unitAmount` (e.g., `"$0.10"`), and an optional `description`. Buyers choose a plan when requesting access. Plans are defined in `SellerConfig.plans` and exposed via `GET /discovery` and the agent card. See [SellerConfig](/sdk-reference/seller-config).
+    A configured pricing tier offered by the seller. Plans are defined in `SellerConfig.plans` and exposed via `GET /discovery` and the agent card.
+
+    ```typescript
+    type Plan = {
+      planId: string;       // Unique identifier, e.g. "basic"
+      unitAmount: string;   // Dollar-formatted price, e.g. "$0.10"
+      description?: string; // Human-readable description
+      mode?: "subscription" | "per-request"; // default: "subscription"
+      routes?: Array<{ method: string; path: string; description?: string }>;
+    };
+    ```
+
+    `mode` controls whether a plan issues a JWT (`"subscription"`, the default) or gates individual API calls directly (`"per-request"`). See [Pay-Per-Request](#pay-per-request-ppr) for details and [SellerConfig](/sdk-reference/seller-config) for the full type reference.
+  </Accordion>
+  <Accordion title="Pay-Per-Request (PPR)">
+    A billing mode where each API call is paid for individually — no long-lived JWT is issued.
+
+    **How to enable it:** add `mode: "per-request"` to a plan inside `SellerConfig.plans`. This is the only change needed on the plan itself:
+
+    ```typescript
+    plans: [
+      // Subscription plan (default) — agent pays once, receives a JWT
+      { planId: "basic", unitAmount: "$0.10" },
+
+      // Per-request plan — agent pays per call, receives the API response directly
+      {
+        planId: "weather-query",
+        unitAmount: "$0.01",
+        mode: "per-request",           // ← enables PPR for this plan
+        description: "Current weather — $0.01 per call.",
+        routes: [{ method: "GET", path: "/api/weather/:city" }],
+      },
+    ]
+    ```
+
+    Key0 supports two PPR deployment styles:
+
+    - **Embedded** — use `key0.payPerRequest(planId)` middleware on individual routes. After on-chain settlement the request is passed to your route handler. The handler receives payment metadata in `req.key0Payment` (Express/Fastify) or `c.get("key0Payment")` (Hono).
+    - **Standalone** — set `proxyTo.baseUrl` (or `fetchResource`) on `SellerConfig`. Clients call `POST /x402/access` with a `resource` field specifying the route they want. After payment Key0 proxies the request to your backend and returns a `ResourceResponse` with the API data directly.
+
+    Both modes share the `PENDING → PAID → DELIVERED` lifecycle and are eligible for automatic refunds if delivery fails after payment.
   </Accordion>
   <Accordion title="SellerConfig">
     The TypeScript object you pass to Key0 that defines everything about your service: identity (`agentName`, `agentUrl`), your wallet address, your plans, your `fetchResourceCredentials` callback, settlement mode, and optional hooks. It is the single source of truth for your Key0 deployment. See [SellerConfig Reference](/sdk-reference/seller-config).
