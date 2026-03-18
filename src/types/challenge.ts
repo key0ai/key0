@@ -61,16 +61,17 @@ export type AccessGrant = {
 };
 
 /**
- * Returned by /x402/access for per-request plans in standalone mode.
+ * Returned by /x402/access for route-based calls.
  * Contains the actual backend resource data instead of an access token.
  */
 export type ResourceResponse = {
 	readonly type: "ResourceResponse";
 	readonly challengeId: string;
 	readonly requestId: string;
-	readonly planId: string;
-	readonly txHash: `0x${string}`;
-	readonly explorerUrl: string;
+	readonly planId?: string; // present for subscription flows
+	readonly routeId?: string; // present for route-based calls
+	readonly txHash?: `0x${string}`; // absent for free routes
+	readonly explorerUrl?: string; // absent for free routes
 	readonly resource: {
 		readonly status: number;
 		readonly headers?: Record<string, string>;
