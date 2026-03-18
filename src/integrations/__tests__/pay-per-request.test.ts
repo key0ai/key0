@@ -988,6 +988,240 @@ describe("ChallengeEngine.markDelivered", () => {
 	});
 });
 
+// Import key0Router AFTER the mock is registered so it picks up the mocked settlement.
+const { key0Router } = await import("../express.js");
+
+// ---------------------------------------------------------------------------
+// Integration: key0Router /x402/access — free plan fast-path (Express)
+// ---------------------------------------------------------------------------
+
+describe("key0Router /x402/access — free plan fast-path", () => {
+
+	function makeFreePlanConfig(overrides?: Partial<SellerConfig>): SellerConfig {
+		return {
+			agentName: "Test Agent",
+			agentDescription: "Test",
+			agentUrl: "https://agent.example.com",
+			providerName: "Provider",
+			providerUrl: "https://provider.example.com",
+			walletAddress: `0x${"ab".repeat(20)}` as `0x${string}`,
+			network: "testnet",
+			plans: [
+				{
+					planId: "health",
+					free: true as const,
+					proxyPath: "/health",
+					proxyMethod: "GET" as const,
+				},
+			],
+			// fetchResourceCredentials not required when all plans are free
+			...overrides,
+		};
+	}
+
+	// Build a minimal mock req/res for the express handler
+	type MockExpressReq = {
+		method: string;
+		url: string;
+		path: string;
+		headers: Record<string, string | undefined>;
+		body: Record<string, unknown>;
+		params: Record<string, string>;
+		query: Record<string, string>;
+	};
+
+	type MockExpressRes = {
+		statusCode: number;
+		sentStatus: number | null;
+		sentBody: unknown;
+		_headers: Record<string, string>;
+		_resolve: (() => void) | null;
+		status: (code: number) => { json: (data: unknown) => unknown };
+		json: (data: unknown) => unknown;
+		setHeader: (name: string, value: string) => void;
+		getHeader: (name: string) => string | undefined;
+		header: (name: string, value: string) => void;
+		on: (event: string, cb: () => void) => void;
+		end: () => void;
+	};
+
+	function makeMockExpressRes(): MockExpressRes {
+		const res: MockExpressRes = {
+			statusCode: 200,
+			sentStatus: null,
+			sentBody: undefined,
+			_headers: {},
+			_resolve: null,
+			status(code: number) {
+				res.sentStatus = code;
+				res.statusCode = code;
+				return {
+					json(data: unknown) {
+						res.sentBody = data;
+						res._resolve?.();
+						return data;
+					},
+				};
+			},
+			json(data: unknown) {
+				res.sentBody = data;
+				res._resolve?.();
+				return data;
+			},
+			setHeader(name: string, value: string) {
+				res._headers[name.toLowerCase()] = value;
+			},
+			getHeader(name: string) {
+				return res._headers[name.toLowerCase()];
+			},
+			header(name: string, value: string) {
+				res._headers[name.toLowerCase()] = value;
+			},
+			on(_event: string, _cb: () => void) {},
+			end() {
+				res._resolve?.();
+			},
+		};
+		return res;
+	}
+
+	// Simulate sending a POST /x402/access through the express router
+	async function callX402Access(
+		router: ReturnType<typeof key0Router>,
+		body: Record<string, unknown>,
+		headers: Record<string, string> = {},
+	): Promise<MockExpressRes> {
+		const res = makeMockExpressRes();
+		const req: MockExpressReq = {
+			method: "POST",
+			url: "/x402/access",
+			path: "/x402/access",
+			headers: { "content-type": "application/json", ...headers },
+			body,
+			params: {},
+			query: {},
+		};
+
+		await new Promise<void>((resolve) => {
+			res._resolve = resolve;
+
+			// Walk the router's stack to find the /x402/access POST handler
+			const stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: Function }> } }> =
+				(router as any).stack ?? [];
+			const route = stack
+				.map((layer) => layer.route)
+				.find((r) => r && r.path === "/x402/access" && r.methods["post"]);
+
+			if (!route) {
+				res.status(500).json({ error: "route not found in test" });
+				return;
+			}
+
+			// First handler is the x402 handler; second is the A2A JSON-RPC fallback
+			const handler = route.stack[0]?.handle;
+			if (!handler) {
+				res.status(500).json({ error: "handler not found in test" });
+				return;
+			}
+
+			// next() also resolves (e.g. when A2A path is taken)
+			Promise.resolve(handler(req, res, resolve)).catch(() => resolve());
+		});
+
+		return res;
+	}
+
+	test("returns 200 ResourceResponse for a free plan (no PAYMENT-SIGNATURE)", async () => {
+		const fetchedPaths: string[] = [];
+		const mockFetchResource = async ({ path }: FetchResourceParams): Promise<FetchResourceResult> => {
+			fetchedPaths.push(path);
+			return { status: 200, body: { status: "healthy" } };
+		};
+		const config = makeFreePlanConfig({ fetchResource: mockFetchResource });
+		const store = new TestChallengeStore();
+		const seenTxStore = new TestSeenTxStore();
+		const router = key0Router({ config, store, seenTxStore });
+
+		const res = await callX402Access(router, { planId: "health" });
+
+		expect(res.sentStatus).toBe(200);
+		const body = res.sentBody as any;
+		expect(body.type).toBe("ResourceResponse");
+		expect(body.planId).toBe("health");
+		expect(body.challengeId).toBe("free");
+		expect(body.resource.status).toBe(200);
+		expect(fetchedPaths).toEqual(["/health"]);
+	});
+
+	test("free plan with proxyPath template interpolates params", async () => {
+		const fetchedPaths: string[] = [];
+		const mockFetchResource = async ({ path }: FetchResourceParams): Promise<FetchResourceResult> => {
+			fetchedPaths.push(path);
+			return { status: 200, body: { score: 99 } };
+		};
+		const config = makeFreePlanConfig({
+			plans: [
+				{
+					planId: "signal",
+					free: true as const,
+					proxyPath: "/signal/{asset}",
+					proxyMethod: "GET" as const,
+				},
+			],
+			fetchResource: mockFetchResource,
+		});
+		const store = new TestChallengeStore();
+		const seenTxStore = new TestSeenTxStore();
+		const router = key0Router({ config, store, seenTxStore });
+
+		const res = await callX402Access(router, { planId: "signal", params: { asset: "BTC" } });
+
+		expect(res.sentStatus).toBe(200);
+		expect(fetchedPaths).toEqual(["/signal/BTC"]);
+	});
+
+	test("free plan returns 400 when proxyPath template param is missing", async () => {
+		const mockFetchResource = async (): Promise<FetchResourceResult> => ({
+			status: 200,
+			body: {},
+		});
+		const config = makeFreePlanConfig({
+			plans: [
+				{
+					planId: "signal",
+					free: true as const,
+					proxyPath: "/signal/{asset}",
+				},
+			],
+			fetchResource: mockFetchResource,
+		});
+		const store = new TestChallengeStore();
+		const seenTxStore = new TestSeenTxStore();
+		const router = key0Router({ config, store, seenTxStore });
+
+		const res = await callX402Access(router, { planId: "signal" });
+
+		expect(res.sentStatus).toBe(400);
+		const body = res.sentBody as any;
+		expect(body.error).toBe("TEMPLATE_ERROR");
+		expect(body.message).toContain('Missing param "asset"');
+	});
+
+	test("free plan returns 400 when fetchResource not configured", async () => {
+		// No proxyTo, no fetchResource — misconfigured
+		const config = makeFreePlanConfig(); // no fetchResource, no proxyTo
+		const store = new TestChallengeStore();
+		const seenTxStore = new TestSeenTxStore();
+		const router = key0Router({ config, store, seenTxStore });
+
+		const res = await callX402Access(router, { planId: "health" });
+
+		expect(res.sentStatus).toBe(400);
+		const body = res.sentBody as any;
+		expect(body.error).toBe("FREE_PLAN_MISCONFIGURED");
+	});
+});
+
 // ---------------------------------------------------------------------------
 // Helper: call a registered MCP tool directly (bypass full transport stack)
 // ---------------------------------------------------------------------------

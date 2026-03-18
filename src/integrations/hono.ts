@@ -9,6 +9,7 @@ import type {
 	X402PaymentRequiredResponse,
 } from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
+import { interpolateUrlTemplate } from "../utils/url-template.js";
 import type { PayPerRequestOptions } from "./pay-per-request.js";
 import {
 	createHonoPayPerRequest,
@@ -164,6 +165,66 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 			// Auto-generate requestId
 			if (!requestId) {
 				requestId = `http-${crypto.randomUUID()}`;
+			}
+
+			// FREE PLAN FAST-PATH: proxy immediately without payment
+			const planDef = opts.config.plans.find((p) => p.planId === planId);
+			if (planDef?.free === true) {
+				const fetchResourceFn = resolveConfigFetchResource(opts.config);
+				if (!fetchResourceFn || !planDef.proxyPath) {
+					return c.json(
+						{
+							error: "FREE_PLAN_MISCONFIGURED",
+							message: "Free plan requires proxyTo and proxyPath to be configured.",
+						},
+						400,
+					);
+				}
+				const rawParams = (body as { params?: Record<string, string> }).params ?? {};
+				let resolvedPath: string;
+				try {
+					resolvedPath = interpolateUrlTemplate(planDef.proxyPath, rawParams);
+				} catch (err) {
+					return c.json(
+						{
+							error: "TEMPLATE_ERROR",
+							message: (err as Error).message,
+						},
+						400,
+					);
+				}
+				const queryString = planDef.proxyQuery
+					? "?" +
+						new URLSearchParams(planDef.proxyQuery as Record<string, string>).toString()
+					: "";
+				const proxyResult = await fetchResourceFn({
+					method: planDef.proxyMethod ?? "GET",
+					path: resolvedPath + queryString,
+					headers: {},
+					paymentInfo: {
+						txHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+						payer: undefined,
+						planId,
+						amount: "$0",
+						method: planDef.proxyMethod ?? "GET",
+						path: resolvedPath,
+						challengeId: "free",
+					},
+				});
+				const freeResponse: ResourceResponse = {
+					type: "ResourceResponse",
+					challengeId: "free",
+					requestId,
+					planId,
+					txHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+					explorerUrl: "",
+					resource: {
+						status: proxyResult.status,
+						...(proxyResult.headers !== undefined ? { headers: proxyResult.headers } : {}),
+						body: proxyResult.body,
+					},
+				};
+				return c.json(freeResponse, 200);
 			}
 
 			// CASE 2: planId, no PAYMENT-SIGNATURE → Challenge
