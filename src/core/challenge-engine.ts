@@ -58,13 +58,22 @@ export class ChallengeEngine {
 	private async issueTokenWithRetry(
 		params: import("../types/config.js").IssueTokenParams,
 	): Promise<import("../types/config.js").TokenIssuanceResult> {
+		if (!this.config.fetchResourceCredentials) {
+			throw new Key0Error(
+				"INTERNAL_ERROR",
+				"fetchResourceCredentials is required for subscription plans but was not provided",
+				500,
+			);
+		}
+
+		const fetchResourceCredentials = this.config.fetchResourceCredentials;
 		const timeoutMs = this.config.tokenIssueTimeoutMs ?? 15_000;
 		const maxRetries = this.config.tokenIssueRetries ?? 2;
 
 		const callWithTimeout = () => {
 			let timer: ReturnType<typeof setTimeout>;
 			return Promise.race([
-				this.config.fetchResourceCredentials!(params).finally(() => clearTimeout(timer)),
+				fetchResourceCredentials(params).finally(() => clearTimeout(timer)),
 				new Promise<never>((_, reject) => {
 					timer = setTimeout(
 						() => reject(new Key0Error("TOKEN_ISSUE_TIMEOUT", "Token issuance timed out", 504)),
