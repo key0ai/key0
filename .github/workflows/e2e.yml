@@ -1,7 +1,7 @@
 name: E2E Tests (Base Sepolia)
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     paths-ignore:
       - "**/*.md"
@@ -17,9 +17,12 @@ jobs:
     name: E2E (Redis)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: e2e
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -79,9 +82,12 @@ jobs:
     needs: e2e-redis # Run sequentially to avoid gas wallet nonce conflicts on Base Sepolia
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: e2e
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - uses: oven-sh/setup-bun@v2
         with:
