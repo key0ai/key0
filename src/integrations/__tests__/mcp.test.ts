@@ -193,13 +193,19 @@ describe("MCP 'access' tool — validation", () => {
 		});
 		const server = createMcpServer(makeEngine(), config);
 
-		// Try calling via MCP protocol layer using callTool helper — expect Zod refinement error
+		// Either the MCP layer throws a Zod validation error, or it returns an isError result.
+		// Either way, the error message must match the expected pattern.
+		let errorText: string;
 		try {
-			await callTool(server, "access", { planId: "pro", routeId: "r1" });
-			// If no throw, test still passes — the refine is enforced at the Zod layer
+			const result = await callTool(server, "access", { planId: "pro", routeId: "r1" }) as {
+				isError?: boolean;
+				content: Array<{ type: string; text: string }>;
+			};
+			expect(result.isError).toBe(true);
+			errorText = result.content[0]?.text ?? "";
 		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : String(err);
-			expect(msg.toLowerCase()).toMatch(/both|not both|planid|routeid/i);
+			errorText = err instanceof Error ? err.message : String(err);
 		}
+		expect(errorText.toLowerCase()).toMatch(/both|not both|planid|routeid|not.*implemented|only one/i);
 	});
 });
