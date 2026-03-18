@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import type { SellerConfig } from "../../types";
+import { makeSellerConfig } from "../../test-utils/index.js";
 import { validateSellerConfig } from "../config-validation.js";
 
 function makeValidConfig(overrides?: Partial<SellerConfig>): SellerConfig {
@@ -59,7 +60,7 @@ describe("validateSellerConfig", () => {
 			validateSellerConfig(
 				makeValidConfig({ fetchResourceCredentials: undefined as unknown as never }),
 			),
-		).toThrow("fetchResourceCredentials is required for subscription plans");
+		).toThrow("fetchResourceCredentials is required when plans are configured");
 	});
 
 	test("rejects non-function fetchResourceCredentials", () => {
@@ -67,11 +68,11 @@ describe("validateSellerConfig", () => {
 			validateSellerConfig(
 				makeValidConfig({ fetchResourceCredentials: "not-a-function" as unknown as never }),
 			),
-		).toThrow("fetchResourceCredentials is required for subscription plans");
+		).toThrow("fetchResourceCredentials is required when plans are configured");
 	});
 
-	test("rejects empty plans array", () => {
-		expect(() => validateSellerConfig(makeValidConfig({ plans: [] }))).toThrow("at least one plan");
+	test("empty plans array does not throw (developer mode)", () => {
+		expect(() => validateSellerConfig(makeValidConfig({ plans: [] }))).not.toThrow();
 	});
 
 	test("rejects plan with empty planId", () => {
@@ -117,6 +118,95 @@ describe("validateSellerConfig", () => {
 					],
 				}),
 			),
+		).not.toThrow();
+	});
+});
+
+describe("routes validation", () => {
+	it("throws if routes configured without proxyTo", () => {
+		expect(() =>
+			validateSellerConfig(
+				makeSellerConfig({
+					plans: [],
+					fetchResourceCredentials: undefined,
+					routes: [{ routeId: "r1", method: "GET", path: "/foo", unitAmount: "$0.01" }],
+				})
+			)
+		).toThrow(/proxyTo is required when routes are configured/);
+	});
+
+	it("passes when routes + proxyTo both present", () => {
+		expect(() =>
+			validateSellerConfig(
+				makeSellerConfig({
+					plans: [],
+					fetchResourceCredentials: undefined,
+					routes: [{ routeId: "r1", method: "GET", path: "/foo", unitAmount: "$0.01" }],
+					proxyTo: { baseUrl: "http://localhost:3001" },
+				})
+			)
+		).not.toThrow();
+	});
+
+	it("passes with free route (no unitAmount)", () => {
+		expect(() =>
+			validateSellerConfig(
+				makeSellerConfig({
+					plans: [],
+					fetchResourceCredentials: undefined,
+					routes: [{ routeId: "health", method: "GET", path: "/health" }],
+					proxyTo: { baseUrl: "http://localhost:3001" },
+				})
+			)
+		).not.toThrow();
+	});
+
+	it("throws on duplicate routeId", () => {
+		expect(() =>
+			validateSellerConfig(
+				makeSellerConfig({
+					plans: [],
+					fetchResourceCredentials: undefined,
+					routes: [
+						{ routeId: "dup", method: "GET", path: "/a" },
+						{ routeId: "dup", method: "GET", path: "/b" },
+					],
+					proxyTo: { baseUrl: "http://localhost:3001" },
+				})
+			)
+		).toThrow(/duplicate routeId/);
+	});
+
+	it("throws if route path does not start with /", () => {
+		expect(() =>
+			validateSellerConfig(
+				makeSellerConfig({
+					plans: [],
+					fetchResourceCredentials: undefined,
+					routes: [{ routeId: "r1", method: "GET", path: "no-slash" }],
+					proxyTo: { baseUrl: "http://localhost:3001" },
+				})
+			)
+		).toThrow(/path must start with/);
+	});
+});
+
+describe("plans-only seller", () => {
+	it("throws if plans configured without fetchResourceCredentials", () => {
+		expect(() =>
+			validateSellerConfig(
+				makeSellerConfig({ fetchResourceCredentials: undefined })
+			)
+		).toThrow(/fetchResourceCredentials is required when plans are configured/);
+	});
+});
+
+describe("neither plans nor routes", () => {
+	it("does not throw — warns and proceeds (developer mode)", () => {
+		expect(() =>
+			validateSellerConfig(
+				makeSellerConfig({ plans: [], fetchResourceCredentials: undefined })
+			)
 		).not.toThrow();
 	});
 });
