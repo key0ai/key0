@@ -294,12 +294,12 @@ export function generateMcpTerminal(config: Config): McpTerminalBlock[] {
 	blocks.push({ kind: "command", text: "mcp list-tools" });
 	blocks.push({
 		kind: "output",
-		text: `2 tools available:\n  discover_plans  — List pricing plans (free)\n  request_access  — Purchase a plan via x402 payment`,
+		text: `2 tools available:\n  discover  — List pricing plans (free)\n  access  — Purchase a plan via x402 payment`,
 	});
 
-	// 4. Call discover_plans
+	// 4. Call discover
 	blocks.push({ kind: "comment", text: "# Discover available plans" });
-	blocks.push({ kind: "command", text: "mcp call discover_plans" });
+	blocks.push({ kind: "command", text: "mcp call discover" });
 
 	const discoverResult = {
 		agent: agentName,
@@ -316,14 +316,14 @@ export function generateMcpTerminal(config: Config): McpTerminalBlock[] {
 	};
 	blocks.push({ kind: "json", text: JSON.stringify(discoverResult, null, 2) });
 
-	// 5. Call request_access
+	// 5. Call access
 	const firstPlan = config.plans[0];
 	if (firstPlan) {
 		const planId = firstPlan.planId || "plan";
 		blocks.push({ kind: "comment", text: "# Request access to a plan" });
 		blocks.push({
 			kind: "command",
-			text: `mcp call request_access --planId "${planId}"`,
+			text: `mcp call access --planId "${planId}"`,
 		});
 		blocks.push({
 			kind: "json",
@@ -400,7 +400,6 @@ export function generateEnv(config: Config): string {
 		_sec("Required"),
 		"",
 		`KEY0_WALLET_ADDRESS=${config.walletAddress}`,
-		`ISSUE_TOKEN_API=${config.issueTokenApi}`,
 		"",
 		_sec("Network"),
 		"",
@@ -440,6 +439,20 @@ export function generateEnv(config: Config): string {
 		lines.push("", _sec("Pricing Plans"), "", `PLANS='${plansJson}'`);
 	}
 
+	// Routes
+	if (config.routes.length > 0) {
+		const serializedRoutes = config.routes.map((r) => ({
+			routeId: r.routeId,
+			method: r.method,
+			path: r.path,
+			...(r.unitAmount ? { unitAmount: `$${r.unitAmount}` } : {}),
+			...(r.description ? { description: r.description } : {}),
+		}));
+		lines.push("", _sec("Routes"), "", `ROUTES_B64=${btoa(JSON.stringify(serializedRoutes))}`);
+		if (config.proxyToBaseUrl) lines.push(`PROXY_TO_BASE_URL=${config.proxyToBaseUrl}`);
+		if (config.proxySecret) lines.push(`KEY0_PROXY_SECRET=${config.proxySecret}`);
+	}
+
 	if (config.challengeTtlSeconds && config.challengeTtlSeconds !== "900") {
 		lines.push("", _sec("Challenge"), "", `CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`);
 	}
@@ -448,13 +461,17 @@ export function generateEnv(config: Config): string {
 		lines.push("", _sec("MCP"), "", "MCP_ENABLED=true");
 	}
 
-	if (config.backendAuthStrategy !== "none" || config.issueTokenApiSecret) {
-		lines.push("", _sec("Token API Auth"), "");
-		if (config.backendAuthStrategy !== "none") {
-			lines.push(`BACKEND_AUTH_STRATEGY=${config.backendAuthStrategy}`);
-		}
-		if (config.backendAuthStrategy !== "none" && config.issueTokenApiSecret) {
-			lines.push(`ISSUE_TOKEN_API_SECRET=${config.issueTokenApiSecret}`);
+	// ISSUE_TOKEN_API — only when plans are configured
+	if (config.plans.length > 0 && config.issueTokenApi) {
+		lines.push("", _sec("Token API"), "", `ISSUE_TOKEN_API=${config.issueTokenApi}`);
+		if (config.backendAuthStrategy !== "none" || config.issueTokenApiSecret) {
+			lines.push("", _sec("Token API Auth"), "");
+			if (config.backendAuthStrategy !== "none") {
+				lines.push(`BACKEND_AUTH_STRATEGY=${config.backendAuthStrategy}`);
+			}
+			if (config.backendAuthStrategy !== "none" && config.issueTokenApiSecret) {
+				lines.push(`ISSUE_TOKEN_API_SECRET=${config.issueTokenApiSecret}`);
+			}
 		}
 	}
 
