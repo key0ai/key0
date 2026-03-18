@@ -20,7 +20,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { PPR_JOKE_PLAN_ID, PPR_KEY0_URL, PPR_WEATHER_PLAN_ID } from "../fixtures/constants.ts";
+import { PPR_JOKE_ROUTE_ID, PPR_KEY0_URL, PPR_WEATHER_ROUTE_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
 import {
 	printLogs,
@@ -66,12 +66,12 @@ describe("PPR Standalone: weather-query plan", () => {
 		const client = makeClientE2eClient(PPR_KEY0_URL);
 
 		const { resourceResponse } = await client.purchasePprAccess({
-			planId: PPR_WEATHER_PLAN_ID,
+			routeId: PPR_WEATHER_ROUTE_ID,
 			resource: { method: "GET", path: "/api/weather/london" },
 		});
 
 		expect(resourceResponse.type).toBe("ResourceResponse");
-		expect(resourceResponse.planId).toBe(PPR_WEATHER_PLAN_ID);
+		expect(resourceResponse.routeId).toBe(PPR_WEATHER_ROUTE_ID);
 		expect(typeof resourceResponse.txHash).toBe("string");
 		expect(resourceResponse.txHash).toMatch(/^0x/);
 		expect(typeof resourceResponse.explorerUrl).toBe("string");
@@ -90,7 +90,7 @@ describe("PPR Standalone: weather-query plan", () => {
 		const client = makeClientE2eClient(PPR_KEY0_URL);
 
 		const { resourceResponse } = await client.purchasePprAccess({
-			planId: PPR_WEATHER_PLAN_ID,
+			routeId: PPR_WEATHER_ROUTE_ID,
 			resource: { method: "GET", path: "/api/weather/paris" },
 		});
 
@@ -107,12 +107,12 @@ describe("PPR Standalone: joke-of-the-day plan", () => {
 		const client = makeClientE2eClient(PPR_KEY0_URL);
 
 		const { resourceResponse } = await client.purchasePprAccess({
-			planId: PPR_JOKE_PLAN_ID,
+			routeId: PPR_JOKE_ROUTE_ID,
 			resource: { method: "GET", path: "/api/joke" },
 		});
 
 		expect(resourceResponse.type).toBe("ResourceResponse");
-		expect(resourceResponse.planId).toBe(PPR_JOKE_PLAN_ID);
+		expect(resourceResponse.routeId).toBe(PPR_JOKE_ROUTE_ID);
 		expect(resourceResponse.resource.status).toBe(200);
 
 		const body = resourceResponse.resource.body as Record<string, unknown>;
@@ -130,7 +130,7 @@ describe("PPR Standalone: validation and error cases", () => {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				planId: PPR_WEATHER_PLAN_ID,
+				routeId: PPR_WEATHER_ROUTE_ID,
 				requestId: crypto.randomUUID(),
 				clientAgentId: `agent://${client.account}`,
 				// resource field intentionally omitted
@@ -155,7 +155,7 @@ describe("PPR Standalone: validation and error cases", () => {
 
 		try {
 			const { challengeId, resourceResponse } = await client.purchasePprAccess({
-				planId: PPR_WEATHER_PLAN_ID,
+				routeId: PPR_WEATHER_ROUTE_ID,
 				resource: { method: "GET", path: "/api/weather/berlin" },
 			});
 
@@ -182,7 +182,7 @@ describe("PPR Standalone: validation and error cases", () => {
 		// First call — get payment requirements
 		const req1 = crypto.randomUUID();
 		const { paymentRequired: pr1 } = await client.requestPprAccess({
-			planId: PPR_WEATHER_PLAN_ID,
+			routeId: PPR_WEATHER_ROUTE_ID,
 			requestId: req1,
 			resource: { method: "GET", path: "/api/weather/tokyo" },
 		});
@@ -195,7 +195,7 @@ describe("PPR Standalone: validation and error cases", () => {
 
 		// First submission — should succeed
 		const result1 = await client.submitPprPayment({
-			planId: PPR_WEATHER_PLAN_ID,
+			routeId: PPR_WEATHER_ROUTE_ID,
 			requestId: req1,
 			resource: { method: "GET", path: "/api/weather/tokyo" },
 			auth,
@@ -207,13 +207,13 @@ describe("PPR Standalone: validation and error cases", () => {
 		// Second call — reuse same auth (burned nonce)
 		const req2 = crypto.randomUUID();
 		const { paymentRequired: pr2 } = await client.requestPprAccess({
-			planId: PPR_WEATHER_PLAN_ID,
+			routeId: PPR_WEATHER_ROUTE_ID,
 			requestId: req2,
 			resource: { method: "GET", path: "/api/weather/sydney" },
 		});
 
 		const result2 = await client.submitPprPayment({
-			planId: PPR_WEATHER_PLAN_ID,
+			routeId: PPR_WEATHER_ROUTE_ID,
 			requestId: req2,
 			resource: { method: "GET", path: "/api/weather/sydney" },
 			auth,
@@ -233,7 +233,7 @@ describe("PPR Standalone: state verification", () => {
 
 		// Step 1: request access → challenge created (PENDING)
 		const { challengeId, paymentRequired } = await client.requestPprAccess({
-			planId: PPR_WEATHER_PLAN_ID,
+			routeId: PPR_WEATHER_ROUTE_ID,
 			requestId,
 			resource: { method: "GET", path: "/api/weather/madrid" },
 		});
@@ -249,7 +249,7 @@ describe("PPR Standalone: state verification", () => {
 		});
 
 		const result = await client.submitPprPayment({
-			planId: PPR_WEATHER_PLAN_ID,
+			routeId: PPR_WEATHER_ROUTE_ID,
 			requestId,
 			resource: { method: "GET", path: "/api/weather/madrid" },
 			auth,

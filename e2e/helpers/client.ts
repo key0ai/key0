@@ -349,7 +349,7 @@ export class E2eTestClient {
 	// ── PPR Step 1: Request per-request access (with resource field) ─────
 
 	async requestPprAccess(opts: {
-		planId: string;
+		routeId: string;
 		requestId: string;
 		resource: PprResource;
 	}): Promise<ChallengeResponse> {
@@ -357,7 +357,7 @@ export class E2eTestClient {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				planId: opts.planId,
+				routeId: opts.routeId,
 				requestId: opts.requestId,
 				resource: opts.resource,
 				clientAgentId: `agent://${this.account}`,
@@ -384,7 +384,7 @@ export class E2eTestClient {
 	// ── PPR Step 3: Submit payment (returns ResourceResponse, not AccessGrant) ──
 
 	async submitPprPayment(opts: {
-		planId: string;
+		routeId: string;
 		requestId: string;
 		resource: PprResource;
 		auth: EIP3009Auth;
@@ -417,7 +417,7 @@ export class E2eTestClient {
 				"payment-signature": paymentSignature,
 			},
 			body: JSON.stringify({
-				planId: opts.planId,
+				routeId: opts.routeId,
 				requestId: opts.requestId,
 				resource: opts.resource,
 				clientAgentId: `agent://${this.account}`,
@@ -434,7 +434,7 @@ export class E2eTestClient {
 	// ── PPR Convenience: full per-request purchase ────────────────────────
 
 	async purchasePprAccess(opts: {
-		planId: string;
+		routeId: string;
 		resource: PprResource;
 		requestId?: string;
 	}): Promise<{
@@ -444,7 +444,7 @@ export class E2eTestClient {
 	}> {
 		const requestId = opts.requestId ?? crypto.randomUUID();
 		const { challengeId, paymentRequired } = await this.requestPprAccess({
-			planId: opts.planId,
+			routeId: opts.routeId,
 			requestId,
 			resource: opts.resource,
 		});
@@ -458,7 +458,7 @@ export class E2eTestClient {
 		});
 
 		const result = await this.submitPprPayment({
-			planId: opts.planId,
+			routeId: opts.routeId,
 			requestId,
 			resource: opts.resource,
 			auth,
