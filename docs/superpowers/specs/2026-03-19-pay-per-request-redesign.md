@@ -234,58 +234,172 @@ This mode remains HTTP-only (no A2A/MCP). It is for greenfield sellers who own t
 
 ## Docker Setup UI (Dashboard)
 
-The existing setup UI at `/setup` currently allows sellers to configure plans and basic server settings. It must be updated to support the new `routes` concept alongside `plans`, and to make the distinction between the two concepts clear to sellers.
+The setup UI at `/setup` is a React SPA served from `ui/dist`. The layout is: a left-side configuration form with collapsible sections (60% width on large screens) + a sticky right-side output panel (40%) showing live previews of the agent card, MCP terminal walkthrough, and deployment scripts. The current form has 6 sections: Company, Pricing Plans, Token Issuance, Wallet & Network, Server & Storage, Refund Cron.
 
-### What the UI Must Express
+This spec requires three changes to the form and its backing API:
+1. Replace the "Pricing Plans" section with a combined **"Plans & Routes"** section
+2. Add a **"Gateway / Proxy"** section (conditionally required when routes are configured)
+3. Make the "Token Issuance" section conditionally required (only when plans are configured)
 
-The UI has two distinct configuration sections:
+All other sections (Company, Wallet & Network, Server & Storage, Refund Cron) and their fields are unchanged.
 
-**Plans (subscription tiers)**
-- Each plan has: Plan ID, Price (monthly), Description
-- After payment, Key0 issues a JWT. The seller's own backend decides what the JWT unlocks.
-- UI hint: "Clients pay once and get a token for ongoing access."
+---
 
-**Routes (per-request APIs)**
-- Each route has: Route ID, HTTP Method, Path, Price per call (leave blank for free), Description
-- Key0 auto-gates each route. No JWT issued. Clients pay per call.
-- UI hint: "Each API call is individually priced. Key0 proxies requests to your backend."
-- Requires the "Backend URL" field (proxyTo.baseUrl) to be filled in.
+### Section: Plans & Routes (replaces "Pricing Plans")
 
-**Gateway settings** (shown when any routes are configured)
-- Backend URL (`proxyTo.baseUrl`) — required
-- Internal secret (`proxyTo.proxySecret`) — optional but recommended; shown with explanation of how the backend should validate it
+This section contains two independent sub-editors side by side (or stacked on mobile): one for Plans, one for Routes. A seller may configure plans only, routes only, or both.
 
-### UX Principles
+**Plans sub-editor** (existing `PlanEditor`, unchanged field set)
 
-- **Two tabs or two clearly labelled sections** — "Plans" and "Routes" — so sellers immediately understand these are distinct concepts
-- **Contextual help inline**: for each section, one sentence explaining when to use it
-  - Plans: "Use when you want clients to subscribe for ongoing access (e.g. monthly API key)"
-  - Routes: "Use when you want to charge per API call and proxy requests to your backend"
-- **Backend URL field is prominent** when routes are configured — it's easy for sellers to miss that `proxyTo` is required
-- **Free route is zero-friction**: if Price is left blank, the route is free. No separate toggle needed.
-- **Live preview of the discovery response** — sellers can see exactly what agent clients will discover, updating as they type
+Each plan row:
+- **Plan ID** (required) — slug, e.g. `starter-monthly`
+- **Price in USDC** (required) — e.g. `5.00`
+- **Description** (optional)
 
-### Setup API Changes (`/api/setup`)
+Section hint: _"Clients pay once and receive a token for ongoing access. Your backend decides what each plan unlocks."_
 
-The `/api/setup/status` and `/api/setup/save` endpoints currently pass `plans` as a JSON array. They need to also pass `routes` and `proxyTo` config:
+Add/remove rows. Minimum 0 rows (routes-only sellers need no plans).
+
+**Routes sub-editor** (new `RouteEditor` component, modelled on `PlanEditor`)
+
+Each route row:
+- **Route ID** (required) — slug, e.g. `weather-query`
+- **Method** (required) — dropdown: `GET | POST | PUT | DELETE | PATCH`; default `GET`
+- **Path** (required) — Express-style param path, e.g. `/api/weather/:city`
+- **Price per call in USDC** (optional) — leave blank for free
+- **Description** (optional)
+
+Section hint: _"Each API call is individually gated. Paid routes require payment per call. Free routes proxy directly. Your backend receives every request."_
+
+Add/remove rows. Minimum 0 rows (plans-only sellers need no routes).
+
+**Validation for this section:**
+- At least one plan OR one route must exist (save button disabled otherwise)
+- Each plan row: `planId` and `unitAmount` both required
+- Each route row: `routeId`, `method`, and `path` all required; `unitAmount` optional
+- `path` must start with `/`
+- `routeId` and `planId` values must be unique within their respective lists (no duplicates)
+
+---
+
+### Section: Gateway / Proxy (new, conditionally shown)
+
+Shown only when at least one route is configured. Collapsed by default if no routes exist yet; auto-expands when the first route is added.
+
+Fields:
+- **Backend URL** (required when routes exist) — `PROXY_TO_BASE_URL`, e.g. `http://localhost:3001`. Hint: _"Key0 will proxy all route requests to this base URL."_
+- **Internal Secret** (optional, password field) — `KEY0_PROXY_SECRET`. Sent as `x-key0-internal-token` on every proxied request. Hint: _"Validate this header in your backend to ensure requests came through Key0."_ Masked in status response using same `••••••` pattern as other secrets.
+
+**Validation:**
+- If any route is configured → Backend URL is required; save button remains disabled without it
+- If no routes are configured → entire section hidden; Backend URL not required
+
+---
+
+### Section: Token Issuance (now conditionally required)
+
+Currently always required. Under the new design, it is **only required when plans are configured**.
+
+- If plans list is non-empty → Issue Token API and backend auth fields are required (unchanged behaviour)
+- If plans list is empty (routes-only seller) → entire Token Issuance section is hidden; `ISSUE_TOKEN_API` is not written to `.env.runtime`
+
+This eliminates the confusing situation where a routes-only seller must fill in a callback URL that will never be called.
+
+---
+
+### Validation Summary
+
+The overall save-button enabled condition becomes:
+
+```
+(plans.length > 0 || routes.length > 0)                         // at least one thing configured
+AND (plans.length === 0 || issueTokenApi.length > 0)            // token API required only with plans
+AND (routes.length === 0 || proxyToBaseUrl.length > 0)          // backend URL required only with routes
+AND walletAddress valid (0x + 42 chars)
+AND storage backend requirement met (redis/postgres URL or managed)
+AND all plan rows have planId + unitAmount
+AND all route rows have routeId + method + path
+AND no duplicate planIds
+AND no duplicate routeIds
+AND all paths start with /
+```
+
+---
+
+### Output Panel Changes
+
+**Experience tab — Agent Card subtab:** Update `generateAgentCard()` to include `routes` array in the discovery preview. Show route entries with `routeId`, method, path, and price (or "free"). The terminal walkthrough should demonstrate a route call via `/x402/access` in addition to the existing subscription plan flow.
+
+**Experience tab — MCP subtab:** Update `generateMcpTerminal()` to show `discover_api` (renamed from `discover_plans`) returning both plans and routes.
+
+**Deploy tab — .env subtab:** `generateEnv()` must write:
+- `ROUTES_B64` — base64 JSON of routes array (when routes are configured), matching `PLANS_B64` pattern
+- `PROXY_TO_BASE_URL` — when routes are configured
+- `KEY0_PROXY_SECRET` — when set
+- Omit `ISSUE_TOKEN_API` and `BACKEND_AUTH_STRATEGY` when plans list is empty
+
+**Deploy tab — docker-compose.yml and docker run subtabs:** No structural changes; the new env vars are injected automatically via `generateEnv()`.
+
+---
+
+### Setup API Changes
+
+**`GET /api/setup/status` — additions to `config` object in response:**
 
 ```typescript
-// GET /api/setup/status — add to response:
 {
-  routes: Route[];           // from ROUTES_B64 or ROUTES env var
-  proxyToBaseUrl: string;    // from PROXY_TO_BASE_URL env var
-  proxySecret: string;       // from KEY0_PROXY_SECRET env var (masked)
-}
-
-// POST /api/setup/save — add to body:
-{
-  routes: Route[];
-  proxyToBaseUrl: string;
-  proxySecret?: string;
+  // existing fields...
+  routes: Route[];            // parsed from ROUTES_B64 or ROUTES env var; [] if absent/invalid
+  proxyToBaseUrl: string;     // from PROXY_TO_BASE_URL env var; "" if absent
+  proxySecret: string;        // from KEY0_PROXY_SECRET env var; "••••••" if set, "" if absent
 }
 ```
 
-The Docker server reads `routes` from a `ROUTES_B64` env var (base64 JSON), matching the existing pattern for `PLANS_B64`.
+Error handling for `ROUTES_B64`: same as `PLANS_B64` — if present but invalid JSON, server logs a warning and exits with code 1.
+
+**`POST /api/setup` — additions to request body:**
+
+```typescript
+{
+  // existing fields...
+  routes: Route[];
+  proxyToBaseUrl: string;
+  proxySecret: string;        // empty string means "clear it"; "••••••" means "keep existing"
+}
+```
+
+**`POST /api/setup` — server-side validation additions:**
+- If `routes.length > 0` and `proxyToBaseUrl` is empty → return 400 `"proxyToBaseUrl is required when routes are configured"`
+- If `plans.length > 0` and `issueTokenApi` is empty → existing 400 behaviour (unchanged)
+- If both `plans` and `routes` are empty → return 400 `"At least one plan or route must be configured"`
+
+**`POST /api/setup` — `.env.runtime` write additions:**
+- Write `ROUTES_B64=<base64>` when routes is non-empty (same encoding as `PLANS_B64`)
+- Write `PROXY_TO_BASE_URL=<url>` when `proxyToBaseUrl` is non-empty
+- Write `KEY0_PROXY_SECRET=<secret>` when proxySecret is non-empty and not masked
+- Omit `ISSUE_TOKEN_API` when plans list is empty
+- Secret masking: `proxySecret` is filtered same as other secrets — if value contains `•`, skip write to preserve existing value
+
+---
+
+### Edge Cases
+
+| Scenario | Expected behaviour |
+|---|---|
+| Routes-only seller saves with no Backend URL | Save button disabled; inline error on Backend URL field |
+| Routes-only seller (no plans) — Token Issuance section hidden? | Yes — section hides; `issueTokenApi` not required |
+| Plans-only seller (no routes) — Token Issuance section hidden? | No — section stays visible and required; unchanged behaviour |
+| Seller adds first route | Gateway section auto-expands; Backend URL field highlighted |
+| Seller removes all routes | Gateway section collapses and hides; Backend URL no longer blocks save |
+| Seller removes all plans | Token Issuance section hides; `ISSUE_TOKEN_API` omitted from .env |
+| `ROUTES_B64` is invalid base64/JSON at startup | Server logs error, exits code 1 (same as `PLANS_B64`) |
+| `ROUTES_B64` is absent | `routes` defaults to `[]`; no error |
+| Duplicate `routeId` values | Inline validation error on the duplicate row; save blocked |
+| Route path without leading `/` | Inline validation error on the path field |
+| `proxySecret` not changed by user | Frontend sends `"••••••"`; server skips write, preserving existing value |
+| `proxySecret` cleared by user | Frontend sends `""`; server omits `KEY0_PROXY_SECRET` from .env |
+| Mixed plans + routes, only routes failing validation | Save blocked; only route section shows errors |
+| Server restarting after save | Existing poll-until-configured behaviour unchanged |
 
 ---
 
