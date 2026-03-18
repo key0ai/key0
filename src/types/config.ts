@@ -37,7 +37,7 @@ export type PlanRouteInfo = {
 
 export type Plan = {
 	readonly planId: string;
-	readonly unitAmount: string; // "$0.10"
+	readonly unitAmount?: string; // "$0.10" — required for paid plans; omit for free plans
 	readonly description?: string;
 	/** "subscription" (default) uses the /x402/access challenge flow; "per-request" gates individual routes. */
 	readonly mode?: "subscription" | "per-request";

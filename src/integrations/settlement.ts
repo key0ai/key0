@@ -115,7 +115,7 @@ export function buildHttpPaymentRequirements(
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const resourceUrl = `${baseUrl}/x402/access`;
 
-	const amountRaw = parseDollarToUsdcMicro(tier.unitAmount);
+	const amountRaw = parseDollarToUsdcMicro(tier.unitAmount!);
 	const network = `eip155:${networkConfig.chainId}`;
 
 	const extensions =
@@ -176,7 +176,7 @@ export function buildDiscoveryResponse(
 
 	// Build accepts array with one entry per tier
 	const accepts = config.plans.map((tier: Plan) => {
-		const amountRaw = parseDollarToUsdcMicro(tier.unitAmount);
+		const amountRaw = tier.free ? BigInt(0) : parseDollarToUsdcMicro(tier.unitAmount!);
 		const effectiveRoutes = perRequestRoutes?.get(tier.planId) ?? tier.routes ?? [];
 		return {
 			scheme: "exact" as const,
@@ -189,8 +189,9 @@ export function buildDiscoveryResponse(
 				name: networkConfig.usdcDomain.name,
 				version: networkConfig.usdcDomain.version,
 				planId: tier.planId,
-				description: tier.description ?? `${tier.planId} — ${tier.unitAmount} USDC`,
+				description: tier.description ?? `${tier.planId} — ${tier.unitAmount ?? "free"} USDC`,
 				mode: tier.mode ?? "subscription",
+				free: tier.free === true ? true : false,
 				...(effectiveRoutes.length > 0 ? { routes: effectiveRoutes } : {}),
 			},
 		};

@@ -357,7 +357,7 @@ function build402Response(deps: ResolvedDeps, resourceUrl: string, method: strin
 		{
 			description:
 				deps.tier.description ??
-				`Pay-per-request: ${deps.tier.planId} (${deps.tier.unitAmount} USDC)`,
+				`Pay-per-request: ${deps.tier.planId} (${deps.tier.unitAmount ?? "free"} USDC)`,
 		},
 	);
 
@@ -417,8 +417,8 @@ async function settleAndRecord(
 			clientAgentId: "x402-ppr",
 			resourceId: path,
 			planId: deps.planId,
-			amount: deps.tier.unitAmount,
-			amountRaw: parseDollarToUsdcMicro(deps.tier.unitAmount),
+			amount: deps.tier.unitAmount!,
+			amountRaw: parseDollarToUsdcMicro(deps.tier.unitAmount!),
 			asset: "USDC",
 			chainId: deps.networkConfig.chainId,
 			destination: deps.config.walletAddress,
@@ -455,7 +455,7 @@ async function settleAndRecord(
 		txHash,
 		payer,
 		planId: deps.planId,
-		amount: deps.tier.unitAmount,
+		amount: deps.tier.unitAmount!,
 		method,
 		path,
 		challengeId,

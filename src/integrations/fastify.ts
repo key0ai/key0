@@ -337,7 +337,7 @@ function mountFastifyRoutes(
 						txHash,
 						payer: payer ?? undefined,
 						planId,
-						amount: plan.unitAmount,
+						amount: plan.unitAmount!,
 						method: resource.method,
 						path: resource.path,
 						challengeId,

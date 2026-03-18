@@ -344,7 +344,7 @@ export class Key0Executor implements AgentExecutor {
 					txHash,
 					payer: payer ?? undefined,
 					planId,
-					amount: plan.unitAmount,
+					amount: plan.unitAmount!,
 					method: resourceMethod,
 					path: resourcePath,
 					challengeId,

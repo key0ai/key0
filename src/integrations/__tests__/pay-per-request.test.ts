@@ -259,6 +259,34 @@ describe("buildDiscoveryResponse — per-request route surfacing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Unit: buildDiscoveryResponse — free plans
+// ---------------------------------------------------------------------------
+
+describe("buildDiscoveryResponse — free plans", () => {
+	const networkConfig = CHAIN_CONFIGS["testnet"];
+
+	test("free plan has free: true in extra and amount of 0", () => {
+		const config = makeConfig({
+			plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
+		});
+		const result = buildDiscoveryResponse(config, networkConfig);
+		const plan = result.accepts[0];
+		expect(plan?.extra?.["free"]).toBe(true);
+		expect(plan?.amount).toBe("0");
+	});
+
+	test("paid plan has free: false in extra and non-zero amount", () => {
+		const config = makeConfig({
+			plans: [{ planId: "signal", unitAmount: "$0.001", mode: "per-request" as const }],
+		});
+		const result = buildDiscoveryResponse(config, networkConfig);
+		const plan = result.accepts[0];
+		expect(plan?.extra?.["free"]).toBe(false);
+		expect(Number(plan?.amount ?? "0")).toBeGreaterThan(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Integration: embedded mode middleware
 // ---------------------------------------------------------------------------
 

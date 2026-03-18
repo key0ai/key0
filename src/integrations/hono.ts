@@ -344,7 +344,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 						txHash,
 						payer: payer ?? undefined,
 						planId,
-						amount: plan.unitAmount,
+						amount: plan.unitAmount!,
 						method: resource.method,
 						path: resource.path,
 						challengeId,

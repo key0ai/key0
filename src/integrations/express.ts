@@ -427,7 +427,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 							txHash,
 							payer: payer ?? undefined,
 							planId,
-							amount: plan.unitAmount,
+							amount: plan.unitAmount!,
 							method: resource.method,
 							path: resource.path,
 							challengeId,

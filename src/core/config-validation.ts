@@ -51,12 +51,14 @@ export function validateSellerConfig(config: SellerConfig): void {
 		}
 		planIds.add(plan.planId);
 
-		try {
-			validateDollarAmount(plan.unitAmount, `plans[${plan.planId}].unitAmount`);
-		} catch {
-			throw new Error(
-				`SellerConfig: plan "${plan.planId}" has invalid unitAmount "${plan.unitAmount}" (expected format: "$X.XX")`,
-			);
+		if (!plan.free) {
+			try {
+				validateDollarAmount(plan.unitAmount!, `plans[${plan.planId}].unitAmount`);
+			} catch {
+				throw new Error(
+					`SellerConfig: plan "${plan.planId}" has invalid unitAmount "${plan.unitAmount}" (expected format: "$X.XX")`,
+				);
+			}
 		}
 	}
 
