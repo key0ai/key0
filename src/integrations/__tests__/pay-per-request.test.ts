@@ -826,14 +826,14 @@ describe("proxyToFetchResource — proxySecret header injection", () => {
 	test("adds X-Key0-Internal-Token header when proxySecret is set", async () => {
 		const capturedHeaders: Record<string, string> = {};
 		const originalFetch = globalThis.fetch;
-		globalThis.fetch = async (_url: unknown, init?: RequestInit) => {
+		globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
 			const headers = init?.headers as Record<string, string> | undefined;
 			if (headers) Object.assign(capturedHeaders, headers);
 			return new Response(JSON.stringify({ ok: true }), {
 				status: 200,
 				headers: { "content-type": "application/json" },
 			});
-		};
+		}) as typeof fetch;
 
 		const fn = resolveConfigFetchResource({
 			...makeConfig(),
@@ -862,11 +862,11 @@ describe("proxyToFetchResource — proxySecret header injection", () => {
 	test("does NOT add X-Key0-Internal-Token when proxySecret is absent", async () => {
 		const capturedHeaders: Record<string, string> = {};
 		const originalFetch = globalThis.fetch;
-		globalThis.fetch = async (_url: unknown, init?: RequestInit) => {
+		globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
 			const headers = init?.headers as Record<string, string> | undefined;
 			if (headers) Object.assign(capturedHeaders, headers);
 			return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
-		};
+		}) as typeof fetch;
 
 		const fn = resolveConfigFetchResource({
 			...makeConfig(),

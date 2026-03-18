@@ -62,8 +62,13 @@ export function validateSellerConfig(config: SellerConfig): void {
 		}
 	}
 
-	// Validate fetchResourceCredentials is a function
-	if (typeof config.fetchResourceCredentials !== "function") {
-		throw new Error("SellerConfig: fetchResourceCredentials must be a function");
+	// Only require fetchResourceCredentials if there are subscription plans
+	const hasSubscriptionPlans = config.plans.some(
+		(p) => !p.free && p.mode !== "per-request"
+	);
+	if (hasSubscriptionPlans && typeof config.fetchResourceCredentials !== "function") {
+		throw new Error(
+			"SellerConfig: fetchResourceCredentials is required for subscription plans"
+		);
 	}
 }

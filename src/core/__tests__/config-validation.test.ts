@@ -59,7 +59,7 @@ describe("validateSellerConfig", () => {
 			validateSellerConfig(
 				makeValidConfig({ fetchResourceCredentials: undefined as unknown as never }),
 			),
-		).toThrow("fetchResourceCredentials must be a function");
+		).toThrow("fetchResourceCredentials is required for subscription plans");
 	});
 
 	test("rejects non-function fetchResourceCredentials", () => {
@@ -67,7 +67,7 @@ describe("validateSellerConfig", () => {
 			validateSellerConfig(
 				makeValidConfig({ fetchResourceCredentials: "not-a-function" as unknown as never }),
 			),
-		).toThrow("fetchResourceCredentials must be a function");
+		).toThrow("fetchResourceCredentials is required for subscription plans");
 	});
 
 	test("rejects empty plans array", () => {
