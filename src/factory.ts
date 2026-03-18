@@ -24,6 +24,15 @@ export type Key0Instance = {
 };
 
 export function createKey0(opts: Key0Config): Key0Instance {
+	// Warn if proxyTo is configured without proxySecret
+	if (opts.config.proxyTo && !opts.config.proxyTo.proxySecret) {
+		console.warn(
+			"[Key0] Warning: proxyTo is configured without proxySecret. " +
+				"Set KEY0_PROXY_SECRET and pass it as proxyTo.proxySecret to require " +
+				"X-Key0-Internal-Token validation on your backend.",
+		);
+	}
+
 	if (!opts.store) {
 		throw new Error(
 			"[Key0] store is required. Use RedisChallengeStore for production.\n" +
