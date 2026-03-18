@@ -1,7 +1,7 @@
 import type { ChallengeRecord, ChallengeState } from "./challenge.js";
 
 /** Who or what triggered a state transition. */
-export type AuditActor = "engine" | "cron" | "admin" | "system";
+export type AuditActor = "engine" | "cron" | "admin" | "system" | "gateway";
 
 /** Metadata passed alongside create/transition to enrich audit entries. */
 export type TransitionMeta = {

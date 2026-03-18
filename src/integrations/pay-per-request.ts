@@ -363,10 +363,6 @@ function proxyToFetchResource(
 export function resolveConfigFetchResource(
 	config: SellerConfig,
 ): ((params: FetchResourceParams) => Promise<FetchResourceResult>) | undefined {
-	const configWithLegacy = config as SellerConfig & {
-		fetchResource?: (params: FetchResourceParams) => Promise<FetchResourceResult>;
-	};
-	if (configWithLegacy.fetchResource) return configWithLegacy.fetchResource;
 	if (config.proxyTo) return proxyToFetchResource(config.proxyTo);
 	return undefined;
 }
@@ -927,9 +923,9 @@ function expressRoutePayPerRequestHandler(deps: ResolvedRouteDeps) {
 
 			res.setHeader("payment-response", settleResponseBase64);
 
-			if (deps.fetchResource) {
-				// STANDALONE MODE: proxy to backend (transparent proxy)
-				const result = await deps.fetchResource({
+			if (deps.isDirectProxy) {
+				// STANDALONE MODE: direct proxy — pipe raw backend response through
+				const result = await deps.fetchResource!({
 					paymentInfo,
 					method: req.method,
 					path: req.path,
@@ -942,7 +938,15 @@ function expressRoutePayPerRequestHandler(deps: ResolvedRouteDeps) {
 				}
 
 				if (deliveredChallengeId && deps.store && result.status >= 200 && result.status < 400) {
-					markDelivered(deps.store, deliveredChallengeId);
+					deps.store
+						.transition(
+							deliveredChallengeId,
+							"PAID",
+							"DELIVERED",
+							{ deliveredAt: new Date() },
+							{ actor: "gateway" },
+						)
+						.catch(() => {});
 				}
 
 				return res.status(result.status).json(result.body);
@@ -1197,7 +1201,8 @@ function honoRoutePayPerRequestHandler(deps: ResolvedRouteDeps) {
 
 			c.header("payment-response", settleResponseBase64);
 
-			if (deps.fetchResource) {
+			if (deps.isDirectProxy) {
+				// STANDALONE MODE: direct proxy — pipe raw backend response through
 				const rawHeaders: Record<string, string> = {};
 				c.req.raw.headers.forEach((v, k) => {
 					rawHeaders[k] = v;
@@ -1209,7 +1214,7 @@ function honoRoutePayPerRequestHandler(deps: ResolvedRouteDeps) {
 					body = undefined;
 				}
 
-				const result = await deps.fetchResource({
+				const result = await deps.fetchResource!({
 					paymentInfo,
 					method: c.req.method,
 					path: c.req.path,
@@ -1221,7 +1226,15 @@ function honoRoutePayPerRequestHandler(deps: ResolvedRouteDeps) {
 					c.header(k, v);
 				}
 				if (deliveredChallengeId && deps.store && result.status >= 200 && result.status < 400) {
-					markDelivered(deps.store, deliveredChallengeId);
+					deps.store
+						.transition(
+							deliveredChallengeId,
+							"PAID",
+							"DELIVERED",
+							{ deliveredAt: new Date() },
+							{ actor: "gateway" },
+						)
+						.catch(() => {});
 				}
 				return c.json(result.body, result.status as any);
 			} else {
@@ -1469,8 +1482,9 @@ function fastifyRoutePayPerRequestHandler(deps: ResolvedRouteDeps) {
 
 			reply.header("payment-response", settleResponseBase64);
 
-			if (deps.fetchResource) {
-				const result = await deps.fetchResource({
+			if (deps.isDirectProxy) {
+				// STANDALONE MODE: direct proxy — pipe raw backend response through
+				const result = await deps.fetchResource!({
 					paymentInfo,
 					method: request.method,
 					path: routePath,
@@ -1481,7 +1495,15 @@ function fastifyRoutePayPerRequestHandler(deps: ResolvedRouteDeps) {
 					reply.header(k, v);
 				}
 				if (deliveredChallengeId && deps.store && result.status >= 200 && result.status < 400) {
-					markDelivered(deps.store, deliveredChallengeId);
+					deps.store
+						.transition(
+							deliveredChallengeId,
+							"PAID",
+							"DELIVERED",
+							{ deliveredAt: new Date() },
+							{ actor: "gateway" },
+						)
+						.catch(() => {});
 				}
 				return reply.code(result.status).send(result.body);
 			} else {
