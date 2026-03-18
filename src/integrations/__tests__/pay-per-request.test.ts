@@ -794,6 +794,77 @@ describe("ChallengeEngine.recordPerRequestPayment", () => {
 	});
 });
 
+describe("proxyToFetchResource — proxySecret header injection", () => {
+	test("adds X-Key0-Internal-Token header when proxySecret is set", async () => {
+		const capturedHeaders: Record<string, string> = {};
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async (_url: unknown, init?: RequestInit) => {
+			const headers = init?.headers as Record<string, string> | undefined;
+			if (headers) Object.assign(capturedHeaders, headers);
+			return new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		};
+
+		const fn = resolveConfigFetchResource({
+			...makeConfig(),
+			proxyTo: { baseUrl: "https://backend.internal", proxySecret: "super-secret-32-chars-long!!" },
+		});
+
+		await fn!({
+			method: "GET",
+			path: "/health",
+			headers: {},
+			paymentInfo: {
+				txHash: "0xabc" as `0x${string}`,
+				payer: undefined,
+				planId: "test",
+				amount: "$0.001",
+				method: "GET",
+				path: "/health",
+				challengeId: "cid-1",
+			},
+		});
+
+		globalThis.fetch = originalFetch;
+		expect(capturedHeaders["x-key0-internal-token"]).toBe("super-secret-32-chars-long!!");
+	});
+
+	test("does NOT add X-Key0-Internal-Token when proxySecret is absent", async () => {
+		const capturedHeaders: Record<string, string> = {};
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async (_url: unknown, init?: RequestInit) => {
+			const headers = init?.headers as Record<string, string> | undefined;
+			if (headers) Object.assign(capturedHeaders, headers);
+			return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+		};
+
+		const fn = resolveConfigFetchResource({
+			...makeConfig(),
+			proxyTo: { baseUrl: "https://backend.internal" },
+		});
+
+		await fn!({
+			method: "GET",
+			path: "/health",
+			headers: {},
+			paymentInfo: {
+				txHash: "0xabc" as `0x${string}`,
+				payer: undefined,
+				planId: "test",
+				amount: "$0.001",
+				method: "GET",
+				path: "/health",
+				challengeId: "cid-1",
+			},
+		});
+
+		globalThis.fetch = originalFetch;
+		expect(capturedHeaders["x-key0-internal-token"]).toBeUndefined();
+	});
+});
+
 describe("ChallengeEngine.markDelivered", () => {
 	function makePprEngine() {
 		const adapter = new MockPaymentAdapter();

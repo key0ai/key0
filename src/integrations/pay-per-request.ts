@@ -186,6 +186,10 @@ function proxyToFetchResource(
 			...headers,
 			...paymentHeaders,
 			...(proxyConfig.headers ?? {}),
+			// Internal auth — injected last, cannot be overridden by caller or payment headers
+			...(proxyConfig.proxySecret
+				? { "x-key0-internal-token": proxyConfig.proxySecret }
+				: {}),
 		};
 
 		// Drop hop-by-hop headers that must not be forwarded.
