@@ -92,7 +92,6 @@ beforeAll(async () => {
 			network: NETWORK,
 			gasWalletPrivateKey: GAS_WALLET_KEY,
 			// Cast required: ioredis Redis has a wider .set() overload signature than IRedisLockClient
-			// biome-ignore lint/suspicious/noExplicitAny: intentional cast for e2e test setup
 			redis: redis as any,
 			challengeTTLSeconds: 300,
 			plans: [

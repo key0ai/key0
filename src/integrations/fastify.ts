@@ -190,8 +190,7 @@ function mountFastifyRoutes(
 					});
 				}
 				const queryString = planDef.proxyQuery
-					? "?" +
-						new URLSearchParams(planDef.proxyQuery as Record<string, string>).toString()
+					? `?${new URLSearchParams(planDef.proxyQuery as Record<string, string>).toString()}`
 					: "";
 				const proxyResult = await fetchResourceFn({
 					method: planDef.proxyMethod ?? "GET",

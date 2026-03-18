@@ -12,19 +12,14 @@ const SAFE_PARAM_RE = /^[A-Za-z0-9_-]+$/;
  * @example
  * interpolateUrlTemplate("/signal/{asset}", { asset: "BTC" }) // "/signal/BTC"
  */
-export function interpolateUrlTemplate(
-	template: string,
-	params: Record<string, string>,
-): string {
+export function interpolateUrlTemplate(template: string, params: Record<string, string>): string {
 	return template.replace(/\{([^}]+)\}/g, (_placeholder, key: string) => {
 		if (!(key in params)) {
 			throw new Error(`Missing param "${key}" required by URL template "${template}"`);
 		}
 		const value = params[key]!;
 		if (!SAFE_PARAM_RE.test(value)) {
-			throw new Error(
-				`Invalid param "${key}": value "${value}" contains disallowed characters`,
-			);
+			throw new Error(`Invalid param "${key}": value "${value}" contains disallowed characters`);
 		}
 		return value;
 	});

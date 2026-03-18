@@ -29,7 +29,7 @@ const failForChallengeIds: Set<string> = new Set();
 let pprMode: "success" | "error" = "success";
 
 /** Internal token for gateway proxy tests — unset means validation is skipped. */
-let pprInternalSecret: string | undefined = undefined;
+let pprInternalSecret: string | undefined;
 
 export function startBackend(): Promise<Server> {
 	const app = express();
@@ -107,7 +107,9 @@ export function startBackend(): Promise<Server> {
 		if (!pprInternalSecret) return true; // not enforced when unset
 		const token = req.headers["x-key0-internal-token"];
 		if (token !== pprInternalSecret) {
-			res.status(401).json({ error: "unauthorized", message: "Missing or invalid X-Key0-Internal-Token" });
+			res
+				.status(401)
+				.json({ error: "unauthorized", message: "Missing or invalid X-Key0-Internal-Token" });
 			return false;
 		}
 		return true;

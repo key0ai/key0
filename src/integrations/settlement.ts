@@ -191,7 +191,7 @@ export function buildDiscoveryResponse(
 				planId: tier.planId,
 				description: tier.description ?? `${tier.planId} — ${tier.unitAmount ?? "free"} USDC`,
 				mode: tier.mode ?? "subscription",
-				free: tier.free === true ? true : false,
+				free: tier.free === true,
 				...(effectiveRoutes.length > 0 ? { routes: effectiveRoutes } : {}),
 			},
 		};

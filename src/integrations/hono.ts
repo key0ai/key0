@@ -194,8 +194,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 					);
 				}
 				const queryString = planDef.proxyQuery
-					? "?" +
-						new URLSearchParams(planDef.proxyQuery as Record<string, string>).toString()
+					? `?${new URLSearchParams(planDef.proxyQuery as Record<string, string>).toString()}`
 					: "";
 				const proxyResult = await fetchResourceFn({
 					method: planDef.proxyMethod ?? "GET",

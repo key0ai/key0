@@ -87,7 +87,10 @@ describe("createKey0 — startup validation", () => {
 		createKey0({
 			config: {
 				...configWithoutFrc({
-					proxyTo: { baseUrl: "https://backend.internal", proxySecret: "secret-at-least-32-chars-long!!" },
+					proxyTo: {
+						baseUrl: "https://backend.internal",
+						proxySecret: "secret-at-least-32-chars-long!!",
+					},
 				}),
 				plans: [{ planId: "health", free: true as const, proxyPath: "/health" }],
 			},

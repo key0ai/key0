@@ -624,13 +624,13 @@ if (!isConfigured) {
 					? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY, redis }
 					: {}),
 				...(_PROXY_TO_BASE_URL
-				? {
-						proxyTo: {
-							baseUrl: _PROXY_TO_BASE_URL,
-							...(_KEY0_PROXY_SECRET ? { proxySecret: _KEY0_PROXY_SECRET } : {}),
-						},
-					}
-				: {}),
+					? {
+							proxyTo: {
+								baseUrl: _PROXY_TO_BASE_URL,
+								...(_KEY0_PROXY_SECRET ? { proxySecret: _KEY0_PROXY_SECRET } : {}),
+							},
+						}
+					: {}),
 			},
 			adapter,
 			store,

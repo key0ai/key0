@@ -17,8 +17,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { BACKEND_URL, PPR_KEY0_URL } from "../fixtures/constants.ts";
-import { GATEWAY_PROXY_SECRET } from "../fixtures/constants.ts";
+import { BACKEND_URL, GATEWAY_PROXY_SECRET, PPR_KEY0_URL } from "../fixtures/constants.ts";
 import {
 	printLogs,
 	type StackConfig,
@@ -70,9 +69,7 @@ describe("Gateway Proxy: free plan", () => {
 		const data = (await res.json()) as {
 			discoveryResponse: { accepts: Array<{ extra: Record<string, unknown>; amount: string }> };
 		};
-		const statusPlan = data.discoveryResponse.accepts.find(
-			(p) => p.extra?.["planId"] === "status",
-		);
+		const statusPlan = data.discoveryResponse.accepts.find((p) => p.extra?.["planId"] === "status");
 		expect(statusPlan).toBeDefined();
 		expect(statusPlan?.extra?.["free"]).toBe(true);
 		expect(statusPlan?.amount).toBe("0");

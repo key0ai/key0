@@ -11,10 +11,7 @@ import {
 	mergePerRequestRoutes,
 	resolveConfigFetchResource,
 } from "../pay-per-request.js";
-import {
-	buildDiscoveryResponse,
-	buildHttpPaymentRequirements,
-} from "../settlement.js";
+import { buildDiscoveryResponse, buildHttpPaymentRequirements } from "../settlement.js";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for settlePayment (keeps buildDiscoveryResponse and
@@ -996,7 +993,6 @@ const { key0Router } = await import("../express.js");
 // ---------------------------------------------------------------------------
 
 describe("key0Router /x402/access — free plan fast-path", () => {
-
 	function makeFreePlanConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 		return {
 			agentName: "Test Agent",
@@ -1106,8 +1102,13 @@ describe("key0Router /x402/access — free plan fast-path", () => {
 			res._resolve = resolve;
 
 			// Walk the router's stack to find the /x402/access POST handler
-			const stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: Function }> } }> =
-				(router as any).stack ?? [];
+			const stack: Array<{
+				route?: {
+					path: string;
+					methods: Record<string, boolean>;
+					stack: Array<{ handle: (...args: never) => unknown }>;
+				};
+			}> = (router as any).stack ?? [];
 			const route = stack
 				.map((layer) => layer.route)
 				.find((r) => r && r.path === "/x402/access" && r.methods["post"]);
@@ -1133,7 +1134,9 @@ describe("key0Router /x402/access — free plan fast-path", () => {
 
 	test("returns 200 ResourceResponse for a free plan (no PAYMENT-SIGNATURE)", async () => {
 		const fetchedPaths: string[] = [];
-		const mockFetchResource = async ({ path }: FetchResourceParams): Promise<FetchResourceResult> => {
+		const mockFetchResource = async ({
+			path,
+		}: FetchResourceParams): Promise<FetchResourceResult> => {
 			fetchedPaths.push(path);
 			return { status: 200, body: { status: "healthy" } };
 		};
@@ -1155,7 +1158,9 @@ describe("key0Router /x402/access — free plan fast-path", () => {
 
 	test("free plan with proxyPath template interpolates params", async () => {
 		const fetchedPaths: string[] = [];
-		const mockFetchResource = async ({ path }: FetchResourceParams): Promise<FetchResourceResult> => {
+		const mockFetchResource = async ({
+			path,
+		}: FetchResourceParams): Promise<FetchResourceResult> => {
 			fetchedPaths.push(path);
 			return { status: 200, body: { score: 99 } };
 		};
@@ -1269,7 +1274,14 @@ describe("createMcpServer — free plan request_access", () => {
 			return { status: 200, body: { status: "ok" } };
 		};
 		const config = makeConfig({
-			plans: [{ planId: "health", free: true as const, proxyPath: "/health", proxyMethod: "GET" as const }],
+			plans: [
+				{
+					planId: "health",
+					free: true as const,
+					proxyPath: "/health",
+					proxyMethod: "GET" as const,
+				},
+			],
 			fetchResource: mockFetchResource,
 		});
 		const engine = makeEngine(config);
@@ -1294,7 +1306,12 @@ describe("createMcpServer — free plan request_access", () => {
 		};
 		const config = makeConfig({
 			plans: [
-				{ planId: "signal", free: true as const, proxyPath: "/signal/{asset}", proxyMethod: "GET" as const },
+				{
+					planId: "signal",
+					free: true as const,
+					proxyPath: "/signal/{asset}",
+					proxyMethod: "GET" as const,
+				},
 			],
 			fetchResource: mockFetchResource,
 		});

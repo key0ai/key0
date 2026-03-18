@@ -275,9 +275,7 @@ export function createMcpServer(
 										{
 											error: "TEMPLATE_ERROR",
 											message:
-												templateErr instanceof Error
-													? templateErr.message
-													: String(templateErr),
+												templateErr instanceof Error ? templateErr.message : String(templateErr),
 										},
 										null,
 										2,
@@ -296,7 +294,8 @@ export function createMcpServer(
 					const proxyMethod = plan.proxyMethod ?? "GET";
 					const freeResult = await fetchResourceFn({
 						paymentInfo: {
-							txHash: "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+							txHash:
+								"0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
 							payer: undefined,
 							planId,
 							amount: "0",
@@ -314,7 +313,8 @@ export function createMcpServer(
 						challengeId: "free",
 						requestId: "free",
 						planId,
-						txHash: "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+						txHash:
+							"0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
 						explorerUrl: "",
 						resource: {
 							status: freeResult.status,
@@ -408,9 +408,7 @@ export function createMcpServer(
 											{
 												error: "TEMPLATE_ERROR",
 												message:
-													templateErr instanceof Error
-														? templateErr.message
-														: String(templateErr),
+													templateErr instanceof Error ? templateErr.message : String(templateErr),
 											},
 											null,
 											2,
