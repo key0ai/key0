@@ -1117,8 +1117,6 @@ describe("createMcpServer — free plan request_access", () => {
 
 async function callMcpToolWithPayment(
 	server: ReturnType<typeof createMcpServer>,
-	_engine: ReturnType<typeof makeEngine>,
-	_store: TestChallengeStore,
 	toolName: string,
 	args: Record<string, unknown>,
 ) {
@@ -1169,7 +1167,7 @@ describe("createMcpServer — proxy error handling (paid plans)", () => {
 		const engine = makeEngine(config, { store });
 		const server = createMcpServer(engine, config);
 
-		const result = await callMcpToolWithPayment(server, engine, store, "request_access", {
+		const result = await callMcpToolWithPayment(server, "request_access", {
 			planId: "signal",
 			params: { asset: "BTC" },
 		});
@@ -1202,7 +1200,7 @@ describe("createMcpServer — proxy error handling (paid plans)", () => {
 		const engine = makeEngine(config, { store });
 		const server = createMcpServer(engine, config);
 
-		const result = await callMcpToolWithPayment(server, engine, store, "request_access", {
+		const result = await callMcpToolWithPayment(server, "request_access", {
 			planId: "signal",
 			params: { asset: "BTC" },
 		});

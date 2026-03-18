@@ -2,6 +2,7 @@ import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import type {
 	AccessGrant,
 	AccessRequest,
+	AuditActor,
 	ChallengeRecord,
 	IChallengeStore,
 	IPaymentAdapter,
@@ -935,7 +936,7 @@ export class ChallengeEngine {
 	 */
 	async assertPaidState(
 		challengeId: string,
-		actor: string = "engine",
+		actor: AuditActor = "engine",
 		reason: string = "pre-proxy state guard",
 	): Promise<void> {
 		const ok = await this.store.transition(challengeId, "PAID", "PAID", {}, { actor, reason });

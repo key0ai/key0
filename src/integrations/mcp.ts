@@ -459,7 +459,7 @@ export function createMcpServer(
 
 					// Pre-proxy guard: confirm challenge is still in PAID state.
 					// Throws CHALLENGE_NOT_PAID if a concurrent refund already started.
-					await engine.assertPaidState(challengeId, "key0-mcp", "pre-proxy state guard");
+					await engine.assertPaidState(challengeId, "engine", "pre-proxy state guard");
 
 					// Proxy to backend — handle errors explicitly so we can trigger refunds.
 					let backendResult: Awaited<ReturnType<typeof fetchResourceFn>>;
