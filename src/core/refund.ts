@@ -44,6 +44,22 @@ export type RefundResult = {
 	readonly error?: string;
 };
 
+function isRetryableRefundError(message: string): boolean {
+	const normalized = message.toLowerCase();
+	return (
+		normalized.includes("timed out") ||
+		normalized.includes("timeout") ||
+		normalized.includes("network") ||
+		normalized.includes("fetch failed") ||
+		normalized.includes("econn") ||
+		normalized.includes("socket") ||
+		normalized.includes("503") ||
+		normalized.includes("429") ||
+		normalized.includes("rate limit") ||
+		normalized.includes("temporar")
+	);
+}
+
 /**
  * Process refunds for all payments that are still PAID after the grace period
  * and were never marked as delivered. Designed to be called from a cron job
@@ -120,10 +136,35 @@ export async function processRefunds(config: RefundConfig): Promise<RefundResult
 					networkConfig,
 				});
 
-			const refundTxHash =
-				gasWalletPrivateKey && lockKey
-					? await withGasWalletLock(sendUsdcCall, redis, lockKey)
-					: await sendUsdcCall();
+			const MAX_REFUND_ATTEMPTS = 3;
+			let refundTxHash: `0x${string}` | undefined;
+			let lastError: unknown;
+			for (let attempt = 0; attempt < MAX_REFUND_ATTEMPTS; attempt++) {
+				try {
+					refundTxHash =
+						gasWalletPrivateKey && lockKey
+							? await withGasWalletLock(sendUsdcCall, redis, lockKey)
+							: await sendUsdcCall();
+					break;
+				} catch (err) {
+					lastError = err;
+					const errorMessage = err instanceof Error ? err.message : String(err);
+					const shouldRetry =
+						attempt < MAX_REFUND_ATTEMPTS - 1 && isRetryableRefundError(errorMessage);
+					if (!shouldRetry) {
+						throw err;
+					}
+
+					const retryDelayMs = 1_000 * (attempt + 1);
+					console.warn(
+						`[Refund] refund broadcast failed with retryable error; retrying in ${retryDelayMs}ms (attempt ${attempt + 2}/${MAX_REFUND_ATTEMPTS}) for ${record.challengeId}: ${errorMessage}`,
+					);
+					await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+				}
+			}
+			if (!refundTxHash) {
+				throw lastError instanceof Error ? lastError : new Error(String(lastError));
+			}
 
 			// 3. Mark as refunded
 			await store.transition(

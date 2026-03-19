@@ -344,6 +344,21 @@ export async function settleViaGasWallet(
 
 	// STEP 2: Settle (90s timeout — includes on-chain tx confirmation)
 	const MAX_SETTLE_ATTEMPTS = 3;
+	const isRetryableSettlementError = (message: string): boolean => {
+		const normalized = message.toLowerCase();
+		return (
+			normalized.includes("timed out") ||
+			normalized.includes("timeout") ||
+			normalized.includes("network") ||
+			normalized.includes("fetch failed") ||
+			normalized.includes("econn") ||
+			normalized.includes("socket") ||
+			normalized.includes("503") ||
+			normalized.includes("429") ||
+			normalized.includes("rate limit") ||
+			normalized.includes("temporar")
+		);
+	};
 	let settlement: any;
 	for (let attempt = 0; attempt < MAX_SETTLE_ATTEMPTS; attempt++) {
 		try {
@@ -358,7 +373,17 @@ export async function settleViaGasWallet(
 			]);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : "Unknown settlement error";
-			throw new Key0Error("PAYMENT_FAILED", `Settlement failed: ${msg}`, 500);
+			const shouldRetry = attempt < MAX_SETTLE_ATTEMPTS - 1 && isRetryableSettlementError(msg);
+			if (!shouldRetry) {
+				throw new Key0Error("PAYMENT_FAILED", `Settlement failed: ${msg}`, 500);
+			}
+
+			const retryDelayMs = 1_000 * (attempt + 1);
+			console.warn(
+				`[settleViaGasWallet] settlement threw retryable error; retrying in ${retryDelayMs}ms (attempt ${attempt + 2}/${MAX_SETTLE_ATTEMPTS}): ${msg}`,
+			);
+			await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+			continue;
 		}
 
 		if (settlement.success && settlement.transaction) {

@@ -197,7 +197,7 @@ describe("processRefunds", () => {
 		let callCount = 0;
 		sendUsdcImpl = async () => {
 			callCount++;
-			if (callCount === 2) throw new Error("network error");
+			if (callCount === 2) throw new Error("insufficient balance");
 			return REFUND_TX_HASH;
 		};
 
@@ -212,6 +212,30 @@ describe("processRefunds", () => {
 		const failures = results.filter((r) => !r.success);
 		expect(successes).toHaveLength(1);
 		expect(failures).toHaveLength(1);
+	});
+
+	test("retries transient refund broadcast errors before marking REFUND_FAILED", async () => {
+		const store = new TestChallengeStore();
+		const record = makePaidChallenge();
+		await store.create(record);
+
+		let callCount = 0;
+		sendUsdcImpl = async () => {
+			callCount++;
+			if (callCount === 1) throw new Error("RPC network timeout");
+			return REFUND_TX_HASH;
+		};
+
+		const results = await processRefunds({
+			store,
+			walletPrivateKey: WALLET_KEY,
+			network: "testnet",
+		});
+
+		expect(callCount).toBe(2);
+		expect(results).toHaveLength(1);
+		expect(results[0]?.success).toBe(true);
+		expect((await store.get(record.challengeId))?.state).toBe("REFUNDED");
 	});
 
 	test("prevents double-refund: concurrent claim fails silently", async () => {
