@@ -190,7 +190,7 @@ describe("Gateway Proxy: paid proxyPath plan", () => {
 
 			expect(result.status).toBe(502);
 			expect(result.resourceResponse).toBeUndefined();
-			expect(result.error?.["error"]).toBe("PROXY_ERROR");
+			expect(result.error?.["code"]).toBe("PROXY_BACKEND_ERROR");
 
 			const state = await pollUntil(async () => {
 				const current = await readGatewayChallengeState(challengeId);
