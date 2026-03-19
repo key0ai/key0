@@ -6,7 +6,7 @@ description: "Generate a branded CLI binary for your Key0 service that agents ca
 The Agent CLI lets you ship a standalone binary for your service. Agents download it once, run `--install`, and then interact with your API by name — no HTTP knowledge required.
 
 <Note>
-  The standalone Docker server does **not** build or serve CLI binaries. Use `buildCli()` from the embedded SDK to generate binaries and host them yourself (GitHub Releases, S3, CDN, etc.).
+  To generate a CLI binary: install the SDK, call `buildCli()`, and upload the output to your preferred host (GitHub Releases, S3, CDN, etc.). See [For Sellers: Generating the Binary](#for-sellers-generating-the-binary) below.
 </Note>
 
 ```bash
@@ -78,7 +78,7 @@ Tell agents the download URL for their platform in your service's README or agen
 
 ## Distributing binaries
 
-Run `buildCli()` as part of your build or CI pipeline, then upload the output to wherever your agents can download them — GitHub Releases, S3, a CDN, etc. The standalone Docker server does not build binaries for you.
+Run `buildCli()` as part of your build or CI pipeline, then upload the output to wherever your agents can download them — GitHub Releases, S3, a CDN, etc.
 
 ---
 

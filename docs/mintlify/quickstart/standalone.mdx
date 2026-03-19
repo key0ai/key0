@@ -35,7 +35,7 @@ By default, standalone also generates buyer-facing onboarding endpoints from you
 - `GET /llms.txt`
 - `GET /skills.md`
 
-The standalone server does **not** build or serve CLI binaries. Use the embedded SDK's `buildCli()` to generate them and host them yourself (e.g. GitHub Releases, S3, a CDN). See the [Agent CLI](/guides/agent-cli) guide for details.
+To distribute a CLI binary to your users: install the SDK, call `buildCli()`, and upload the output to your preferred host. See the [Agent CLI](/guides/agent-cli) guide for step-by-step instructions.
 
 <Tabs>
   <Tab title="Setup UI">

@@ -51,7 +51,7 @@ docker compose -f docker/docker-compose.yml --profile full up
 Standalone auto-hosts the buyer onboarding bundle from your config:
 `GET /discover`, `POST /x402/access`, optional `/.well-known/agent.json`,
 optional `/.well-known/mcp.json`, plus generated `/llms.txt` and `/skills.md`.
-CLI binaries are not built by the standalone server — use the embedded SDK's `buildCli()` to generate them and distribute them yourself (see [Agent CLI](#agent-cli)).
+To distribute a CLI binary to your users: run `buildCli()` from the SDK and upload the output to your preferred host (see [Agent CLI](#agent-cli)).
 
 ### Embedded - Subscription Plans
 
@@ -267,7 +267,7 @@ By default, standalone key0 generates and hosts these buyer-facing endpoints fro
 | `GET /llms.txt` | on | `LLMS_ENABLED=false` disables it |
 | `GET /skills.md` | on | `SKILLS_MD_ENABLED=false` disables it |
 
-The standalone server does **not** build or serve CLI binaries. Use the embedded SDK's `buildCli()` to generate binaries and host them yourself (e.g. GitHub Releases, S3, a CDN). See [Agent CLI](#agent-cli) for details.
+To distribute a CLI binary to your users: run `buildCli()` from the SDK and upload the output to your preferred host (e.g. GitHub Releases, S3, a CDN). See [Agent CLI](#agent-cli) for details.
 
 #### Option B: Environment variables
 
@@ -898,7 +898,7 @@ See [`docs/mcp-integration.md`](./docs/mcp-integration.md) for architecture deta
 
 Sellers can distribute a branded CLI binary — a standalone executable with your service URL baked in. Agents download it once, install it, and interact with your API by name.
 
-The standalone Docker server does **not** build or serve CLI binaries. Use the embedded SDK to generate them:
+To generate CLI binaries, use the embedded SDK:
 
 ```typescript
 import { buildCli } from "@key0ai/key0/cli";
