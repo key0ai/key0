@@ -114,7 +114,7 @@ The router mounts the following routes on your Express app:
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/.well-known/agent.json` | A2A agent card for discovery. |
-| `GET` | `/discovery` | Plan catalog (all plans and pricing). |
+| `GET` | `/discover` | Plan catalog (all plans and pricing). |
 | `POST` | `/x402/access` | Unified x402 HTTP endpoint. Handles x402 HTTP flow by default; routes to A2A JSON-RPC handler when `X-A2A-Extensions` header is present. |
 
 When `mcp: true` is set in `config`, four additional routes are mounted:
@@ -132,7 +132,7 @@ This endpoint handles the full x402 payment flow over plain HTTP. It responds di
 
 | Case | Request | Response |
 |------|---------|----------|
-| **No planId** | Empty body (no `planId`) | `400` with pointer to `GET /discovery`. |
+| **No planId** | Empty body (no `planId`) | `400` with pointer to `GET /discover`. |
 | **Challenge** | Body with `planId` | `402` with payment requirements and a `challengeId`. |
 | **Settlement** | Body with `planId` + `payment-signature` header | `200` with an `AccessGrant` (JWT + metadata). |
 

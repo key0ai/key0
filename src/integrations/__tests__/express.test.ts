@@ -29,10 +29,12 @@ describe("GET /discover", () => {
 		expect(res.body.routes).toBeDefined();
 		expect(res.body.discoveryResponse).toBeUndefined();
 	});
+});
 
-	it("old /discovery returns 404", async () => {
-		const app = makeApp();
-		const res = await request(app).get("/discovery");
+describe("A2A toggle", () => {
+	it("does not mount the agent card when a2a is disabled", async () => {
+		const app = makeApp({ a2a: false });
+		const res = await request(app).get("/.well-known/agent.json");
 		expect(res.status).toBe(404);
 	});
 });

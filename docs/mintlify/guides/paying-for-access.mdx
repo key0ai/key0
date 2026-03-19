@@ -39,33 +39,24 @@ By the end of this guide you will understand how to:
 
 ## Step 1: Discover the service
 
-Call `GET /discovery` to browse available plans. This returns plan IDs, USDC amounts, the seller's wallet address, and the chain ID — everything you need to construct a payment.
+Call `GET /discover` to browse available plans. This returns plan IDs, USDC amounts, the seller's wallet address, and the chain ID — everything you need to construct a payment.
 
 ```bash
-curl https://api.example.com/discovery
+curl https://api.example.com/discover
 ```
 
 ```json Response
 {
-  "discoveryResponse": {
-    "x402Version": 2,
-    "accepts": [
-      {
-        "scheme": "exact",
-        "network": "eip155:84532",
-        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        "amount": "100000",
-        "payTo": "0xSellerWallet...",
-        "maxTimeoutSeconds": 900,
-        "extra": {
-          "name": "USDC",
-          "version": "2",
-          "planId": "basic",
-          "description": "Basic plan - $0.10 USDC"
-        }
-      }
-    ]
-  }
+  "agentName": "Weather Pro",
+  "description": "Paid weather API",
+  "plans": [
+    {
+      "planId": "basic",
+      "unitAmount": "$0.10",
+      "description": "Basic plan - $0.10 USDC"
+    }
+  ],
+  "routes": []
 }
 ```
 
@@ -363,14 +354,10 @@ const account = privateKeyToAccount(PRIVATE_KEY);
 const walletClient = createWalletClient({ account, chain: baseSepolia, transport: http() });
 
 // ── Step 1: Discover plans ──────────────────────────────────────────────────
-const discoveryRes  = await fetch(`${KEY0_URL}/discovery`);
+const discoveryRes  = await fetch(`${KEY0_URL}/discover`);
 const discovery     = await discoveryRes.json();
-const requirements  = discovery.discoveryResponse.accepts[0];
-const payTo         = requirements.payTo  as `0x${string}`;
-const amountRaw     = BigInt(requirements.amount);
-const usdcAddress   = requirements.asset  as `0x${string}`;
-const chainId       = parseInt(requirements.network.split(":")[1]);
-console.log(`Plan: ${PLAN_ID} — ${Number(amountRaw) / 1e6} USDC → ${payTo}`);
+const selectedPlan  = discovery.plans.find((p: { planId: string }) => p.planId === PLAN_ID) ?? discovery.plans[0];
+console.log(`Plan: ${selectedPlan.planId} — ${selectedPlan.unitAmount}`);
 
 // ── Step 2: Request a challenge ─────────────────────────────────────────────
 const requestId  = crypto.randomUUID();
@@ -379,8 +366,13 @@ const challengeRes = await fetch(`${KEY0_URL}/x402/access`, {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ planId: PLAN_ID, requestId, resourceId: RESOURCE_ID }),
 });
-const challenge = await challengeRes.json();
-console.log(`Challenge: ${challenge.challengeId}`);
+const challenge     = await challengeRes.json();
+const requirements  = challenge.accepts[0];
+const payTo         = requirements.payTo  as `0x${string}`;
+const amountRaw     = BigInt(requirements.amount);
+const chainId       = 84532; // Base Sepolia — change to 8453 for mainnet
+const usdcAddress   = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`; // USDC on Base Sepolia
+console.log(`Challenge: ${challenge.challengeId} — ${Number(amountRaw) / 1e6} USDC → ${payTo}`);
 
 // ── Step 3: Sign EIP-3009 authorization ────────────────────────────────────
 const nonce       = `0x${randomBytes(32).toString("hex")}` as `0x${string}`;
@@ -406,7 +398,7 @@ const signature = await walletClient.signTypedData({
 
 const paymentPayload = {
   x402Version: 2,
-  network: requirements.network,
+  network: `eip155:${chainId}`,
   scheme: "exact",
   payload: {
     signature,
@@ -457,20 +449,21 @@ The seller runs Key0 as a payment gateway. You call `POST /x402/access` with a `
 Check the discovery response for plans with `mode: "per-request"`. The `routes` array tells you which paths are available:
 
 ```bash
-curl https://api.example.com/discovery
+curl https://api.example.com/discover
 ```
 
 ```json Response
 {
-  "discoveryResponse": {
-    "accepts": [
-      {
-        "amount": "10000",
-        "payTo": "0xSellerWallet...",
-        "extra": { "planId": "weather-query", "description": "Current weather — $0.01 per call" }
-      }
-    ]
-  }
+  "agentName": "Weather Pro",
+  "description": "Paid weather API",
+  "plans": [
+    {
+      "planId": "weather-query",
+      "unitAmount": "$0.01",
+      "description": "Current weather — $0.01 per call",
+      "mode": "per-request"
+    }
+  ]
 }
 ```
 

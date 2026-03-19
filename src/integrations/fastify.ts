@@ -103,6 +103,7 @@ function mountFastifyRoutes(
 	opts: Key0Config,
 	networkConfig: NetworkConfig,
 ) {
+	const a2aEnabled = opts.config.a2a !== false;
 	const pprDeps = {
 		config: opts.config,
 		networkConfig,
@@ -111,12 +112,17 @@ function mountFastifyRoutes(
 	} as const;
 
 	// Agent Card
-	fastify.get(`/${AGENT_CARD_PATH}`, async (_request: FastifyRequest, reply: FastifyReply) => {
-		return reply.send(agentCard);
-	});
-	fastify.get("/.well-known/agent.json", async (_request: FastifyRequest, reply: FastifyReply) => {
-		return reply.send(agentCard);
-	});
+	if (a2aEnabled) {
+		fastify.get(`/${AGENT_CARD_PATH}`, async (_request: FastifyRequest, reply: FastifyReply) => {
+			return reply.send(agentCard);
+		});
+		fastify.get(
+			"/.well-known/agent.json",
+			async (_request: FastifyRequest, reply: FastifyReply) => {
+				return reply.send(agentCard);
+			},
+		);
+	}
 
 	// Unified x402 endpoint
 	fastify.post("/x402/access", async (request: FastifyRequest, reply: FastifyReply) => {

@@ -611,8 +611,15 @@ export function generateEnv(config: Config): string {
 		lines.push("", _sec("Challenge"), "", `CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`);
 	}
 
-	if (config.mcpEnabled) {
-		lines.push("", _sec("MCP"), "", "MCP_ENABLED=true");
+	const onboardingVars: string[] = [];
+	if (!config.a2aEnabled) onboardingVars.push("A2A_ENABLED=false");
+	if (config.mcpEnabled) onboardingVars.push("MCP_ENABLED=true");
+	if (!config.llmsEnabled) onboardingVars.push("LLMS_ENABLED=false");
+	if (!config.skillsMdEnabled) onboardingVars.push("SKILLS_MD_ENABLED=false");
+	if (!config.installShEnabled) onboardingVars.push("INSTALL_SH_ENABLED=false");
+	if (!config.cliDownloadsEnabled) onboardingVars.push("CLI_DOWNLOADS_ENABLED=false");
+	if (onboardingVars.length > 0) {
+		lines.push("", _sec("Buyer Onboarding"), "", ...onboardingVars);
 	}
 
 	// ISSUE_TOKEN_API — only when plans are configured
@@ -679,8 +686,23 @@ export function generateDockerRun(config: Config): string {
 	if (config.challengeTtlSeconds !== "900") {
 		envFlags.push(`-e CHALLENGE_TTL_SECONDS=${config.challengeTtlSeconds}`);
 	}
+	if (!config.a2aEnabled) {
+		envFlags.push(`-e A2A_ENABLED=false`);
+	}
 	if (config.mcpEnabled) {
 		envFlags.push(`-e MCP_ENABLED=true`);
+	}
+	if (!config.llmsEnabled) {
+		envFlags.push(`-e LLMS_ENABLED=false`);
+	}
+	if (!config.skillsMdEnabled) {
+		envFlags.push(`-e SKILLS_MD_ENABLED=false`);
+	}
+	if (!config.installShEnabled) {
+		envFlags.push(`-e INSTALL_SH_ENABLED=false`);
+	}
+	if (!config.cliDownloadsEnabled) {
+		envFlags.push(`-e CLI_DOWNLOADS_ENABLED=false`);
 	}
 	if (config.backendAuthStrategy !== "none") {
 		envFlags.push(`-e BACKEND_AUTH_STRATEGY=${config.backendAuthStrategy}`);
@@ -755,8 +777,23 @@ export function generateDockerCompose(config: Config): string {
 	if (config.challengeTtlSeconds !== "900") {
 		envVars.CHALLENGE_TTL_SECONDS = config.challengeTtlSeconds;
 	}
+	if (!config.a2aEnabled) {
+		envVars.A2A_ENABLED = "false";
+	}
 	if (config.mcpEnabled) {
 		envVars.MCP_ENABLED = "true";
+	}
+	if (!config.llmsEnabled) {
+		envVars.LLMS_ENABLED = "false";
+	}
+	if (!config.skillsMdEnabled) {
+		envVars.SKILLS_MD_ENABLED = "false";
+	}
+	if (!config.installShEnabled) {
+		envVars.INSTALL_SH_ENABLED = "false";
+	}
+	if (!config.cliDownloadsEnabled) {
+		envVars.CLI_DOWNLOADS_ENABLED = "false";
 	}
 	if (config.backendAuthStrategy !== "none") {
 		envVars.BACKEND_AUTH_STRATEGY = config.backendAuthStrategy;

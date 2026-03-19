@@ -120,7 +120,7 @@ This page defines every domain-specific term you will encounter in the Key0 docs
 
 <AccordionGroup>
   <Accordion title="Plan">
-    A configured pricing tier offered by the seller. Plans are defined in `SellerConfig.plans` and exposed via `GET /discovery` and the agent card.
+    A configured pricing tier offered by the seller. Plans are defined in `SellerConfig.plans` and exposed via `GET /discover` and the agent card.
 
     ```typescript
     type Plan = {
@@ -201,7 +201,7 @@ This page defines every domain-specific term you will encounter in the Key0 docs
 
 <AccordionGroup>
   <Accordion title="x402 HTTP Transport">
-    The default transport. All interactions happen over standard HTTP: `GET /discovery`, `POST /x402/access`, and `GET /api/resource`. Any HTTP client — curl, fetch, an AI agent — can participate. No special libraries required on the client side. See [x402 HTTP Flow](/protocol/x402-http-flow).
+    The default transport. All interactions happen over standard HTTP: `GET /discover`, `POST /x402/access`, and `GET /api/resource`. Any HTTP client — curl, fetch, an AI agent — can participate. No special libraries required on the client side. See [x402 HTTP Flow](/protocol/x402-http-flow).
   </Accordion>
   <Accordion title="A2A (Agent-to-Agent)">
     Google's Agent-to-Agent protocol, which uses JSON-RPC over HTTP. In Key0, A2A requests arrive at `POST /x402/access` with an `X-A2A-Extensions: x402/v2` header, routing them to the A2A JSON-RPC handler. The payment mechanics are identical to the x402 HTTP flow; only the message envelope differs. See [A2A Flow](/protocol/a2a-flow).

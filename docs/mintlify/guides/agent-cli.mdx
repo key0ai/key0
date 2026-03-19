@@ -5,6 +5,10 @@ description: "Generate a branded CLI binary for your Key0 service that agents ca
 
 The Agent CLI lets you ship a standalone binary for your service. Agents download it once, run `--install`, and then interact with your API by name — no HTTP knowledge required.
 
+<Note>
+  In standalone Docker mode, Key0 can host the CLI install flow automatically via `/install.sh` and `/cli/:target`. The manual build/distribute flow below is still useful for embedded deployments or custom distribution.
+</Note>
+
 ```bash
 # Agent installs once
 ./my-service-darwin-arm64 --install
@@ -180,7 +184,7 @@ Returns `{ binaries: Array<{ path, target, size }> }`.
 
 | Flag | Description |
 |---|---|
-| `discover` | `GET /discovery` — list plans |
+| `discover` | `GET /discover` — list plans |
 | `request --plan <id>` | `POST /x402/access` — request access or submit payment |
 | `--payment-signature <sig>` | Include with `request` to submit a signed payment |
 | `--resource <id>` | Resource ID (defaults to `"default"`) |

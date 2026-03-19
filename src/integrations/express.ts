@@ -89,6 +89,7 @@ export type Key0Router = Router & {
 export function key0Router(opts: Key0Config): Key0Router {
 	const { requestHandler, engine } = createKey0(opts);
 	const router = Router() as Key0Router;
+	const a2aEnabled = opts.config.a2a !== false;
 	const networkConfig = opts.config.rpcUrl
 		? { ...CHAIN_CONFIGS[opts.config.network], rpcUrl: opts.config.rpcUrl }
 		: CHAIN_CONFIGS[opts.config.network];
@@ -116,8 +117,10 @@ export function key0Router(opts: Key0Config): Key0Router {
 	};
 
 	// Agent Card
-	router.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: requestHandler }));
-	router.use("/.well-known/agent.json", agentCardHandler({ agentCardProvider: requestHandler }));
+	if (a2aEnabled) {
+		router.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: requestHandler }));
+		router.use("/.well-known/agent.json", agentCardHandler({ agentCardProvider: requestHandler }));
+	}
 
 	// Unified x402 endpoint with A2A JSON-RPC fallback
 	// When X-A2A-Extensions header is present, the request is delegated to the
@@ -126,7 +129,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 		`/x402/access`,
 		async (req: Request, res: Response, next: NextFunction) => {
 			// ===== A2A-native clients: delegate to JSON-RPC handler =====
-			if (req.headers["x-a2a-extensions"]) {
+			if (a2aEnabled && req.headers["x-a2a-extensions"]) {
 				console.log(
 					"[x402-access] X-A2A-Extensions header detected → delegating to JSON-RPC handler",
 				);
@@ -968,8 +971,9 @@ export function key0Router(opts: Key0Config): Key0Router {
 				console.log("[x402-access] ========== REQUEST COMPLETE ==========\n");
 			}
 		},
-		// A2A JSON-RPC fallback: reached when X-A2A-Extensions header is present
-		jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }),
+		...(a2aEnabled
+			? [jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication })]
+			: []),
 	);
 
 	router.get("/discover", (_req: Request, res: Response) => {

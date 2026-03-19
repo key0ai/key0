@@ -5,7 +5,7 @@ description: "Add Key0 middleware to an existing Express, Hono, or Fastify serve
 ---
 
 By the end of this guide you will have a running server that:
-- Exposes a plan catalog at `GET /discovery`
+- Exposes a plan catalog at `GET /discover`
 - Issues a USDC payment challenge at `POST /x402/access`
 - Settles the on-chain payment and returns a signed JWT (`AccessGrant`)
 - Protects your own routes with `validateAccessToken` middleware
@@ -41,7 +41,7 @@ bun add ioredis  # for Redis storage
 
 <Step title="Configure and mount">
 
-Create a `server.ts` file. Key0 mounts as middleware on your existing server -- it adds the agent card endpoint (`/.well-known/agent.json`), the plan discovery endpoint (`/discovery`), the payment endpoint (`/x402/access`), and leaves your existing routes untouched.
+Create a `server.ts` file. Key0 mounts as middleware on your existing server -- it adds the agent card endpoint (`/.well-known/agent.json`), the plan discovery endpoint (`/discover`), the payment endpoint (`/x402/access`), and leaves your existing routes untouched.
 
 <CodeGroup>
 
@@ -279,25 +279,17 @@ curl http://localhost:3000/.well-known/agent.json
 ```
 
 ```bash Browse plans (returns 200 with plan catalog)
-curl http://localhost:3000/discovery
+curl http://localhost:3000/discover
 ```
 
 ```json Expected output
 {
-  "discoveryResponse": {
-    "x402Version": 2,
-    "accepts": [
-      {
-        "scheme": "exact",
-        "network": "eip155:84532",
-        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        "amount": "100000",
-        "payTo": "0xYourWalletAddress",
-        "maxTimeoutSeconds": 900,
-        "extra": { "name": "USDC", "version": "2", "planId": "basic", "description": "Basic API access." }
-      }
-    ]
-  }
+  "agentName": "My Agent",
+  "description": "A payment-gated API",
+  "plans": [
+    { "planId": "basic", "unitAmount": "$0.10", "description": "Basic API access." }
+  ],
+  "routes": []
 }
 ```
 

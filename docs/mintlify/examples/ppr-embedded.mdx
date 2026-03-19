@@ -13,7 +13,7 @@ A complete Express server that charges $0.01 per weather query and $0.005 per jo
 - Defining `mode: "per-request"` plans alongside `fetchResourceCredentials` (required for the `/x402/access` endpoint, though not called for per-request routes)
 - Using `key0.payPerRequest(planId, opts?)` middleware to gate individual routes
 - Accessing `req.key0Payment` (containing `txHash`, `planId`, `amount`, `challengeId`) in route handlers
-- Discovery via `GET /discovery` and agent card showing per-request skills with route metadata
+- Discovery via `GET /discover` and agent card showing per-request skills with route metadata
 - Automatic `PENDING → PAID → DELIVERED` state transitions with refund safety (pass a `store` to enable)
 
 ## Architecture
@@ -135,7 +135,7 @@ app.get(
 
 ### 3. Discovery response
 
-Agents call `GET /discovery` and see per-request plans with their routes:
+Agents call `GET /discover` and see per-request plans with their routes:
 
 ```json
 {
@@ -156,7 +156,7 @@ The agent card at `/.well-known/agent.json` includes these as skills with `"pay-
 
 ```bash
 # Step 1: Check what routes are available
-curl http://localhost:3000/discovery
+curl http://localhost:3000/discover
 
 # Step 2: Call the route without payment (expect 402)
 curl -v http://localhost:3000/api/weather/london

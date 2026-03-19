@@ -42,7 +42,12 @@ Configuration differs depending on whether you run Key0 as a **standalone Docker
     |---|---|---|---|
     | `CHALLENGE_TTL_SECONDS` | No | `900` | How long a payment challenge remains valid, in seconds. |
     | `BASE_PATH` | No | `/a2a` | Path prefix for the A2A endpoints. |
+    | `A2A_ENABLED` | No | `true` | Set to `false` to disable A2A discovery at `/.well-known/agent.json`. |
     | `MCP_ENABLED` | No | `false` | Set to `true` to mount MCP discovery and Streamable HTTP routes alongside A2A. |
+    | `LLMS_ENABLED` | No | `true` | Set to `false` to disable generated `/llms.txt`. |
+    | `SKILLS_MD_ENABLED` | No | `true` | Set to `false` to disable generated `/skills.md`. |
+    | `INSTALL_SH_ENABLED` | No | `true` | Set to `false` to disable generated `/install.sh`. |
+    | `CLI_DOWNLOADS_ENABLED` | No | `true` | Set to `false` to disable generated seller CLI binaries at `/cli/:target`. |
 
     ### Backend Auth
 
