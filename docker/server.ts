@@ -395,7 +395,9 @@ if (!isConfigured) {
 	let routes: Route[] = [];
 	try {
 		if (process.env.ROUTES_B64) {
-			routes = JSON.parse(Buffer.from(process.env.ROUTES_B64, "base64").toString("utf-8")) as Route[];
+			routes = JSON.parse(
+				Buffer.from(process.env.ROUTES_B64, "base64").toString("utf-8"),
+			) as Route[];
 		} else if (process.env.ROUTES) {
 			routes = JSON.parse(process.env.ROUTES) as Route[];
 		}

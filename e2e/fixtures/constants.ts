@@ -20,9 +20,13 @@ export const REFUND_FAIL_REDIS_URL = "redis://localhost:6381";
 export const REFUND_INTERVAL_MS = 5000;
 export const REFUND_MIN_AGE_MS = 3000;
 
-/** PPR plan IDs (standalone docker stack on port 3002) */
-export const PPR_WEATHER_PLAN_ID = "weather-query";
-export const PPR_JOKE_PLAN_ID = "joke-of-the-day";
+/** PPR route IDs (standalone docker stack on port 3002) */
+export const PPR_WEATHER_ROUTE_ID = "weather-query";
+export const PPR_JOKE_ROUTE_ID = "joke-of-the-day";
+/** @deprecated Use PPR_WEATHER_ROUTE_ID */
+export const PPR_WEATHER_PLAN_ID = PPR_WEATHER_ROUTE_ID;
+/** @deprecated Use PPR_JOKE_ROUTE_ID */
+export const PPR_JOKE_PLAN_ID = PPR_JOKE_ROUTE_ID;
 export const PPR_WEATHER_AMOUNT_MICRO = 10_000n; // $0.01 USDC
 export const PPR_JOKE_AMOUNT_MICRO = 5_000n; // $0.005 USDC
 export const PPR_KEY0_URL = "http://localhost:3002";

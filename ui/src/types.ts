@@ -4,12 +4,21 @@ export interface Plan {
 	description: string;
 }
 
+export interface RouteParam {
+	name: string;
+	in: "path" | "query" | "body";
+	description: string;
+	required: boolean;
+	type: "string" | "number" | "boolean" | "object";
+}
+
 export interface Route {
 	routeId: string;
 	method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 	path: string;
 	unitAmount: string;
 	description: string;
+	params: RouteParam[];
 }
 
 export interface Config {
@@ -83,7 +92,7 @@ export const defaultConfig: Config = {
 		},
 	],
 
-	routes: [],
+	routes: [] as Route[],
 	proxyToBaseUrl: "",
 	proxySecret: "",
 

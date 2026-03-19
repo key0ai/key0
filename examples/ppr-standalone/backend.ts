@@ -14,13 +14,12 @@
  * In production, additionally restrict inbound access to the gateway's IP only.
  */
 
-import express, { type NextFunction, type Request, type Response } from "express";
 import { validateKey0Token } from "@key0ai/key0";
+import express, { type NextFunction, type Request, type Response } from "express";
 
 const PORT = Number(process.env["BACKEND_PORT"] ?? 3001);
 // Must match proxyTo.proxySecret in gateway.ts / KEY0_PROXY_SECRET env var
-const PROXY_SECRET =
-	process.env["KEY0_PROXY_SECRET"] ?? "dev-proxy-secret-change-in-production!!";
+const PROXY_SECRET = process.env["KEY0_PROXY_SECRET"] ?? "dev-proxy-secret-change-in-production!!";
 // Must match KEY0_ACCESS_TOKEN_SECRET used by the gateway's AccessTokenIssuer
 const JWT_SECRET =
 	process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "dev-secret-change-me-in-production-32chars!";
@@ -118,8 +117,6 @@ app.listen(PORT, () => {
 	console.log(`  Health:  GET http://localhost:${PORT}/health  (free, no auth)`);
 	console.log(`\n  Auth patterns accepted:`);
 	console.log(`    PPR:          X-Key0-Internal-Token: <PROXY_SECRET>  (from Key0 gateway)`);
-	console.log(
-		`    Subscription: Authorization: Bearer <JWT>             (client calls directly)`,
-	);
+	console.log(`    Subscription: Authorization: Bearer <JWT>             (client calls directly)`);
 	console.log(`\n  NOTE: Start the gateway (gateway.ts) to enable payment-gated access.\n`);
 });

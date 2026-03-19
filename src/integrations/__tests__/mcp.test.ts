@@ -1,7 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { createMcpServer } from "../mcp.js";
-import { makeSellerConfig, TestChallengeStore, TestSeenTxStore, MockPaymentAdapter } from "../../test-utils/index.js";
 import { ChallengeEngine } from "../../core/challenge-engine.js";
+import {
+	MockPaymentAdapter,
+	makeSellerConfig,
+	TestChallengeStore,
+	TestSeenTxStore,
+} from "../../test-utils/index.js";
+import { createMcpServer } from "../mcp.js";
 
 function makeEngine(configOverrides = {}) {
 	const config = makeSellerConfig(configOverrides);
@@ -20,7 +25,14 @@ async function callTool(
 	args: Record<string, unknown> = {},
 	extra?: Record<string, unknown>,
 ) {
-	const tools = (server as unknown as { _registeredTools: Record<string, { handler: (args: Record<string, unknown>, extra?: unknown) => unknown }> })._registeredTools;
+	const tools = (
+		server as unknown as {
+			_registeredTools: Record<
+				string,
+				{ handler: (args: Record<string, unknown>, extra?: unknown) => unknown }
+			>;
+		}
+	)._registeredTools;
 	const tool = tools[toolName];
 	if (!tool) throw new Error(`Tool "${toolName}" not registered`);
 	return tool.handler(args, extra);
@@ -30,14 +42,16 @@ describe("MCP tool registration", () => {
 	it("registers 'discover' not 'discover_plans'", () => {
 		const server = createMcpServer(makeEngine(), makeSellerConfig());
 		// MCP SDK exposes registered tools via internal map
-		const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+		const tools = (server as unknown as { _registeredTools: Record<string, unknown> })
+			._registeredTools;
 		expect(Object.keys(tools)).toContain("discover");
 		expect(Object.keys(tools)).not.toContain("discover_plans");
 	});
 
 	it("registers 'access' not 'request_access'", () => {
 		const server = createMcpServer(makeEngine(), makeSellerConfig());
-		const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+		const tools = (server as unknown as { _registeredTools: Record<string, unknown> })
+			._registeredTools;
 		expect(Object.keys(tools)).toContain("access");
 		expect(Object.keys(tools)).not.toContain("request_access");
 	});
@@ -47,11 +61,25 @@ describe("MCP 'discover' tool", () => {
 	it("returns both plans and routes arrays", async () => {
 		const config = makeSellerConfig({
 			plans: [{ planId: "pro", unitAmount: "$1.00", description: "Pro plan" }],
-			routes: [{ routeId: "weather", method: "GET", path: "/weather", unitAmount: "$0.01", description: "Weather API" }],
+			routes: [
+				{
+					routeId: "weather",
+					method: "GET",
+					path: "/weather",
+					unitAmount: "$0.01",
+					description: "Weather API",
+				},
+			],
+			proxyTo: { baseUrl: "http://localhost:9999" },
 		});
-		const server = createMcpServer(makeEngine({ plans: config.plans, routes: config.routes }), config);
+		const server = createMcpServer(
+			makeEngine({ plans: config.plans, routes: config.routes, proxyTo: config.proxyTo }),
+			config,
+		);
 
-		const result = await callTool(server, "discover") as { content: Array<{ type: string; text: string }> };
+		const result = (await callTool(server, "discover")) as {
+			content: Array<{ type: string; text: string }>;
+		};
 
 		expect(result.content).toBeDefined();
 		expect(result.content[0]?.type).toBe("text");
@@ -69,7 +97,9 @@ describe("MCP 'discover' tool", () => {
 		const config = makeSellerConfig({ plans: [{ planId: "basic", unitAmount: "$0.50" }] });
 		const server = createMcpServer(makeEngine(), config);
 
-		const result = await callTool(server, "discover") as { content: Array<{ type: string; text: string }> };
+		const result = (await callTool(server, "discover")) as {
+			content: Array<{ type: string; text: string }>;
+		};
 
 		const parsed = JSON.parse(result.content[0]?.text ?? "{}");
 		expect(Array.isArray(parsed.plans)).toBe(true);
@@ -81,7 +111,9 @@ describe("MCP 'discover' tool", () => {
 		const config = makeSellerConfig();
 		const server = createMcpServer(makeEngine(), config);
 
-		const result = await callTool(server, "discover") as { content: Array<{ type: string; text: string }> };
+		const result = (await callTool(server, "discover")) as {
+			content: Array<{ type: string; text: string }>;
+		};
 
 		const parsed = JSON.parse(result.content[0]?.text ?? "{}");
 		expect(parsed.walletAddress).toBeDefined();
@@ -94,7 +126,10 @@ describe("MCP 'access' tool — planId (subscription flow)", () => {
 		const config = makeSellerConfig({ plans: [{ planId: "single", unitAmount: "$0.10" }] });
 		const server = createMcpServer(makeEngine(), config);
 
-		const result = await callTool(server, "access", { planId: "single", resourceId: "default" }) as {
+		const result = (await callTool(server, "access", {
+			planId: "single",
+			resourceId: "default",
+		})) as {
 			isError: boolean;
 			structuredContent: Record<string, unknown>;
 			content: Array<{ type: string; text: string }>;
@@ -110,7 +145,7 @@ describe("MCP 'access' tool — planId (subscription flow)", () => {
 		const config = makeSellerConfig({ plans: [] });
 		const server = createMcpServer(makeEngine({ plans: [] }), config);
 
-		const result = await callTool(server, "access", { planId: "nonexistent" }) as {
+		const result = (await callTool(server, "access", { planId: "nonexistent" })) as {
 			isError: boolean;
 			content: Array<{ type: string; text: string }>;
 		};
@@ -133,10 +168,10 @@ describe("MCP 'access' tool — routeId (per-request flow)", () => {
 			config,
 		);
 
-		const result = await callTool(server, "access", {
+		const result = (await callTool(server, "access", {
 			routeId: "weather",
 			resource: { method: "GET", path: "/weather" },
-		}) as { isError: boolean; content: Array<{ type: string; text: string }> };
+		})) as { isError: boolean; content: Array<{ type: string; text: string }> };
 
 		// Route-based access returns isError (either 402 payment challenge or stub)
 		expect(result.isError).toBe(true);
@@ -150,7 +185,7 @@ describe("MCP 'access' tool — routeId (per-request flow)", () => {
 		});
 		const server = createMcpServer(makeEngine(), config);
 
-		const result = await callTool(server, "access", { routeId: "nonexistent" }) as {
+		const result = (await callTool(server, "access", { routeId: "nonexistent" })) as {
 			isError: boolean;
 			content: Array<{ type: string; text: string }>;
 		};
@@ -179,7 +214,9 @@ describe("MCP 'access' tool — validation", () => {
 		}
 		// Either throws (Zod validation) or returns isError
 		if (!threw) {
-			const result = await callTool(server, "access", { planId: "pro", routeId: "r1" }) as { isError?: boolean };
+			const result = (await callTool(server, "access", { planId: "pro", routeId: "r1" })) as {
+				isError?: boolean;
+			};
 			expect(result.isError).toBe(true);
 		} else {
 			expect(threw).toBe(true);
@@ -197,7 +234,7 @@ describe("MCP 'access' tool — validation", () => {
 		// Either way, the error message must match the expected pattern.
 		let errorText: string;
 		try {
-			const result = await callTool(server, "access", { planId: "pro", routeId: "r1" }) as {
+			const result = (await callTool(server, "access", { planId: "pro", routeId: "r1" })) as {
 				isError?: boolean;
 				content: Array<{ type: string; text: string }>;
 			};
@@ -206,6 +243,8 @@ describe("MCP 'access' tool — validation", () => {
 		} catch (err: unknown) {
 			errorText = err instanceof Error ? err.message : String(err);
 		}
-		expect(errorText.toLowerCase()).toMatch(/both|not both|planid|routeid|not.*implemented|only one/i);
+		expect(errorText.toLowerCase()).toMatch(
+			/both|not both|planid|routeid|not.*implemented|only one/i,
+		);
 	});
 });

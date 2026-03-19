@@ -134,7 +134,7 @@ describe("createMcpServer — discover_plans tool", () => {
 		const { engine, config } = makeEngine();
 		const server = createMcpServer(engine, config);
 
-		const result = (await callTool(server, "discover_plans", {})) as {
+		const result = (await callTool(server, "discover", {})) as {
 			content: Array<{ type: string; text: string }>;
 		};
 
@@ -142,11 +142,9 @@ describe("createMcpServer — discover_plans tool", () => {
 		expect(result.content[0]?.type).toBe("text");
 
 		const catalog = JSON.parse(result.content[0]!.text);
-		expect(catalog.agent).toBe("Test Agent");
-		expect(catalog.network).toBe("testnet");
+		expect(catalog.agentName).toBe("Test Agent");
 		expect(catalog.chainId).toBe(84532);
 		expect(catalog.walletAddress).toBe(WALLET);
-		expect(catalog.asset).toBe("USDC");
 		expect(catalog.plans).toHaveLength(2);
 		expect(catalog.plans[0].planId).toBe("basic");
 		expect(catalog.plans[0].unitAmount).toBe("$0.99");
@@ -157,7 +155,7 @@ describe("createMcpServer — discover_plans tool", () => {
 		const { engine, config } = makeEngine();
 		const server = createMcpServer(engine, config);
 
-		const result = (await callTool(server, "discover_plans", {})) as Record<string, unknown>;
+		const result = (await callTool(server, "discover", {})) as Record<string, unknown>;
 		expect(result["isError"]).toBeUndefined();
 	});
 });
@@ -171,7 +169,7 @@ describe("createMcpServer — buildPaymentRequiredResult shape (x402 spec confor
 		const { engine, config } = makeEngine();
 		const server = createMcpServer(engine, config);
 
-		const result = (await callTool(server, "request_access", {
+		const result = (await callTool(server, "access", {
 			planId: "basic",
 			resourceId: "resource-1",
 		})) as {
@@ -190,7 +188,7 @@ describe("createMcpServer — buildPaymentRequiredResult shape (x402 spec confor
 		const { engine, config } = makeEngine();
 		const server = createMcpServer(engine, config);
 
-		const result = (await callTool(server, "request_access", {
+		const result = (await callTool(server, "access", {
 			planId: "basic",
 			resourceId: "resource-1",
 		})) as {
@@ -213,7 +211,7 @@ describe("createMcpServer — buildPaymentRequiredResult shape (x402 spec confor
 		const { engine, config } = makeEngine();
 		const server = createMcpServer(engine, config);
 
-		const result = (await callTool(server, "request_access", {
+		const result = (await callTool(server, "access", {
 			planId: "basic",
 			resourceId: "default",
 		})) as {
@@ -232,7 +230,7 @@ describe("createMcpServer — buildPaymentRequiredResult shape (x402 spec confor
 		const { engine, config } = makeEngine();
 		const server = createMcpServer(engine, config);
 
-		const result = (await callTool(server, "request_access", {
+		const result = (await callTool(server, "access", {
 			planId: "basic",
 			resourceId: "default",
 		})) as {
@@ -248,7 +246,7 @@ describe("createMcpServer — buildPaymentRequiredResult shape (x402 spec confor
 		const { engine, config } = makeEngine();
 		const server = createMcpServer(engine, config);
 
-		const result = (await callTool(server, "request_access", {
+		const result = (await callTool(server, "access", {
 			planId: "nonexistent",
 			resourceId: "default",
 		})) as {
@@ -273,7 +271,7 @@ describe("createMcpServer — extractPaymentFromMeta (via request_access)", () =
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			// no _meta passed — extra is undefined
 		)) as { isError: boolean };
@@ -287,7 +285,7 @@ describe("createMcpServer — extractPaymentFromMeta (via request_access)", () =
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ unrelated: "data" },
 		)) as { isError: boolean };
@@ -302,7 +300,7 @@ describe("createMcpServer — extractPaymentFromMeta (via request_access)", () =
 		// String value is not an object — extractPaymentFromMeta returns undefined
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": "not-an-object" },
 		)) as { isError: boolean };
@@ -319,7 +317,7 @@ describe("createMcpServer — extractPaymentFromMeta (via request_access)", () =
 		// so Key0Error propagates directly as a thrown error.
 		const err = await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{
 				"x402/payment": {
@@ -351,7 +349,7 @@ describe("createMcpServer — extractPaymentFromMeta (via request_access)", () =
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{
 				"x402/payment": {
@@ -395,7 +393,7 @@ describe("createMcpServer — request_access happy path", () => {
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": payment },
 		)) as {
@@ -423,7 +421,7 @@ describe("createMcpServer — request_access happy path", () => {
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": payment },
 		)) as {
@@ -454,7 +452,7 @@ describe("createMcpServer — request_access happy path", () => {
 
 		const r1 = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": payment },
 		)) as { content: Array<{ text: string }> };
@@ -473,7 +471,7 @@ describe("createMcpServer — request_access happy path", () => {
 
 		const r2 = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": payment },
 		)) as { content: Array<{ text: string }> };
@@ -501,7 +499,7 @@ describe("createMcpServer — request_access happy path", () => {
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": makePaymentPayload() },
 		)) as { content: Array<{ text: string }> };
@@ -550,7 +548,7 @@ describe("createMcpServer — PROOF_ALREADY_REDEEMED handling", () => {
 		// First call succeeds with txHashA
 		await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": payment },
 		);
@@ -566,7 +564,7 @@ describe("createMcpServer — PROOF_ALREADY_REDEEMED handling", () => {
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": payment },
 		)) as {
@@ -600,7 +598,7 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": payment },
 		)) as {
@@ -633,7 +631,7 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": payment },
 		)) as {
@@ -656,7 +654,7 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": makePaymentPayload() },
 		)) as {
@@ -682,7 +680,7 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": payment },
 		)) as {
@@ -707,7 +705,7 @@ describe("createMcpServer — payment-failed error re-wrapping", () => {
 
 		const err = await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": payment },
 		).catch((e: unknown) => e);
@@ -740,7 +738,7 @@ describe("createMcpServer — double-spend guard", () => {
 		const firstPayment = makePaymentPayload({ payload: { signature: `0x${"11".repeat(32)}` } });
 		await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": firstPayment },
 		);
@@ -749,7 +747,7 @@ describe("createMcpServer — double-spend guard", () => {
 		const secondPayment = makePaymentPayload({ payload: { signature: `0x${"22".repeat(32)}` } });
 		const result = (await callTool(
 			server,
-			"request_access",
+			"access",
 			{ planId: "basic", resourceId: "default" },
 			{ "x402/payment": secondPayment },
 		)) as {

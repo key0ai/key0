@@ -4,7 +4,7 @@ import { ChallengeEngine } from "../../core/challenge-engine.js";
 import { makeSellerConfig } from "../../test-utils/fixtures.js";
 import { MockPaymentAdapter } from "../../test-utils/mock-adapter.js";
 import { TestChallengeStore, TestSeenTxStore } from "../../test-utils/stores.js";
-import type { FetchResourceResult, SellerConfig, X402PaymentPayload } from "../../types/index.js";
+import type { SellerConfig, X402PaymentPayload } from "../../types/index.js";
 import { CHAIN_CONFIGS } from "../../types/index.js";
 import {
 	createExpressPayPerRequest,
@@ -599,12 +599,12 @@ describe("buildAgentCard — per-request skills", () => {
 		expect(pprSkills).toHaveLength(0);
 	});
 
-	test("always includes the two base skills (discover-plans, request-access)", () => {
+	test("always includes the two base skills (discover, access)", () => {
 		const config = makeConfig();
 		const card = buildAgentCard(config);
 		const ids = card.skills.map((s) => s.id);
-		expect(ids).toContain("discover-plans");
-		expect(ids).toContain("request-access");
+		expect(ids).toContain("discover");
+		expect(ids).toContain("access");
 	});
 
 	test("per-request skill endpoint URL contains the route path", () => {
@@ -832,7 +832,7 @@ describe("proxyToFetchResource — proxySecret header injection", () => {
 				status: 200,
 				headers: { "content-type": "application/json" },
 			});
-		}) as typeof fetch;
+		}) as unknown as typeof fetch;
 
 		const fn = resolveConfigFetchResource({
 			...makeConfig(),
@@ -865,7 +865,7 @@ describe("proxyToFetchResource — proxySecret header injection", () => {
 			const headers = init?.headers as Record<string, string> | undefined;
 			if (headers) Object.assign(capturedHeaders, headers);
 			return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
-		}) as typeof fetch;
+		}) as unknown as typeof fetch;
 
 		const fn = resolveConfigFetchResource({
 			...makeConfig(),
@@ -1120,7 +1120,7 @@ describe("key0Router /x402/access — free plan fast-path", () => {
 				status: 200,
 				headers: { "content-type": "application/json" },
 			});
-		}) as typeof fetch;
+		}) as unknown as typeof fetch;
 		try {
 			const config = makeFreePlanConfig({ proxyTo: { baseUrl: "http://mock-backend" } });
 			const store = new TestChallengeStore();
@@ -1150,7 +1150,7 @@ describe("key0Router /x402/access — free plan fast-path", () => {
 				status: 200,
 				headers: { "content-type": "application/json" },
 			});
-		}) as typeof fetch;
+		}) as unknown as typeof fetch;
 		try {
 			const config = makeFreePlanConfig({
 				plans: [
@@ -1180,7 +1180,10 @@ describe("key0Router /x402/access — free plan fast-path", () => {
 	test("free plan returns 400 when proxyPath template param is missing", async () => {
 		const originalFetch = globalThis.fetch;
 		globalThis.fetch = (async () =>
-			new Response("{}", { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+			new Response("{}", {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			})) as unknown as typeof fetch;
 		try {
 			const config = makeFreePlanConfig({
 				plans: [
@@ -1271,7 +1274,7 @@ describe("key0Router /x402/access — proxy error handling (paid plans)", () => 
 			new Response(JSON.stringify({ error: "backend down" }), {
 				status: 503,
 				headers: { "content-type": "application/json" },
-			})) as typeof fetch;
+			})) as unknown as typeof fetch;
 		try {
 			const config = makePerRequestConfig();
 			const router = key0Router({ config, store, seenTxStore });
@@ -1303,7 +1306,7 @@ describe("key0Router /x402/access — proxy error handling (paid plans)", () => 
 		const originalFetch = globalThis.fetch;
 		globalThis.fetch = (async () => {
 			throw new DOMException("The operation was aborted.", "AbortError");
-		}) as typeof fetch;
+		}) as unknown as typeof fetch;
 		try {
 			const config = makePerRequestConfig();
 			const router = key0Router({ config, store, seenTxStore });
@@ -1377,7 +1380,7 @@ describe("createMcpServer — free plan request_access", () => {
 				status: 200,
 				headers: { "content-type": "application/json" },
 			});
-		}) as typeof fetch;
+		}) as unknown as typeof fetch;
 		try {
 			const config = makeConfig({
 				plans: [
@@ -1394,7 +1397,7 @@ describe("createMcpServer — free plan request_access", () => {
 			const engine = makeEngine(config);
 			const server = createMcpServer(engine, config);
 
-			const result = await callMcpTool(server, "request_access", { planId: "health" });
+			const result = await callMcpTool(server, "access", { planId: "health" });
 
 			expect(result.isError).toBeUndefined();
 			expect(fetchedPaths).toEqual(["/health"]);
@@ -1415,7 +1418,7 @@ describe("createMcpServer — free plan request_access", () => {
 				status: 200,
 				headers: { "content-type": "application/json" },
 			});
-		}) as typeof fetch;
+		}) as unknown as typeof fetch;
 		try {
 			const config = makeConfig({
 				plans: [
@@ -1432,7 +1435,7 @@ describe("createMcpServer — free plan request_access", () => {
 			const engine = makeEngine(config);
 			const server = createMcpServer(engine, config);
 
-			await callMcpTool(server, "request_access", { planId: "signal", params: { asset: "BTC" } });
+			await callMcpTool(server, "access", { planId: "signal", params: { asset: "BTC" } });
 			expect(fetchedPaths).toEqual(["/signal/BTC"]);
 		} finally {
 			globalThis.fetch = originalFetch;
@@ -1442,7 +1445,10 @@ describe("createMcpServer — free plan request_access", () => {
 	test("free plan returns error if proxyPath template param is missing", async () => {
 		const originalFetch = globalThis.fetch;
 		globalThis.fetch = (async () =>
-			new Response("{}", { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+			new Response("{}", {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			})) as unknown as typeof fetch;
 		try {
 			const config = makeConfig({
 				plans: [
@@ -1458,7 +1464,7 @@ describe("createMcpServer — free plan request_access", () => {
 			const engine = makeEngine(config);
 			const server = createMcpServer(engine, config);
 
-			const result = await callMcpTool(server, "request_access", { planId: "signal" });
+			const result = await callMcpTool(server, "access", { planId: "signal" });
 			expect(result.isError).toBe(true);
 			const parsed = JSON.parse(result.content[0]!.text);
 			expect(parsed.message).toContain('Missing param "asset"');
@@ -1473,7 +1479,7 @@ describe("createMcpServer — free plan request_access", () => {
 			new Response(JSON.stringify({ error: "backend down" }), {
 				status: 503,
 				headers: { "content-type": "application/json" },
-			})) as typeof fetch;
+			})) as unknown as typeof fetch;
 		try {
 			const config = makeConfig({
 				plans: [
@@ -1489,7 +1495,7 @@ describe("createMcpServer — free plan request_access", () => {
 			const engine = makeEngine(config);
 			const server = createMcpServer(engine, config);
 
-			const result = await callMcpTool(server, "request_access", { planId: "health" });
+			const result = await callMcpTool(server, "access", { planId: "health" });
 			// Free plan: return the status verbatim, no isError, no REFUND_PENDING
 			const parsed = JSON.parse(result.content[0]!.text);
 			expect(parsed.resource.status).toBe(503);
@@ -1545,7 +1551,7 @@ describe("createMcpServer — proxy error handling (paid plans)", () => {
 			new Response(JSON.stringify({ error: "backend down" }), {
 				status: 503,
 				headers: { "content-type": "application/json" },
-			})) as typeof fetch;
+			})) as unknown as typeof fetch;
 		try {
 			const config = makeConfig({
 				plans: [
@@ -1561,7 +1567,7 @@ describe("createMcpServer — proxy error handling (paid plans)", () => {
 			const engine = makeEngine(config, { store });
 			const server = createMcpServer(engine, config);
 
-			const result = await callMcpToolWithPayment(server, "request_access", {
+			const result = await callMcpToolWithPayment(server, "access", {
 				planId: "signal",
 				params: { asset: "BTC" },
 			});
@@ -1583,7 +1589,7 @@ describe("createMcpServer — proxy error handling (paid plans)", () => {
 		const originalFetch = globalThis.fetch;
 		globalThis.fetch = (async () => {
 			throw new DOMException("The operation was aborted.", "AbortError");
-		}) as typeof fetch;
+		}) as unknown as typeof fetch;
 		try {
 			const config = makeConfig({
 				plans: [
@@ -1599,7 +1605,7 @@ describe("createMcpServer — proxy error handling (paid plans)", () => {
 			const engine = makeEngine(config, { store });
 			const server = createMcpServer(engine, config);
 
-			const result = await callMcpToolWithPayment(server, "request_access", {
+			const result = await callMcpToolWithPayment(server, "access", {
 				planId: "signal",
 				params: { asset: "BTC" },
 			});

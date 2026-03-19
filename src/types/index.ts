@@ -25,12 +25,15 @@ export type {
 } from "./challenge.js";
 
 export type {
+	FetchResourceParams,
+	FetchResourceResult,
 	IRedisLockClient,
 	IssueTokenParams,
 	NetworkConfig,
 	NetworkName,
 	PaymentInfo,
 	Plan,
+	PlanRouteInfo,
 	ProxyToConfig,
 	Route,
 	SellerConfig,

@@ -105,7 +105,7 @@ export class ChallengeEngine {
 	}
 
 	private findPlan(planId: string): Plan | undefined {
-		return this.config.plans.find((t: Plan) => t.planId === planId);
+		return (this.config.plans ?? []).find((t: Plan) => t.planId === planId);
 	}
 
 	private challengeToResponse(record: ChallengeRecord): X402Challenge {

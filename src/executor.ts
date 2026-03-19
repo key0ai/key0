@@ -109,7 +109,7 @@ export class Key0Executor implements AgentExecutor {
 			chainId: this.networkConfig.chainId,
 			walletAddress: this.config.walletAddress,
 			asset: "USDC",
-			plans: this.config.plans.map((plan) => ({
+			plans: (this.config.plans ?? []).map((plan) => ({
 				planId: plan.planId,
 				unitAmount: plan.unitAmount,
 				description: plan.description,
@@ -150,7 +150,7 @@ export class Key0Executor implements AgentExecutor {
 		contextId: string,
 		eventBus: ExecutionEventBus,
 	): Promise<void> {
-		const plan = this.config.plans.find((p) => p.planId === req.planId);
+		const plan = (this.config.plans ?? []).find((p) => p.planId === req.planId);
 		const fetchResourceFn = resolveConfigFetchResource(this.config);
 
 		// Per-request plan in embedded mode: A2A not supported — direct to HTTP route
@@ -298,7 +298,7 @@ export class Key0Executor implements AgentExecutor {
 		}
 
 		// 5. Determine plan mode and deployment mode
-		const plan = this.config.plans.find((p) => p.planId === planId);
+		const plan = (this.config.plans ?? []).find((p) => p.planId === planId);
 		const fetchResourceFn = resolveConfigFetchResource(this.config);
 
 		if (plan?.mode === "per-request") {

@@ -3,17 +3,11 @@ import { Hono } from "hono";
 import { createKey0, type Key0Config } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
-import type {
-	ResourceResponse,
-	X402PaymentRequiredResponse,
-} from "../types/index.js";
+import type { ResourceResponse, X402PaymentRequiredResponse } from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
 import { interpolateUrlTemplate } from "../utils/url-template.js";
 import type { PayPerRequestOptions } from "./pay-per-request.js";
-import {
-	createHonoPayPerRequest,
-	resolveConfigFetchResource,
-} from "./pay-per-request.js";
+import { createHonoPayPerRequest, resolveConfigFetchResource } from "./pay-per-request.js";
 import {
 	buildDiscoveryResponse,
 	buildHttpPaymentRequirements,
@@ -121,7 +115,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 			};
 			let { requestId } = body as { requestId?: string };
 			const { routeId } = body as { routeId?: string };
-			const resource = (body as { resource?: { method: string; path: string; body?: unknown } })
+			const _resource = (body as { resource?: { method: string; path: string; body?: unknown } })
 				.resource;
 
 			const paymentSignature = c.req.header("payment-signature");
@@ -343,10 +337,7 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 	for (const route of opts.config.routes ?? []) {
 		const method = route.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		(app as any)[method](
-			route.path,
-			createHonoPayPerRequest(route.routeId, pprDeps),
-		);
+		(app as any)[method](route.path, createHonoPayPerRequest(route.routeId, pprDeps));
 	}
 
 	return app;

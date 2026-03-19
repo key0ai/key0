@@ -13,10 +13,7 @@ import type {
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
 import { interpolateUrlTemplate } from "../utils/url-template.js";
 import type { PayPerRequestOptions } from "./pay-per-request.js";
-import {
-	createFastifyPayPerRequest,
-	resolveConfigFetchResource,
-} from "./pay-per-request.js";
+import { createFastifyPayPerRequest, resolveConfigFetchResource } from "./pay-per-request.js";
 import {
 	buildDiscoveryResponse,
 	buildHttpPaymentRequirements,
@@ -130,7 +127,7 @@ function mountFastifyRoutes(
 			let planId = body["planId"] as string | undefined;
 			let requestId = body["requestId"] as string | undefined;
 			const resourceId = (body["resourceId"] as string) || "default";
-			const resource = body["resource"] as
+			const _resource = body["resource"] as
 				| { method: string; path: string; body?: unknown }
 				| undefined;
 			const routeId = body["routeId"] as string | undefined;
@@ -344,10 +341,7 @@ function mountFastifyRoutes(
 	for (const route of opts.config.routes ?? []) {
 		const method = route.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		(fastify as any)[method](
-			route.path,
-			createFastifyPayPerRequest(route.routeId, pprDeps),
-		);
+		(fastify as any)[method](route.path, createFastifyPayPerRequest(route.routeId, pprDeps));
 	}
 }
 

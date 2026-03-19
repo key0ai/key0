@@ -33,7 +33,7 @@ const seenTxStore = new RedisSeenTxStore({ redis });
 
 // Required by SellerConfig for the subscription /x402/access endpoint.
 // Per-request routes never call this — they settle inline via the payPerRequest middleware.
-const tokenIssuer = new AccessTokenIssuer(SECRET);
+const _tokenIssuer = new AccessTokenIssuer(SECRET);
 
 const key0 = key0Router({
 	config: {

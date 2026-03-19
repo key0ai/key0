@@ -185,21 +185,21 @@ function makeSellerConfig(overrides?: Partial<SellerConfig>): SellerConfig {
 describe("skill renames", () => {
 	it("uses id 'discover' (not discover-plans)", () => {
 		const card = buildAgentCard(makeSellerConfig());
-		const ids = card.skills.map(s => s.id);
+		const ids = card.skills.map((s) => s.id);
 		expect(ids).toContain("discover");
 		expect(ids).not.toContain("discover-plans");
 	});
 
 	it("uses id 'access' (not request-access)", () => {
 		const card = buildAgentCard(makeSellerConfig());
-		const ids = card.skills.map(s => s.id);
+		const ids = card.skills.map((s) => s.id);
 		expect(ids).toContain("access");
 		expect(ids).not.toContain("request-access");
 	});
 
 	it("discover skill endpoint points to /discover", () => {
 		const card = buildAgentCard(makeSellerConfig());
-		const skill = card.skills.find(s => s.id === "discover")!;
+		const skill = card.skills.find((s) => s.id === "discover")!;
 		expect(skill.endpoint?.url).toContain("/discover");
 	});
 });
@@ -214,9 +214,9 @@ describe("per-route skills from config.routes", () => {
 			proxyTo: { baseUrl: "http://localhost:9999" },
 		});
 		const card = buildAgentCard(config);
-		const routeSkill = card.skills.find(s => s.id.startsWith("ppr-weather"));
+		const routeSkill = card.skills.find((s) => s.id.startsWith("ppr-weather"));
 		expect(routeSkill).toBeDefined();
-		const props = (routeSkill?.inputSchema?.["properties"] as Record<string, unknown> | undefined);
+		const props = routeSkill?.inputSchema?.["properties"] as Record<string, unknown> | undefined;
 		expect(props?.["routeId"]).toBeDefined();
 	});
 
@@ -224,7 +224,7 @@ describe("per-route skills from config.routes", () => {
 		const config = makeSellerConfig();
 		const card = buildAgentCard(config);
 		// No skills with ppr- prefix when config.routes is empty
-		const pprSkills = card.skills.filter(s => s.id.startsWith("ppr-"));
+		const pprSkills = card.skills.filter((s) => s.id.startsWith("ppr-"));
 		expect(pprSkills).toHaveLength(0);
 	});
 });

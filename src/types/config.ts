@@ -29,10 +29,39 @@ export type NetworkConfig = {
 	};
 };
 
+/** Route metadata for a per-request plan (embedded or standalone). */
+export type PlanRouteInfo = {
+	readonly method: string;
+	readonly path: string;
+	readonly description?: string;
+};
+
 export type Plan = {
 	readonly planId: string;
-	readonly unitAmount: string;
+	/** Required for paid plans; may be omitted for free plans. */
+	readonly unitAmount?: string;
 	readonly description?: string;
+	/** "subscription" (default) or "per-request". */
+	readonly mode?: "subscription" | "per-request";
+	/** Route endpoints exposed for this plan (per-request plans). */
+	readonly routes?: readonly PlanRouteInfo[];
+	/** When true, the plan is free (no payment required). */
+	readonly free?: boolean;
+	/** Proxy path template for standalone gateway mode (e.g. "/api/{param}"). */
+	readonly proxyPath?: string;
+	/** Static query params appended to the proxied request. */
+	readonly proxyQuery?: Record<string, string>;
+	/** HTTP method for the proxied request (default: "GET"). */
+	readonly proxyMethod?: string;
+};
+
+export type RouteParam = {
+	readonly name: string;
+	/** "path" = extracted from :param in path; "query" = URL query string; "body" = request body */
+	readonly in: "path" | "query" | "body";
+	readonly description?: string;
+	readonly required?: boolean;
+	readonly type?: "string" | "number" | "boolean" | "object";
 };
 
 export type Route = {
@@ -41,11 +70,29 @@ export type Route = {
 	readonly path: string; // Express-style :param (e.g. "/api/weather/:city")
 	readonly unitAmount?: string; // absent = free
 	readonly description?: string;
+	/** Request parameter definitions (path params auto-derived; add query/body params here). */
+	readonly params?: readonly RouteParam[];
 };
 
 // ---------------------------------------------------------------------------
 // Per-request / proxy types
 // ---------------------------------------------------------------------------
+
+/** Parameters passed to a fetchResource callback for proxying a backend call. */
+export type FetchResourceParams = {
+	readonly method: string;
+	readonly path: string;
+	readonly headers: Record<string, string>;
+	readonly body?: unknown;
+	readonly paymentInfo: PaymentInfo;
+};
+
+/** Result returned by a fetchResource callback after proxying a backend call. */
+export type FetchResourceResult = {
+	readonly status: number;
+	readonly headers?: Record<string, string>;
+	readonly body: unknown;
+};
 
 export type PaymentInfo = {
 	readonly txHash: `0x${string}`;

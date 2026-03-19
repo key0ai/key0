@@ -267,7 +267,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 					);
 
 					// Validate: per-request plans in standalone mode require a resource field
-					const planForValidation = opts.config.plans.find((p) => p.planId === planId);
+					const planForValidation = (opts.config.plans ?? []).find((p) => p.planId === planId);
 					const isStandaloneMode = !!resolveConfigFetchResource(opts.config);
 					if (planForValidation?.mode === "per-request" && isStandaloneMode && !resource) {
 						return res.status(400).json({
@@ -285,7 +285,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 					console.log(`[x402-access] ✓ PENDING record created, challengeId=${challengeId}`);
 
 					// Determine plan mode to add resource field to schema for per-request plans
-					const planForChallenge = opts.config.plans.find((p) => p.planId === planId);
+					const planForChallenge = (opts.config.plans ?? []).find((p) => p.planId === planId);
 					const isPprPlan = planForChallenge?.mode === "per-request";
 					const isStandaloneForChallenge = !!resolveConfigFetchResource(opts.config);
 
@@ -403,7 +403,7 @@ export function key0Router(opts: Key0Config): Key0Router {
 				}
 
 				// Pre-settlement guard: validate per-request plan requirements before burning USDC
-				const plan = opts.config.plans.find((p) => p.planId === planId);
+				const plan = (opts.config.plans ?? []).find((p) => p.planId === planId);
 				const fetchResourceFn = resolveConfigFetchResource(opts.config);
 
 				if (plan?.mode === "per-request") {

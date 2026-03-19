@@ -4,8 +4,8 @@
  *
  * Starts a local in-process Express server in beforeAll. The server mounts
  * key0Router + key0.payPerRequest() on two routes:
- *   GET /api/weather/:city  (planId: weather-query,    $0.01)
- *   GET /api/joke           (planId: joke-of-the-day,  $0.005)
+ *   GET /api/weather/:city  (routeId: weather-query,    $0.01)
+ *   GET /api/joke           (routeId: joke-of-the-day,  $0.005)
  *
  * Clients call these routes directly. Without a PAYMENT-SIGNATURE header
  * the server returns 402 with payment requirements. With a valid payment
@@ -24,14 +24,9 @@ import type { Server } from "node:http";
 import express from "express";
 import Redis from "ioredis";
 import type { NetworkName, PaymentInfo } from "../../src/index.ts";
-import {
-	AccessTokenIssuer,
-	RedisChallengeStore,
-	RedisSeenTxStore,
-	X402Adapter,
-} from "../../src/index.ts";
+import { RedisChallengeStore, RedisSeenTxStore, X402Adapter } from "../../src/index.ts";
 import { key0Router } from "../../src/integrations/express.ts";
-import { PPR_JOKE_PLAN_ID, PPR_WEATHER_PLAN_ID } from "../fixtures/constants.ts";
+import { PPR_JOKE_ROUTE_ID, PPR_WEATHER_ROUTE_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
 
 // ── Server config (uses the same env vars as the rest of the e2e suite) ──────
@@ -42,8 +37,6 @@ const EMBEDDED_REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6380";
 const NETWORK = (process.env["KEY0_NETWORK"] ?? "testnet") as NetworkName;
 const WALLET = process.env["KEY0_WALLET_ADDRESS"] as `0x${string}` | undefined;
 const GAS_WALLET_KEY = process.env["GAS_WALLET_PRIVATE_KEY"] as `0x${string}` | undefined;
-const ACCESS_TOKEN_SECRET =
-	process.env["KEY0_ACCESS_TOKEN_SECRET"] ?? "e2e-embedded-ppr-secret-32chars-ok!";
 
 let server: Server | null = null;
 let embeddedRedis: Redis | null = null;
@@ -71,7 +64,6 @@ beforeAll(async () => {
 	const redis = new Redis(EMBEDDED_REDIS_URL);
 	const store = new RedisChallengeStore({ redis });
 	const seenTxStore = new RedisSeenTxStore({ redis });
-	const tokenIssuer = new AccessTokenIssuer(ACCESS_TOKEN_SECRET);
 	const ALCHEMY_RPC = process.env["ALCHEMY_BASE_SEPOLIA_RPC_URL"];
 	const adapter = new X402Adapter({
 		network: NETWORK,
@@ -81,6 +73,9 @@ beforeAll(async () => {
 	const app = express();
 	app.use(express.json());
 
+	// Routes are top-level in SellerConfig (no mode: "per-request" on plans).
+	// proxyTo is not required in embedded mode — key0.payPerRequest() calls next()
+	// and the route handler itself returns the response.
 	const key0 = key0Router({
 		config: {
 			agentName: "Embedded PPR e2e Server",
@@ -94,46 +89,24 @@ beforeAll(async () => {
 			// Cast required: ioredis Redis has a wider .set() overload signature than IRedisLockClient
 			redis: redis as any,
 			challengeTTLSeconds: 300,
-			plans: [
+			routes: [
 				{
-					planId: PPR_WEATHER_PLAN_ID,
+					routeId: PPR_WEATHER_ROUTE_ID,
+					method: "GET",
+					path: "/api/weather/:city",
 					unitAmount: "$0.01",
 					description: "Weather query per request",
-					mode: "per-request",
-					routes: [
-						{
-							method: "GET",
-							path: "/api/weather/:city",
-							description: "Current weather for a city",
-						},
-					],
 				},
 				{
-					planId: PPR_JOKE_PLAN_ID,
+					routeId: PPR_JOKE_ROUTE_ID,
+					method: "GET",
+					path: "/api/joke",
 					unitAmount: "$0.005",
 					description: "Joke per request",
-					mode: "per-request",
-					routes: [
-						{
-							method: "GET",
-							path: "/api/joke",
-							description: "Get a random programming joke",
-						},
-					],
 				},
 			],
-			fetchResourceCredentials: async (params) => {
-				return tokenIssuer.sign(
-					{
-						sub: params.requestId,
-						jti: params.challengeId,
-						resourceId: params.resourceId,
-						planId: params.planId,
-						txHash: params.txHash,
-					},
-					3600,
-				);
-			},
+			// No fetchResourceCredentials — routes-only config does not issue tokens
+			// No proxyTo — embedded mode: payPerRequest calls next(), handler returns response
 		},
 		adapter,
 		store,
@@ -145,8 +118,7 @@ beforeAll(async () => {
 	// Gated route: weather
 	app.get(
 		"/api/weather/:city",
-		key0.payPerRequest(PPR_WEATHER_PLAN_ID, {
-			route: { method: "GET", path: "/api/weather/:city" },
+		key0.payPerRequest(PPR_WEATHER_ROUTE_ID, {
 			onPayment: (info: PaymentInfo) => {
 				console.log(`[ppr-embedded] weather settled | tx=${info.txHash}`);
 			},
@@ -167,8 +139,7 @@ beforeAll(async () => {
 	// Gated route: joke
 	app.get(
 		"/api/joke",
-		key0.payPerRequest(PPR_JOKE_PLAN_ID, {
-			route: { method: "GET", path: "/api/joke" },
+		key0.payPerRequest(PPR_JOKE_ROUTE_ID, {
 			onPayment: (info: PaymentInfo) => {
 				console.log(`[ppr-embedded] joke settled | tx=${info.txHash}`);
 			},

@@ -57,36 +57,19 @@
 import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import type {
 	ChallengeRecord,
+	FetchResourceParams,
+	FetchResourceResult,
 	IChallengeStore,
 	ISeenTxStore,
 	NetworkConfig,
 	PaymentInfo,
 	Plan,
+	PlanRouteInfo,
 	ProxyToConfig,
 	Route,
 	SellerConfig,
 } from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
-
-// ---------------------------------------------------------------------------
-// Local type aliases (FetchResourceParams / FetchResourceResult were removed
-// from src/types/config.ts in the routes redesign; kept here as local types
-// for the plan-based path and backward-compat re-exports).
-// ---------------------------------------------------------------------------
-type FetchResourceParams = {
-	readonly method: string;
-	readonly path: string;
-	readonly headers: Record<string, string>;
-	readonly body?: unknown;
-	readonly paymentInfo: PaymentInfo;
-};
-type FetchResourceResult = {
-	readonly status: number;
-	readonly headers?: Record<string, string>;
-	readonly body: unknown;
-};
-/** @internal Route registry type — kept here since PlanRouteInfo was removed from types. */
-type PlanRouteInfo = { method: string; path: string; description?: string };
 
 import {
 	buildHttpPaymentRequirements,
@@ -408,14 +391,13 @@ function resolveFromConfig(opts: PayPerRequestConfig): ResolvedDeps {
  * @returns Map from planId → deduplicated PlanRouteInfo[].
  */
 export function mergePerRequestRoutes(
-	plans: readonly Plan[],
+	plans: readonly Plan[] | undefined,
 	registry: Map<string, PlanRouteInfo[]>,
 ): Map<string, PlanRouteInfo[]> {
 	const result = new Map<string, PlanRouteInfo[]>();
 
-	for (const plan of plans) {
-		const planWithLegacy = plan as Plan & { routes?: PlanRouteInfo[] };
-		const configRoutes = planWithLegacy.routes ?? [];
+	for (const plan of plans ?? []) {
+		const configRoutes = [...(plan.routes ?? [])] as PlanRouteInfo[];
 		const runtimeRoutes = registry.get(plan.planId) ?? [];
 		const seen = new Set<string>();
 		const merged: PlanRouteInfo[] = [];
@@ -526,7 +508,7 @@ async function settleAndRecord(
 		});
 
 		// Transition PENDING → PAID (adds to paid sorted set for refund cron)
-		await deps.store.transition(
+		const transitioned = await deps.store.transition(
 			challengeId,
 			"PENDING",
 			"PAID",
@@ -537,6 +519,9 @@ async function settleAndRecord(
 			},
 			{ actor: "engine", reason: "pay_per_request_settled" },
 		);
+		if (!transitioned) {
+			throw new Key0Error("INVALID_REQUEST", "Challenge already processed", 409);
+		}
 
 		// Tell the caller to mark DELIVERED when the response succeeds
 		onDelivered(challengeId);
@@ -660,7 +645,7 @@ async function settleAndRecordForRoute(
 			reason: "pay_per_request_created",
 		});
 
-		await deps.store.transition(
+		const transitioned = await deps.store.transition(
 			challengeId,
 			"PENDING",
 			"PAID",
@@ -671,6 +656,9 @@ async function settleAndRecordForRoute(
 			},
 			{ actor: "engine", reason: "pay_per_request_settled" },
 		);
+		if (!transitioned) {
+			throw new Key0Error("INVALID_REQUEST", "Challenge already processed", 409);
+		}
 
 		onDelivered(challengeId);
 	}
