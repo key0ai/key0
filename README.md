@@ -677,6 +677,7 @@ app.get("/api/weather/:city", (req, res) => {
 | `proxyTo` | `ProxyToConfig` | | - | Per-request proxy shorthand: builds a `fetchResource` that forwards to `baseUrl`. Supports optional `headers` (e.g. shared secret) and `pathRewrite` |
 | `onPaymentReceived` | `(grant) => Promise<void>` | | - | Fired after successful payment |
 | `onChallengeExpired` | `(challengeId) => Promise<void>` | | - | Fired when a challenge expires |
+| `a2a` | `boolean` | | `true` | When `false`, disables A2A discovery (`/.well-known/agent.json`) and JSON-RPC routing |
 | `mcp` | `boolean` | | `false` | Enable MCP server - mounts `/.well-known/mcp.json` and `POST /mcp` (Streamable HTTP) |
 
 #### Plan
