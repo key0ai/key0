@@ -18,7 +18,8 @@ services:
       # PPR-only plans never call this, but docker/server.ts requires it for isConfigured
       ISSUE_TOKEN_API: http://host.docker.internal:3001/internal/issue-token
       ALCHEMY_BASE_SEPOLIA_RPC_URL: ${ALCHEMY_BASE_SEPOLIA_RPC_URL:-}
-      PLANS: '[{"planId":"weather-query","unitAmount":"$0.01","description":"Weather query per request","mode":"per-request"},{"planId":"joke-of-the-day","unitAmount":"$0.005","description":"Joke per request","mode":"per-request"},{"planId":"status","free":true,"description":"Service status (free)","proxyPath":"/api/status"},{"planId":"weather-by-city","unitAmount":"$0.01","description":"Weather by city (proxied)","mode":"per-request","proxyPath":"/api/weather/{city}"}]'
+      PLANS: '[{"planId":"status","free":true,"description":"Service status (free)","proxyPath":"/api/status"},{"planId":"weather-by-city","unitAmount":"$0.01","description":"Weather by city (proxied)","mode":"per-request","proxyPath":"/api/weather/{city}"}]'
+      ROUTES: '[{"routeId":"weather-query","method":"GET","path":"/api/weather/:city","unitAmount":"$0.01","description":"Weather query per request"},{"routeId":"joke-of-the-day","method":"GET","path":"/api/joke","unitAmount":"$0.005","description":"Joke per request"}]'
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

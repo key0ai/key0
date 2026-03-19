@@ -123,7 +123,7 @@ describe("validateSellerConfig", () => {
 });
 
 describe("routes validation", () => {
-	it("throws if routes configured without proxyTo", () => {
+	it("passes when routes configured without proxyTo (embedded mode)", () => {
 		expect(() =>
 			validateSellerConfig(
 				makeSellerConfig({
@@ -132,7 +132,7 @@ describe("routes validation", () => {
 					routes: [{ routeId: "r1", method: "GET", path: "/foo", unitAmount: "$0.01" }],
 				}),
 			),
-		).toThrow(/proxyTo is required when routes are configured/);
+		).not.toThrow();
 	});
 
 	it("passes when routes + proxyTo both present", () => {

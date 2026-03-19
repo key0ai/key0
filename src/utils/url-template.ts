@@ -13,7 +13,7 @@ const SAFE_PARAM_RE = /^[A-Za-z0-9_-]+$/;
  * interpolateUrlTemplate("/signal/{asset}", { asset: "BTC" }) // "/signal/BTC"
  */
 export function interpolateUrlTemplate(template: string, params: Record<string, string>): string {
-	return template.replace(/\{([^}]+)\}/g, (_placeholder, key: string) => {
+	return template.replace(/\{(\w+)\}/g, (_placeholder, key: string) => {
 		if (!(key in params)) {
 			throw new Error(`Missing param "${key}" required by URL template "${template}"`);
 		}
@@ -31,7 +31,7 @@ export function interpolateUrlTemplate(template: string, params: Record<string, 
  */
 export function extractTemplateParams(template: string): string[] {
 	const params: string[] = [];
-	for (const match of template.matchAll(/\{([^}]+)\}/g)) {
+	for (const match of template.matchAll(/\{(\w+)\}/g)) {
 		params.push(match[1]!);
 	}
 	return params;

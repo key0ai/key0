@@ -19,11 +19,11 @@ describe("Agent Card", () => {
 		expect(Array.isArray(card.skills)).toBe(true);
 		expect(card.skills.length).toBe(2);
 
-		const discoverSkill = card.skills.find((s) => s.id === "discover-plans");
+		const discoverSkill = card.skills.find((s) => s.id === "discover");
 		expect(discoverSkill).toBeDefined();
 		expect(discoverSkill?.tags).toContain("discovery");
 
-		const requestSkill = card.skills.find((s) => s.id === "request-access");
+		const requestSkill = card.skills.find((s) => s.id === "access");
 		expect(requestSkill).toBeDefined();
 		expect(requestSkill?.tags).toContain("payment");
 
@@ -40,11 +40,11 @@ describe("Agent Card", () => {
 
 		// Discovery must be done via GET /discovery, not from the agent card
 		// Agent card skills should NOT have pricing (A2A spec compliance)
-		const discoverSkill = card.skills.find((s) => s.id === "discover-plans");
+		const discoverSkill = card.skills.find((s) => s.id === "discover");
 		expect(discoverSkill).toBeDefined();
 		expect((discoverSkill as any)?.pricing).toBeUndefined();
 
-		const requestSkill = card.skills.find((s) => s.id === "request-access");
+		const requestSkill = card.skills.find((s) => s.id === "access");
 		expect(requestSkill).toBeDefined();
 		expect((requestSkill as any)?.pricing).toBeUndefined();
 	});

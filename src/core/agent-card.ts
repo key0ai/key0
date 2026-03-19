@@ -66,7 +66,9 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 		const skillId = `ppr-${route.routeId}-${route.method.toLowerCase()}-${route.path.replace(/\//g, "-").replace(/[: ]/g, "")}`;
 
 		// Build path param properties from auto-detected :param names
-		const pathParamNames = [...route.path.matchAll(/:([a-zA-Z_][a-zA-Z0-9_]*)/g)].map((m) => m[1] ?? "");
+		const pathParamNames = [...route.path.matchAll(/:([a-zA-Z_][a-zA-Z0-9_]*)/g)].map(
+			(m) => m[1] ?? "",
+		);
 		const explicitParams = route.params ?? [];
 
 		// Path param schema: auto-detected names, enriched with any descriptions from explicit params
@@ -113,7 +115,13 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 				type: "string",
 				description: `Path pattern: ${route.path}. Example: ${examplePath}`,
 				...(pathParamNames.length > 0
-					? { pathParams: { type: "object", required: pathParamNames, properties: pathParamProperties } }
+					? {
+							pathParams: {
+								type: "object",
+								required: pathParamNames,
+								properties: pathParamProperties,
+							},
+						}
 					: {}),
 			},
 		};

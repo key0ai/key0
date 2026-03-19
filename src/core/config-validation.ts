@@ -45,11 +45,6 @@ export function validateSellerConfig(config: SellerConfig): void {
 		throw new Error("fetchResourceCredentials is required when plans are configured");
 	}
 
-	// Routes require proxyTo — they always proxy to a backend.
-	if (hasRoutes && !config.proxyTo) {
-		throw new Error("proxyTo is required when routes are configured");
-	}
-
 	// Developer mode — warn but don't throw
 	if (!hasPlans && !hasRoutes) {
 		console.warn("[key0] Warning: no plans or routes configured");
@@ -107,7 +102,7 @@ export function validateSellerConfig(config: SellerConfig): void {
 			if (routeIds.has(route.routeId)) throw new Error(`duplicate routeId: "${route.routeId}"`);
 			routeIds.add(route.routeId);
 		}
-		if (!config.proxyTo?.proxySecret) {
+		if (config.proxyTo && !config.proxyTo.proxySecret) {
 			console.warn(
 				"[key0] Warning: proxyTo.proxySecret not set — backend cannot verify Key0 origin",
 			);

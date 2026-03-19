@@ -109,19 +109,14 @@ export function buildHttpPaymentRequirements(
 ): X402PaymentRequiredResponse {
 	// Search plans first, then routes
 	const tier = (config.plans ?? []).find((t: Plan) => t.planId === planId);
-	const route = !tier
-		? (config.routes ?? []).find((r: Route) => r.routeId === planId)
-		: undefined;
+	const route = !tier ? (config.routes ?? []).find((r: Route) => r.routeId === planId) : undefined;
 
 	if (!tier && !route) {
 		throw new Key0Error("TIER_NOT_FOUND", `Plan or route "${planId}" not found`, 400);
 	}
 
 	const unitAmount = tier ? tier.unitAmount! : route!.unitAmount!;
-	const description =
-		tier?.description ?? route?.description ?? `${planId} — ${unitAmount} USDC`;
-	const itemId = tier ? tier.planId : route!.routeId;
-
+	const description = tier?.description ?? route?.description ?? `${planId} — ${unitAmount} USDC`;
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const resourceUrl = `${baseUrl}/x402/access`;
 
@@ -181,6 +176,7 @@ export function buildDiscoveryResponse(config: SellerConfig) {
 			planId: p.planId,
 			unitAmount: p.unitAmount,
 			...(p.description ? { description: p.description } : {}),
+			...(p.free === true ? { free: true } : {}),
 		})),
 		routes: (config.routes ?? []).map((r) => ({
 			routeId: r.routeId,

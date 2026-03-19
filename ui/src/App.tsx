@@ -300,7 +300,10 @@ export default function App() {
 										<Select
 											value={config.backendAuthStrategy}
 											onChange={(e) =>
-												set("backendAuthStrategy", e.target.value as "none" | "shared-secret" | "jwt")
+												set(
+													"backendAuthStrategy",
+													e.target.value as "none" | "shared-secret" | "jwt",
+												)
 											}
 										>
 											<option value="none">None (no auth)</option>

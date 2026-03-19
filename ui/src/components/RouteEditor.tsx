@@ -7,7 +7,11 @@ interface RouteEditorProps {
 }
 
 function deriveRouteId(method: string, path: string): string {
-	return `${method.toLowerCase()}-${path.replace(/\//g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "")}`;
+	return `${method.toLowerCase()}-${path
+		.replace(/\//g, "-")
+		.replace(/[^a-z0-9-]/g, "")
+		.replace(/-+/g, "-")
+		.replace(/^-|-$/g, "")}`;
 }
 
 /** Extract :param names from an Express-style path */
@@ -44,7 +48,9 @@ export function RouteEditor({ routes, onChange }: RouteEditorProps) {
 					const nonPathParams = (r.params ?? []).filter((p) => p.in !== "path");
 					const pathParams: RouteParam[] = pathParamNames.map((name) => {
 						const existing = (r.params ?? []).find((p) => p.in === "path" && p.name === name);
-						return existing ?? { name, in: "path", description: "", required: true, type: "string" };
+						return (
+							existing ?? { name, in: "path", description: "", required: true, type: "string" }
+						);
 					});
 					next.params = [...pathParams, ...nonPathParams];
 				}
@@ -54,7 +60,12 @@ export function RouteEditor({ routes, onChange }: RouteEditorProps) {
 		onChange(updated);
 	};
 
-	const updateParam = (routeIdx: number, paramIdx: number, field: keyof RouteParam, value: unknown) => {
+	const updateParam = (
+		routeIdx: number,
+		paramIdx: number,
+		field: keyof RouteParam,
+		value: unknown,
+	) => {
 		const route = routes[routeIdx];
 		if (!route) return;
 		const params = (route.params ?? []).map((p, i) =>
@@ -88,10 +99,7 @@ export function RouteEditor({ routes, onChange }: RouteEditorProps) {
 				const supportsBody = ["POST", "PUT", "PATCH"].includes(route.method);
 
 				return (
-					<div
-						key={i}
-						className="relative rounded-inner bg-surface shadow-neu-inset p-4 space-y-3"
-					>
+					<div key={i} className="relative rounded-inner bg-surface shadow-neu-inset p-4 space-y-3">
 						{/* Header */}
 						<div className="flex items-center justify-between">
 							<span className="text-xs font-bold font-display text-muted uppercase tracking-wider">
@@ -104,7 +112,14 @@ export function RouteEditor({ routes, onChange }: RouteEditorProps) {
 									className="text-muted hover:text-accent transition-colors"
 									title="Remove route"
 								>
-									<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+									<svg
+										className="h-4 w-4"
+										fill="none"
+										viewBox="0 0 24 24"
+										stroke="currentColor"
+										strokeWidth={2}
+										aria-hidden="true"
+									>
 										<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
 									</svg>
 								</button>
@@ -114,7 +129,10 @@ export function RouteEditor({ routes, onChange }: RouteEditorProps) {
 						{/* Row 1: Method + Path */}
 						<div className="grid grid-cols-2 gap-3">
 							<Field label="Method" required>
-								<Select value={route.method} onChange={(e) => updateRoute(i, "method", e.target.value)}>
+								<Select
+									value={route.method}
+									onChange={(e) => updateRoute(i, "method", e.target.value)}
+								>
 									<option value="GET">GET</option>
 									<option value="POST">POST</option>
 									<option value="PUT">PUT</option>
@@ -165,22 +183,40 @@ export function RouteEditor({ routes, onChange }: RouteEditorProps) {
 						{/* Parameters */}
 						<div className="space-y-2">
 							<div className="flex items-center justify-between">
-								<span className="text-xs font-semibold text-muted uppercase tracking-wider">Parameters</span>
+								<span className="text-xs font-semibold text-muted uppercase tracking-wider">
+									Parameters
+								</span>
 							</div>
 
 							{/* Auto-detected path params */}
 							{pathParams.length > 0 && (
 								<div className="space-y-2">
 									{pathParams.map((param) => (
-										<div key={`path-${param.name}`} className="rounded-inner bg-surface shadow-neu-inset p-3 space-y-2">
+										<div
+											key={`path-${param.name}`}
+											className="rounded-inner bg-surface shadow-neu-inset p-3 space-y-2"
+										>
 											<div className="flex items-center gap-2">
-												<span className="text-xs font-mono font-semibold text-foreground">:{param.name}</span>
-												<span className="rounded px-1.5 py-0.5 text-xs bg-accent/10 text-accent font-medium">path</span>
+												<span className="text-xs font-mono font-semibold text-foreground">
+													:{param.name}
+												</span>
+												<span className="rounded px-1.5 py-0.5 text-xs bg-accent/10 text-accent font-medium">
+													path
+												</span>
 												<span className="text-xs text-muted">auto-detected</span>
 											</div>
 											<Input
 												value={param.description}
-												onChange={(e) => updateParam(i, (route.params ?? []).findIndex((p) => p.in === "path" && p.name === param.name), "description", e.target.value)}
+												onChange={(e) =>
+													updateParam(
+														i,
+														(route.params ?? []).findIndex(
+															(p) => p.in === "path" && p.name === param.name,
+														),
+														"description",
+														e.target.value,
+													)
+												}
 												placeholder={`Describe :${param.name}`}
 											/>
 										</div>
@@ -196,16 +232,32 @@ export function RouteEditor({ routes, onChange }: RouteEditorProps) {
 								const realIdx = nonPathInOrder[pi]?.idx ?? -1;
 
 								return (
-									<div key={`${param.in}-${pi}`} className="rounded-inner bg-surface shadow-neu-inset p-3 space-y-2">
+									<div
+										key={`${param.in}-${pi}`}
+										className="rounded-inner bg-surface shadow-neu-inset p-3 space-y-2"
+									>
 										<div className="flex items-center gap-2">
-											<span className="rounded px-1.5 py-0.5 text-xs bg-surface shadow-neu text-muted font-medium">{param.in}</span>
+											<span className="rounded px-1.5 py-0.5 text-xs bg-surface shadow-neu text-muted font-medium">
+												{param.in}
+											</span>
 											<button
 												type="button"
 												onClick={() => removeParam(i, realIdx)}
 												className="ml-auto text-muted hover:text-accent transition-colors"
 											>
-												<svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-													<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+												<svg
+													className="h-3.5 w-3.5"
+													fill="none"
+													viewBox="0 0 24 24"
+													stroke="currentColor"
+													strokeWidth={2}
+													aria-hidden="true"
+												>
+													<path
+														strokeLinecap="round"
+														strokeLinejoin="round"
+														d="M6 18L18 6M6 6l12 12"
+													/>
 												</svg>
 											</button>
 										</div>
@@ -250,7 +302,14 @@ export function RouteEditor({ routes, onChange }: RouteEditorProps) {
 									onClick={() => addParam(i, "query")}
 									className="flex items-center gap-1 rounded-button bg-surface px-3 py-1.5 text-xs font-medium text-muted shadow-neu transition-all hover:-translate-y-px hover:shadow-neu-hover hover:text-foreground"
 								>
-									<svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+									<svg
+										className="h-3 w-3"
+										fill="none"
+										viewBox="0 0 24 24"
+										stroke="currentColor"
+										strokeWidth={2}
+										aria-hidden="true"
+									>
 										<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
 									</svg>
 									Query param
@@ -261,7 +320,14 @@ export function RouteEditor({ routes, onChange }: RouteEditorProps) {
 										onClick={() => addParam(i, "body")}
 										className="flex items-center gap-1 rounded-button bg-surface px-3 py-1.5 text-xs font-medium text-muted shadow-neu transition-all hover:-translate-y-px hover:shadow-neu-hover hover:text-foreground"
 									>
-										<svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+										<svg
+											className="h-3 w-3"
+											fill="none"
+											viewBox="0 0 24 24"
+											stroke="currentColor"
+											strokeWidth={2}
+											aria-hidden="true"
+										>
 											<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
 										</svg>
 										Body param
@@ -278,7 +344,14 @@ export function RouteEditor({ routes, onChange }: RouteEditorProps) {
 				onClick={add}
 				className="flex items-center gap-2 rounded-button bg-surface px-4 py-2.5 text-sm font-medium text-muted shadow-neu transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-neu-hover hover:text-foreground active:translate-y-[0.5px] active:shadow-neu-inset"
 			>
-				<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+				<svg
+					className="h-4 w-4"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+					strokeWidth={2}
+					aria-hidden="true"
+				>
 					<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
 				</svg>
 				Add Route

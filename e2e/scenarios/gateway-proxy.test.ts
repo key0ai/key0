@@ -64,15 +64,15 @@ afterAll(async () => {
 });
 
 describe("Gateway Proxy: free plan", () => {
-	test("discover_plans shows free plan with free: true and amount: 0", async () => {
-		const res = await fetch(`${GATEWAY_KEY0_URL}/discovery`);
+	test("discover shows free plan with free: true", async () => {
+		const res = await fetch(`${GATEWAY_KEY0_URL}/discover`);
+		expect(res.status).toBe(200);
 		const data = (await res.json()) as {
-			discoveryResponse: { accepts: Array<{ extra: Record<string, unknown>; amount: string }> };
+			plans: Array<{ planId: string; unitAmount?: string; description?: string; free?: boolean }>;
 		};
-		const statusPlan = data.discoveryResponse.accepts.find((p) => p.extra?.["planId"] === "status");
+		const statusPlan = data.plans.find((p) => p.planId === "status");
 		expect(statusPlan).toBeDefined();
-		expect(statusPlan?.extra?.["free"]).toBe(true);
-		expect(statusPlan?.amount).toBe("0");
+		expect(statusPlan?.free).toBe(true);
 	});
 
 	test("free plan returns data immediately without payment", async () => {

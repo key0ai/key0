@@ -119,7 +119,7 @@ describe("createKey0 — new validation rules", () => {
 				store: makeTestStore(),
 				seenTxStore: makeTestSeenTxStore(),
 			}),
-		).toThrow(/proxyTo is required/);
+		).not.toThrow();
 	});
 
 	test("throws if plans without fetchResourceCredentials", () => {

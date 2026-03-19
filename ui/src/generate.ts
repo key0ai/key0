@@ -377,27 +377,62 @@ export function generateMcpTerminal(config: Config): McpTerminalBlock[] {
 				const queryParams = (r.params ?? []).filter((p) => p.in === "query");
 				const bodyParams = (r.params ?? []).filter((p) => p.in === "body");
 				return {
-					routeId: `${r.method.toLowerCase()}-${r.path.replace(/\//g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "")}`,
+					routeId: `${r.method.toLowerCase()}-${r.path
+						.replace(/\//g, "-")
+						.replace(/[^a-z0-9-]/g, "")
+						.replace(/-+/g, "-")
+						.replace(/^-|-$/g, "")}`,
 					method: r.method,
 					path: r.path,
 					...(r.unitAmount ? { unitAmount: `$${r.unitAmount}` } : {}),
 					...(r.description ? { description: r.description } : {}),
 					...(pathParams.length > 0
-						? { pathParams: Object.fromEntries(pathParams.map((p) => [p.name, { type: p.type || "string", ...(p.description ? { description: p.description } : {}) }])) }
+						? {
+								pathParams: Object.fromEntries(
+									pathParams.map((p) => [
+										p.name,
+										{
+											type: p.type || "string",
+											...(p.description ? { description: p.description } : {}),
+										},
+									]),
+								),
+							}
 						: {}),
 					...(queryParams.length > 0
-						? { queryParams: Object.fromEntries(queryParams.map((p) => [p.name, { type: p.type || "string", required: p.required, ...(p.description ? { description: p.description } : {}) }])) }
+						? {
+								queryParams: Object.fromEntries(
+									queryParams.map((p) => [
+										p.name,
+										{
+											type: p.type || "string",
+											required: p.required,
+											...(p.description ? { description: p.description } : {}),
+										},
+									]),
+								),
+							}
 						: {}),
 					...(bodyParams.length > 0
-						? { bodyParams: Object.fromEntries(bodyParams.map((p) => [p.name, { type: p.type || "string", required: p.required, ...(p.description ? { description: p.description } : {}) }])) }
+						? {
+								bodyParams: Object.fromEntries(
+									bodyParams.map((p) => [
+										p.name,
+										{
+											type: p.type || "string",
+											required: p.required,
+											...(p.description ? { description: p.description } : {}),
+										},
+									]),
+								),
+							}
 						: {}),
 				};
 			}),
 	};
 	blocks.push({ kind: "json", text: JSON.stringify(discoverResult, null, 2) });
 
-	const explorerBase =
-		config.network === "mainnet" ? "basescan.org" : "sepolia.basescan.org";
+	const explorerBase = config.network === "mainnet" ? "basescan.org" : "sepolia.basescan.org";
 	const firstRoute = config.routes.find((r) => r.path);
 	const firstPlan = config.plans.find((p) => p.planId);
 
@@ -430,7 +465,11 @@ export function generateMcpTerminal(config: Config): McpTerminalBlock[] {
 
 	// 5b. Route demo — pay-per-call → direct API response
 	if (firstRoute) {
-		const routeId = `${firstRoute.method.toLowerCase()}-${firstRoute.path.replace(/\//g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "")}`;
+		const routeId = `${firstRoute.method.toLowerCase()}-${firstRoute.path
+			.replace(/\//g, "-")
+			.replace(/[^a-z0-9-]/g, "")
+			.replace(/-+/g, "-")
+			.replace(/^-|-$/g, "")}`;
 		const mcpQueryParams = (firstRoute.params ?? []).filter((p) => p.in === "query");
 		const mcpBodyParams = (firstRoute.params ?? []).filter((p) => p.in === "body");
 
@@ -439,11 +478,15 @@ export function generateMcpTerminal(config: Config): McpTerminalBlock[] {
 
 		let mcpCallCmd = `mcp call access --routeId "${routeId}"`;
 		if (mcpQueryParams.length > 0) {
-			const qEx = Object.fromEntries(mcpQueryParams.map((p) => [p.name, mcpExampleValue(p.type, p.name)]));
+			const qEx = Object.fromEntries(
+				mcpQueryParams.map((p) => [p.name, mcpExampleValue(p.type, p.name)]),
+			);
 			mcpCallCmd += ` --query '${JSON.stringify(qEx)}'`;
 		}
 		if (mcpBodyParams.length > 0) {
-			const bEx = Object.fromEntries(mcpBodyParams.map((p) => [p.name, mcpExampleValue(p.type, p.name)]));
+			const bEx = Object.fromEntries(
+				mcpBodyParams.map((p) => [p.name, mcpExampleValue(p.type, p.name)]),
+			);
 			mcpCallCmd += ` --body '${JSON.stringify(bEx)}'`;
 		}
 
