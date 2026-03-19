@@ -351,9 +351,7 @@ if (!isConfigured) {
 	const key0 = await import("@key0ai/key0");
 	const { key0Router } = await import("@key0ai/key0/express");
 	const { buildDockerTokenIssuer } = await import("../src/helpers/docker-token-issuer.js");
-	const { buildLlmsTxt, buildSkillsMd, createCliArtifactManager } = await import(
-		"../src/helpers/standalone-onboarding.js"
-	);
+	const { buildLlmsTxt, buildSkillsMd } = await import("../src/helpers/standalone-onboarding.js");
 
 	type IAuditStore = key0.IAuditStore;
 	type IChallengeStore = key0.IChallengeStore;
@@ -527,13 +525,6 @@ if (!isConfigured) {
 	// Pre-compute static onboarding content once at startup
 	const llmsTxtContent = LLMS_ENABLED ? buildLlmsTxt(sellerConfig, onboardingOptions) : null;
 	const skillsMdContent = SKILLS_MD_ENABLED ? buildSkillsMd(sellerConfig, onboardingOptions) : null;
-
-	// Build CLI binaries at startup — seller distributes them manually (docker cp or volume mount)
-	const cliManager = createCliArtifactManager(sellerConfig, resolve("/app/config/cli-cache"));
-	cliManager
-		.buildAll()
-		.then(() => console.log(`[key0] CLI artifacts ready in /app/config/cli-cache`))
-		.catch((err) => console.error("[key0] Failed to build CLI artifacts:", err));
 
 	app.get("/health", (_req, res) => {
 		res.json({ status: "ok", network: NETWORK, wallet: WALLET_ADDRESS, storage: STORAGE_BACKEND });

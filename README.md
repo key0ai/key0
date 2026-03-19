@@ -51,7 +51,7 @@ docker compose -f docker/docker-compose.yml --profile full up
 Standalone auto-hosts the buyer onboarding bundle from your config:
 `GET /discover`, `POST /x402/access`, optional `/.well-known/agent.json`,
 optional `/.well-known/mcp.json`, plus generated `/llms.txt` and `/skills.md`.
-CLI binaries are compiled at startup — copy them out and distribute them yourself (see [Agent CLI](#agent-cli)).
+CLI binaries are not built by the standalone server — use the embedded SDK's `buildCli()` to generate them and distribute them yourself (see [Agent CLI](#agent-cli)).
 
 ### Embedded - Subscription Plans
 
@@ -267,7 +267,7 @@ By default, standalone key0 generates and hosts these buyer-facing endpoints fro
 | `GET /llms.txt` | on | `LLMS_ENABLED=false` disables it |
 | `GET /skills.md` | on | `SKILLS_MD_ENABLED=false` disables it |
 
-CLI binaries are compiled at startup and written to `/app/config/cli-cache` inside the container. key0 does **not** expose them over HTTP — you are responsible for copying them out and hosting them where your users can download them (e.g. GitHub Releases, S3, a CDN). See [Agent CLI](#agent-cli) for details.
+The standalone server does **not** build or serve CLI binaries. Use the embedded SDK's `buildCli()` to generate binaries and host them yourself (e.g. GitHub Releases, S3, a CDN). See [Agent CLI](#agent-cli) for details.
 
 #### Option B: Environment variables
 
@@ -898,21 +898,7 @@ See [`docs/mcp-integration.md`](./docs/mcp-integration.md) for architecture deta
 
 Sellers can distribute a branded CLI binary — a standalone executable with your service URL baked in. Agents download it once, install it, and interact with your API by name.
 
-**Standalone Docker** compiles binaries for Linux x64, macOS ARM64, and macOS x64 at startup and writes them to `/app/config/cli-cache` inside the container. key0 does **not** serve them over HTTP — copy them out and host them yourself:
-
-```bash
-# Copy binaries out of the running container
-docker cp docker-key0-1:/app/config/cli-cache ./cli-dist
-
-# Or mount the cache dir as a volume so they're available on the host
-# (add to docker-compose.yml)
-volumes:
-  - ./cli-dist:/app/config/cli-cache
-```
-
-Then upload the binaries to wherever your users can reach them — GitHub Releases, S3, a CDN, etc.
-
-**Embedded SDK** — generate binaries directly:
+The standalone Docker server does **not** build or serve CLI binaries. Use the embedded SDK to generate them:
 
 ```typescript
 import { buildCli } from "@key0ai/key0/cli";

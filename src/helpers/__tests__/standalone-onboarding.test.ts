@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { makeSellerConfig } from "../../test-utils/index.js";
-import { buildLlmsTxt, buildSkillsMd, slugifyCliName } from "../standalone-onboarding.js";
+import { buildLlmsTxt, buildSkillsMd } from "../standalone-onboarding.js";
 
 const baseConfig = makeSellerConfig({
 	agentName: "Weather Pro",
@@ -8,13 +8,6 @@ const baseConfig = makeSellerConfig({
 	agentUrl: "https://api.example.com",
 	plans: [{ planId: "basic", unitAmount: "$5.00", description: "Monthly access" }],
 	routes: [{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" }],
-});
-
-describe("slugifyCliName", () => {
-	it("converts names into stable CLI slugs", () => {
-		expect(slugifyCliName("Weather Pro")).toBe("weather-pro");
-		expect(slugifyCliName("  ")).toBe("key0-agent");
-	});
 });
 
 describe("buildLlmsTxt", () => {
@@ -28,7 +21,6 @@ describe("buildLlmsTxt", () => {
 
 		expect(text).toContain("GET https://api.example.com/discover");
 		expect(text).not.toContain(".well-known/agent.json");
-		expect(text).not.toContain("/install.sh");
 		expect(text).toContain("A2A: disabled");
 	});
 });
@@ -45,5 +37,32 @@ describe("buildSkillsMd", () => {
 		expect(text).toContain("`https://api.example.com/discover`");
 		expect(text).toContain("Subscription Plans");
 		expect(text).toContain("Pay-Per-Call Routes");
+	});
+
+	it("includes per-request plan routes in the buyer guide", () => {
+		const text = buildSkillsMd(
+			makeSellerConfig({
+				agentName: "Weather Pro",
+				agentDescription: "Paid weather API for agents",
+				agentUrl: "https://api.example.com",
+				plans: [
+					{
+						planId: "weather-query",
+						unitAmount: "$0.01",
+						mode: "per-request",
+						routes: [{ method: "GET", path: "/api/weather/:city", description: "Current weather" }],
+					},
+				],
+				routes: [],
+			}),
+			{
+				a2aEnabled: true,
+				mcpEnabled: false,
+				llmsEnabled: true,
+				skillsMdEnabled: true,
+			},
+		);
+
+		expect(text).toContain("weather-query · GET /api/weather/:city");
 	});
 });

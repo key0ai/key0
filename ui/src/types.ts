@@ -59,8 +59,6 @@ export interface Config {
 	mcpEnabled: boolean;
 	llmsEnabled: boolean;
 	skillsMdEnabled: boolean;
-	installShEnabled: boolean;
-	cliDownloadsEnabled: boolean;
 
 	// Token API Auth
 	backendAuthStrategy: "none" | "shared-secret" | "jwt";
@@ -109,8 +107,6 @@ export const defaultConfig: Config = {
 	mcpEnabled: false,
 	llmsEnabled: true,
 	skillsMdEnabled: true,
-	installShEnabled: true,
-	cliDownloadsEnabled: true,
 
 	backendAuthStrategy: "none",
 	issueTokenApiSecret: "",

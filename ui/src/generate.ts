@@ -616,8 +616,6 @@ export function generateEnv(config: Config): string {
 	if (config.mcpEnabled) onboardingVars.push("MCP_ENABLED=true");
 	if (!config.llmsEnabled) onboardingVars.push("LLMS_ENABLED=false");
 	if (!config.skillsMdEnabled) onboardingVars.push("SKILLS_MD_ENABLED=false");
-	if (!config.installShEnabled) onboardingVars.push("INSTALL_SH_ENABLED=false");
-	if (!config.cliDownloadsEnabled) onboardingVars.push("CLI_DOWNLOADS_ENABLED=false");
 	if (onboardingVars.length > 0) {
 		lines.push("", _sec("Buyer Onboarding"), "", ...onboardingVars);
 	}
@@ -697,12 +695,6 @@ export function generateDockerRun(config: Config): string {
 	}
 	if (!config.skillsMdEnabled) {
 		envFlags.push(`-e SKILLS_MD_ENABLED=false`);
-	}
-	if (!config.installShEnabled) {
-		envFlags.push(`-e INSTALL_SH_ENABLED=false`);
-	}
-	if (!config.cliDownloadsEnabled) {
-		envFlags.push(`-e CLI_DOWNLOADS_ENABLED=false`);
 	}
 	if (config.backendAuthStrategy !== "none") {
 		envFlags.push(`-e BACKEND_AUTH_STRATEGY=${config.backendAuthStrategy}`);
@@ -788,12 +780,6 @@ export function generateDockerCompose(config: Config): string {
 	}
 	if (!config.skillsMdEnabled) {
 		envVars.SKILLS_MD_ENABLED = "false";
-	}
-	if (!config.installShEnabled) {
-		envVars.INSTALL_SH_ENABLED = "false";
-	}
-	if (!config.cliDownloadsEnabled) {
-		envVars.CLI_DOWNLOADS_ENABLED = "false";
 	}
 	if (config.backendAuthStrategy !== "none") {
 		envVars.BACKEND_AUTH_STRATEGY = config.backendAuthStrategy;

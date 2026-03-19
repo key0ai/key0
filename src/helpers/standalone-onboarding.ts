@@ -1,10 +1,4 @@
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { buildCli } from "../integrations/cli.js";
-import type { SellerConfig } from "../types/index.js";
-
-export const DEFAULT_CLI_TARGETS = ["bun-linux-x64", "bun-darwin-arm64", "bun-darwin-x64"] as const;
+import type { PlanRouteInfo, SellerConfig } from "../types/index.js";
 
 type OnboardingOptions = {
 	a2aEnabled: boolean;
@@ -13,15 +7,6 @@ type OnboardingOptions = {
 	skillsMdEnabled: boolean;
 };
 
-export function slugifyCliName(name: string): string {
-	const slug = name
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "");
-	return slug || "key0-agent";
-}
-
 function normalizeBaseUrl(url: string): string {
 	return url.replace(/\/$/, "");
 }
@@ -29,15 +14,61 @@ function normalizeBaseUrl(url: string): string {
 function summarizeCatalog(config: SellerConfig): string[] {
 	const parts: string[] = [];
 	const plans = config.plans ?? [];
-	const routes = config.routes ?? [];
+	const routes = collectRouteSummaries(config);
 	if (plans.length > 0)
 		parts.push(`${plans.length} subscription plan${plans.length === 1 ? "" : "s"}`);
 	if (routes.length > 0) parts.push(`${routes.length} route${routes.length === 1 ? "" : "s"}`);
 	return parts;
 }
 
+type RouteSummary = {
+	id: string;
+	method: string;
+	path: string;
+	price?: string;
+	description?: string;
+	source: "route" | "plan";
+	planId?: string;
+};
+
+function collectRouteSummaries(config: SellerConfig): RouteSummary[] {
+	const routeSummaries: RouteSummary[] = [];
+
+	for (const route of config.routes ?? []) {
+		routeSummaries.push({
+			id: route.routeId,
+			method: route.method,
+			path: route.path,
+			source: "route",
+			...(route.unitAmount ? { price: route.unitAmount } : {}),
+			...(route.description ? { description: route.description } : {}),
+		});
+	}
+
+	for (const plan of config.plans ?? []) {
+		if (plan.mode !== "per-request") continue;
+		for (const route of plan.routes ?? []) {
+			const typedRoute = route as PlanRouteInfo;
+			routeSummaries.push({
+				id: `${plan.planId}:${typedRoute.method}:${typedRoute.path}`,
+				method: typedRoute.method,
+				path: typedRoute.path,
+				source: "plan",
+				planId: plan.planId,
+				...(plan.unitAmount ? { price: plan.unitAmount } : {}),
+				...((typedRoute.description ?? plan.description)
+					? { description: typedRoute.description ?? plan.description }
+					: {}),
+			});
+		}
+	}
+
+	return routeSummaries;
+}
+
 export function buildLlmsTxt(config: SellerConfig, options: OnboardingOptions): string {
 	const baseUrl = normalizeBaseUrl(config.agentUrl);
+	const routeSummaries = collectRouteSummaries(config);
 	const lines: string[] = [
 		`# ${config.agentName}`,
 		config.agentDescription,
@@ -70,7 +101,7 @@ export function buildLlmsTxt(config: SellerConfig, options: OnboardingOptions): 
 		);
 	}
 
-	if ((config.routes ?? []).length > 0) {
+	if (routeSummaries.length > 0) {
 		lines.push("", "## Pay-Per-Call Routes");
 		lines.push(
 			"- Routes are listed in GET /discover alongside plans.",
@@ -89,13 +120,15 @@ export function buildLlmsTxt(config: SellerConfig, options: OnboardingOptions): 
 
 export function buildSkillsMd(config: SellerConfig, options: OnboardingOptions): string {
 	const baseUrl = normalizeBaseUrl(config.agentUrl);
+	const routeSummaries = collectRouteSummaries(config);
 	const planLines = (config.plans ?? []).map((plan) => {
 		const price = plan.unitAmount ?? "$0";
 		return `- \`${plan.planId}\` — ${price}${plan.description ? ` — ${plan.description}` : ""}`;
 	});
-	const routeLines = (config.routes ?? []).map((route) => {
-		const price = route.unitAmount ? route.unitAmount : "free";
-		return `- \`${route.routeId}\` — \`${route.method} ${route.path}\` — ${price}${route.description ? ` — ${route.description}` : ""}`;
+	const routeLines = routeSummaries.map((route) => {
+		const price = route.price ? route.price : "free";
+		const prefix = route.planId ? `${route.planId} · ` : "";
+		return `- \`${prefix}${route.method} ${route.path}\` — ${price}${route.description ? ` — ${route.description}` : ""}`;
 	});
 
 	const lines: string[] = [
@@ -142,42 +175,4 @@ export function buildSkillsMd(config: SellerConfig, options: OnboardingOptions):
 	}
 
 	return `${lines.join("\n")}\n`;
-}
-
-function buildCliFingerprint(config: SellerConfig, targets: readonly string[]): string {
-	const input = JSON.stringify({
-		agentName: config.agentName,
-		agentUrl: normalizeBaseUrl(config.agentUrl),
-		targets,
-	});
-	return createHash("sha256").update(input).digest("hex").slice(0, 16);
-}
-
-export function createCliArtifactManager(config: SellerConfig, cacheRoot: string) {
-	const targets = [...DEFAULT_CLI_TARGETS];
-	const cliName = slugifyCliName(config.agentName);
-	const fingerprint = buildCliFingerprint(config, targets);
-	const outputDir = join(cacheRoot, fingerprint);
-
-	/** Call once at startup — builds all target binaries into the cache dir. */
-	async function buildAll(): Promise<void> {
-		mkdirSync(outputDir, { recursive: true });
-		await buildCli({
-			name: cliName,
-			url: normalizeBaseUrl(config.agentUrl),
-			targets,
-			outputDir,
-		});
-	}
-
-	/** Sync lookup — returns the cached binary path, or null if not ready or unsupported target. */
-	function getPath(target: string): string | null {
-		// Use the allowlist value (not the raw user input) for path construction
-		const safeTarget = targets.find((t) => t === target);
-		if (!safeTarget) return null;
-		const filePath = join(outputDir, `${cliName}-${safeTarget.replace(/^bun-/, "")}`);
-		return existsSync(filePath) ? filePath : null;
-	}
-
-	return { cliName, targets, buildAll, getPath };
 }

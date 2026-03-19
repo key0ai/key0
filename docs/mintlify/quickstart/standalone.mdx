@@ -35,7 +35,7 @@ By default, standalone also generates buyer-facing onboarding endpoints from you
 - `GET /llms.txt`
 - `GET /skills.md`
 
-CLI binaries are compiled at startup and written to `/app/config/cli-cache` inside the container. Key0 does **not** serve them over HTTP — you are responsible for copying them out and hosting them where your users can download them (e.g. GitHub Releases, S3, a CDN). See the [Agent CLI](/guides/agent-cli) guide for details.
+The standalone server does **not** build or serve CLI binaries. Use the embedded SDK's `buildCli()` to generate them and host them yourself (e.g. GitHub Releases, S3, a CDN). See the [Agent CLI](/guides/agent-cli) guide for details.
 
 <Tabs>
   <Tab title="Setup UI">

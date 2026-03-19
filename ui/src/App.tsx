@@ -72,8 +72,6 @@ export default function App() {
 						mcpEnabled: data.config.mcpEnabled ?? false,
 						llmsEnabled: data.config.llmsEnabled ?? true,
 						skillsMdEnabled: data.config.skillsMdEnabled ?? true,
-						installShEnabled: data.config.installShEnabled ?? true,
-						cliDownloadsEnabled: data.config.cliDownloadsEnabled ?? true,
 						backendAuthStrategy: data.config.backendAuthStrategy ?? "none",
 						issueTokenApiSecret: data.config.issueTokenApiSecret ?? "",
 						gasWalletPrivateKey: data.config.gasWalletPrivateKey ?? "",
@@ -93,19 +91,12 @@ export default function App() {
 		setConfig((prev) => ({ ...prev, [key]: value }));
 
 	const setOnboardingFlag = (
-		key:
-			| "a2aEnabled"
-			| "mcpEnabled"
-			| "llmsEnabled"
-			| "skillsMdEnabled"
-			| "installShEnabled"
-			| "cliDownloadsEnabled",
+		key: "a2aEnabled" | "mcpEnabled" | "llmsEnabled" | "skillsMdEnabled",
 		value: boolean,
 	) =>
 		setConfig((prev) => ({
 			...prev,
 			[key]: value,
-			...(key === "cliDownloadsEnabled" && !value ? { installShEnabled: false } : {}),
 		}));
 
 	const hasPlans = config.plans.length > 0;
@@ -124,7 +115,6 @@ export default function App() {
 		(config.storageBackend === "redis"
 			? isManaged("redis") || config.redisUrl.length > 0
 			: isManaged("postgres") || config.databaseUrl.length > 0) &&
-		(!config.installShEnabled || config.cliDownloadsEnabled) &&
 		config.plans.every((p) => p.planId && p.unitAmount) &&
 		config.routes.every((r) => r.routeId && r.path.startsWith("/") && r.method) &&
 		planIdsUnique &&
@@ -426,19 +416,8 @@ export default function App() {
 									label: "Enable skills.md",
 									hint: "Serve /skills.md with richer workflow guidance",
 								},
-								{
-									key: "cliDownloadsEnabled" as const,
-									label: "Enable CLI downloads",
-									hint: "Serve seller CLI binaries from /cli/:target",
-								},
-								{
-									key: "installShEnabled" as const,
-									label: "Enable install.sh",
-									hint: "Serve /install.sh for one-command CLI install",
-								},
 							].map(({ key, label, hint }) => {
 								const checked = config[key];
-								const disabled = key === "installShEnabled" && !config.cliDownloadsEnabled;
 								return (
 									<div
 										key={key}
@@ -450,11 +429,10 @@ export default function App() {
 										</div>
 										<button
 											type="button"
-											disabled={disabled}
 											onClick={() => setOnboardingFlag(key, !checked)}
 											className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-all duration-300 ${
 												checked ? "shadow-neu-inset bg-accent" : "shadow-neu-inset bg-surface"
-											} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+											} cursor-pointer`}
 										>
 											<span
 												className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-surface-raised shadow-neu-sm transition-all duration-300 mt-1 ${

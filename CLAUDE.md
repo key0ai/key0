@@ -81,7 +81,7 @@ Client → GET /api/route + PAYMENT-SIGNATURE → direct 200 response (embedded,
 
 `noAuth`, `sharedSecretAuth`, `signedJwtAuth`, `oauthClientCredentialsAuth` — service-to-service auth strategies for outbound requests from client agents. `noAuth` sends no headers (local dev / trusted networks). `createRemoteTokenIssuer` wraps a remote HTTP endpoint as a `fetchResourceCredentials` callback.
 
-`standalone-onboarding.ts` — buyer-facing content generators for the standalone Docker deployment: `buildLlmsTxt`, `buildSkillsMd`, and `createCliArtifactManager` (builds `buildCli` artifacts per config fingerprint into `/app/config/cli-cache`; seller distributes binaries manually via `docker cp` or volume mount — not served over HTTP).
+`standalone-onboarding.ts` — buyer-facing content generators for the standalone Docker deployment: `buildLlmsTxt` and `buildSkillsMd`. CLI binaries are not built by the standalone server — sellers use `buildCli()` from `src/integrations/cli.ts` directly.
 
 ## Key Configuration
 
