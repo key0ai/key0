@@ -6,8 +6,8 @@ description: "Run Key0 as a standalone Docker container alongside your existing 
 
 By the end of this guide you will have a running Key0 Docker container that:
 - Accepts USDC payments from AI agents
-- Calls your `ISSUE_TOKEN_API` to fetch credentials after a confirmed payment
-- Automatically refunds agents if your token endpoint fails
+- Either calls your `ISSUE_TOKEN_API` to fetch credentials (subscription plans), or proxies to your backend and returns data directly (per-request plans)
+- Automatically refunds agents if your token endpoint fails or the backend returns an error
 - Exposes `GET /discovery`, `POST /x402/access`, and `GET /.well-known/agent.json`
 
 <Note>
@@ -166,6 +166,54 @@ Your endpoint returns any credential shape you need. Key0 forwards the response 
   If your `ISSUE_TOKEN_API` endpoint returns an error or is unreachable, Key0 automatically initiates an on-chain refund to the paying agent. See [Automatic Refunds](/architecture/refunds) for details.
 </Note>
 
+## Per-Request Mode (PROXY_TO_BASE_URL)
+
+For `mode: "per-request"` plans, Key0 settles the payment and then proxies the request to your backend — no `ISSUE_TOKEN_API` call is made for these plans. The agent receives a `ResourceResponse` containing the backend's actual response data.
+
+```
+┌──────────────┐     ┌──────────────────────┐     ┌──────────────────┐
+│ Client Agent │     │    key0 (Docker)      │     │  Your Backend    │
+│              │────▶│  POST /x402/access    │     │                  │
+│              │◀────│  { planId, resource } │     │                  │
+│              │     │  402 + requirements   │     │                  │
+│              │     │                       │     │                  │
+│              │     │  verify on-chain      │     │                  │
+│              │     │  proxy request ───────│────▶│  GET /api/...    │
+│              │◀────│  ResourceResponse     │◀────│  200 {data}      │
+└──────────────┘     └──────────────────────┘     └──────────────────┘
+```
+
+Set `PROXY_TO_BASE_URL` to your backend's base URL and add per-request plans to `PLANS`:
+
+```bash
+docker run \
+  -e KEY0_WALLET_ADDRESS=0xYourWallet \
+  -e PROXY_TO_BASE_URL=https://api.yourdomain.com \
+  -e PLANS='[{"planId":"weather-query","unitAmount":"$0.01","mode":"per-request","description":"Current weather — $0.01 per call","routes":[{"method":"GET","path":"/api/weather/:city"}]}]' \
+  -p 3000:3000 \
+  key0ai/key0:latest
+```
+
+When `PROXY_TO_BASE_URL` is set:
+- Per-request plans (`mode: "per-request"`) are handled by the proxy — agents call `POST /x402/access` with a `resource` field, Key0 settles and forwards to `PROXY_TO_BASE_URL + path`.
+- Subscription plans (`mode: "subscription"`, the default) still call `ISSUE_TOKEN_API` as normal.
+- Both plan types can coexist in `PLANS`.
+
+Key0 injects payment metadata headers on every proxied request so your backend can log or verify the payment without a round-trip:
+
+| Header | Value |
+|---|---|
+| `x-key0-tx-hash` | On-chain transaction hash |
+| `x-key0-plan-id` | Plan that was charged |
+| `x-key0-amount` | Dollar amount (e.g. `"$0.01"`) |
+| `x-key0-payer` | Payer wallet address (when available) |
+
+<Note>
+  `ISSUE_TOKEN_API` is **not** called for per-request plans when `PROXY_TO_BASE_URL` is set. You can omit it entirely if all your plans are per-request.
+</Note>
+
+---
+
 ## Test it
 
 Once the container is running, verify the setup:
@@ -221,6 +269,25 @@ curl -X POST http://localhost:3000/x402/access \
 
 The discovery call returns all available plans — start here to find a valid `planId`. The access request returns an x402 challenge with the payment amount and destination wallet. An agent completes the flow by signing an EIP-3009 authorization and submitting proof. See [Paying for Access](/guides/paying-for-access) for the full client walkthrough.
 
+If you have per-request plans configured (with `PROXY_TO_BASE_URL`), test the per-request flow by including a `resource` field:
+
+```bash Request per-request plan (returns 402 challenge)
+curl -X POST http://localhost:3000/x402/access \
+  -H "Content-Type: application/json" \
+  -d '{"planId": "weather-query", "resource": {"method": "GET", "path": "/api/weather/london"}}'
+```
+
+```json Expected output (HTTP 402 — same as subscription)
+{
+  "x402Version": 2,
+  "accepts": [{ "amount": "10000", "payTo": "0xYourWallet...", "network": "eip155:84532" }],
+  "challengeId": "http-a1b2c3d4-...",
+  "error": "Payment required"
+}
+```
+
+After payment, the server returns a `ResourceResponse` with your backend's data instead of an `AccessGrant`. See [Paying for Access — Per-Request Flow](/guides/paying-for-access#per-request-flow) for the full client walkthrough.
+
 ## Docker image tags
 
 | Tag | When to use |
@@ -233,7 +300,10 @@ The discovery call returns all available plans — start here to find a valid `p
 
 <CardGroup cols={2}>
   <Card title="Environment Variables" icon="gear" href="/deployment/environment-variables">
-    Full reference of all configuration options.
+    Full reference of all configuration options including PROXY_TO_BASE_URL.
+  </Card>
+  <Card title="Pay-Per-Request Standalone Example" icon="coins" href="/examples/ppr-standalone">
+    Runnable example: Key0 as a payment gateway proxying to a backend API.
   </Card>
   <Card title="Storage Configuration" icon="database" href="/architecture/storage">
     Redis, Postgres, and custom storage backends.

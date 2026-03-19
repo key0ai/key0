@@ -10,6 +10,7 @@
 
 import { randomBytes } from "node:crypto";
 import { formatUnits, type PublicClient, type WalletClient } from "viem";
+import type { ResourceResponse } from "../../src/types/challenge.ts";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,12 @@ export type EIP3009Auth = {
 		validBefore: string;
 		nonce: `0x${string}`;
 	};
+};
+
+export type PprResource = {
+	method: string;
+	path: string;
+	body?: unknown;
 };
 
 // ─── EIP-3009 typed data ────────────────────────────────────────────────────
@@ -324,6 +331,324 @@ export class E2eTestClient {
 		}
 
 		return { requestId, challengeId, grant: result.grant };
+	}
+
+	// ── ProxyPath plans: request access using planId + params ──────────────
+
+	async requestProxyPlanAccess(opts: {
+		planId: string;
+		requestId: string;
+		params?: Record<string, string>;
+	}): Promise<ChallengeResponse> {
+		const res = await fetch(`${this.key0Url}/x402/access`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				planId: opts.planId,
+				requestId: opts.requestId,
+				...(opts.params !== undefined ? { params: opts.params } : {}),
+				clientAgentId: `agent://${this.account}`,
+			}),
+		});
+
+		if (res.status !== 402) {
+			const text = await res.text();
+			throw new Error(`Expected HTTP 402, got ${res.status}: ${text}`);
+		}
+
+		const body = (await res.json()) as Record<string, unknown>;
+		const challengeId = body["challengeId"] as string;
+
+		const header = res.headers.get("payment-required");
+		if (!header) throw new Error("Missing payment-required header");
+		const paymentRequired = JSON.parse(
+			Buffer.from(header, "base64").toString("utf-8"),
+		) as ChallengeResponse["paymentRequired"];
+
+		return { challengeId, paymentRequired };
+	}
+
+	// ── ProxyPath plans: submit payment (returns ResourceResponse or error) ──
+
+	async submitProxyPlanPayment(opts: {
+		planId: string;
+		requestId: string;
+		params?: Record<string, string>;
+		auth: EIP3009Auth;
+		paymentRequired: ChallengeResponse["paymentRequired"];
+	}): Promise<{
+		resourceResponse?: ResourceResponse;
+		error?: Record<string, unknown>;
+		status: number;
+	}> {
+		const requirements = opts.paymentRequired.accepts[0];
+		if (!requirements) throw new Error("No accepted payment requirements");
+
+		const paymentPayload = {
+			x402Version: 2,
+			network: `eip155:${this.chainId}`,
+			scheme: "exact",
+			payload: {
+				signature: opts.auth.signature,
+				authorization: opts.auth.authorization,
+				from: this.account,
+			},
+			accepted: requirements,
+		};
+		const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
+
+		const res = await fetch(`${this.key0Url}/x402/access`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"payment-signature": paymentSignature,
+			},
+			body: JSON.stringify({
+				planId: opts.planId,
+				requestId: opts.requestId,
+				...(opts.params !== undefined ? { params: opts.params } : {}),
+				clientAgentId: `agent://${this.account}`,
+			}),
+		});
+
+		const body = await res.json();
+		if (res.ok) {
+			return { resourceResponse: body as ResourceResponse, status: res.status };
+		}
+		return { error: body as Record<string, unknown>, status: res.status };
+	}
+
+	// ── ProxyPath convenience: full plan purchase via params ───────────────
+
+	async purchaseProxyPlanAccess(opts: {
+		planId: string;
+		params?: Record<string, string>;
+		requestId?: string;
+	}): Promise<{
+		requestId: string;
+		challengeId: string;
+		resourceResponse: ResourceResponse;
+	}> {
+		const requestId = opts.requestId ?? crypto.randomUUID();
+		const { challengeId, paymentRequired } = await this.requestProxyPlanAccess({
+			planId: opts.planId,
+			requestId,
+			...(opts.params !== undefined ? { params: opts.params } : {}),
+		});
+
+		const requirements = paymentRequired.accepts[0];
+		if (!requirements) throw new Error("No payment requirements");
+
+		const auth = await this.signEIP3009({
+			destination: requirements.payTo as `0x${string}`,
+			amountRaw: BigInt(requirements.amount),
+		});
+
+		const result = await this.submitProxyPlanPayment({
+			planId: opts.planId,
+			requestId,
+			...(opts.params !== undefined ? { params: opts.params } : {}),
+			auth,
+			paymentRequired,
+		});
+
+		if (!result.resourceResponse) {
+			throw new Error(`Proxy plan payment failed: ${JSON.stringify(result.error)}`);
+		}
+
+		return { requestId, challengeId, resourceResponse: result.resourceResponse };
+	}
+
+	// ── PPR Step 1: Request per-request access (with resource field) ─────
+
+	async requestPprAccess(opts: {
+		routeId: string;
+		requestId: string;
+		resource: PprResource;
+	}): Promise<ChallengeResponse> {
+		const res = await fetch(`${this.key0Url}/x402/access`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				routeId: opts.routeId,
+				requestId: opts.requestId,
+				resource: opts.resource,
+				clientAgentId: `agent://${this.account}`,
+			}),
+		});
+
+		if (res.status !== 402) {
+			const text = await res.text();
+			throw new Error(`Expected HTTP 402, got ${res.status}: ${text}`);
+		}
+
+		const body = (await res.json()) as Record<string, unknown>;
+		const challengeId = body["challengeId"] as string;
+
+		const header = res.headers.get("payment-required");
+		if (!header) throw new Error("Missing payment-required header");
+		const paymentRequired = JSON.parse(
+			Buffer.from(header, "base64").toString("utf-8"),
+		) as ChallengeResponse["paymentRequired"];
+
+		return { challengeId, paymentRequired };
+	}
+
+	// ── PPR Step 3: Submit payment (returns ResourceResponse, not AccessGrant) ──
+
+	async submitPprPayment(opts: {
+		routeId: string;
+		requestId: string;
+		resource: PprResource;
+		auth: EIP3009Auth;
+		paymentRequired: ChallengeResponse["paymentRequired"];
+	}): Promise<{
+		resourceResponse?: ResourceResponse;
+		error?: Record<string, unknown>;
+		status: number;
+	}> {
+		const requirements = opts.paymentRequired.accepts[0];
+		if (!requirements) throw new Error("No accepted payment requirements");
+
+		const paymentPayload = {
+			x402Version: 2,
+			network: `eip155:${this.chainId}`,
+			scheme: "exact",
+			payload: {
+				signature: opts.auth.signature,
+				authorization: opts.auth.authorization,
+				from: this.account,
+			},
+			accepted: requirements,
+		};
+		const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
+
+		const res = await fetch(`${this.key0Url}/x402/access`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"payment-signature": paymentSignature,
+			},
+			body: JSON.stringify({
+				routeId: opts.routeId,
+				requestId: opts.requestId,
+				resource: opts.resource,
+				clientAgentId: `agent://${this.account}`,
+			}),
+		});
+
+		const body = await res.json();
+		if (res.ok) {
+			return { resourceResponse: body as ResourceResponse, status: res.status };
+		}
+		return { error: body as Record<string, unknown>, status: res.status };
+	}
+
+	// ── PPR Convenience: full per-request purchase ────────────────────────
+
+	async purchasePprAccess(opts: {
+		routeId: string;
+		resource: PprResource;
+		requestId?: string;
+	}): Promise<{
+		requestId: string;
+		challengeId: string;
+		resourceResponse: ResourceResponse;
+	}> {
+		const requestId = opts.requestId ?? crypto.randomUUID();
+		const { challengeId, paymentRequired } = await this.requestPprAccess({
+			routeId: opts.routeId,
+			requestId,
+			resource: opts.resource,
+		});
+
+		const requirements = paymentRequired.accepts[0];
+		if (!requirements) throw new Error("No payment requirements");
+
+		const auth = await this.signEIP3009({
+			destination: requirements.payTo as `0x${string}`,
+			amountRaw: BigInt(requirements.amount),
+		});
+
+		const result = await this.submitPprPayment({
+			routeId: opts.routeId,
+			requestId,
+			resource: opts.resource,
+			auth,
+			paymentRequired,
+		});
+
+		if (!result.resourceResponse) {
+			throw new Error(`PPR payment failed: ${JSON.stringify(result.error)}`);
+		}
+
+		return { requestId, challengeId, resourceResponse: result.resourceResponse };
+	}
+
+	// ── Embedded PPR: hit route directly without payment ─────────────────
+
+	async callEmbeddedRoute(opts: { method: string; path: string; serverUrl?: string }): Promise<{
+		status: number;
+		body: unknown;
+		paymentRequired?: ChallengeResponse["paymentRequired"];
+		challengeId?: string;
+	}> {
+		const url = `${opts.serverUrl ?? this.key0Url}${opts.path}`;
+		const res = await fetch(url, { method: opts.method });
+		const body = await res.json();
+
+		if (res.status === 402) {
+			const header = res.headers.get("payment-required");
+			const paymentRequired = header
+				? (JSON.parse(
+						Buffer.from(header, "base64").toString("utf-8"),
+					) as ChallengeResponse["paymentRequired"])
+				: undefined;
+			const challengeId = (body as Record<string, unknown>)["challengeId"] as string | undefined;
+			return {
+				status: res.status,
+				body,
+				...(paymentRequired !== undefined ? { paymentRequired } : {}),
+				...(challengeId !== undefined ? { challengeId } : {}),
+			};
+		}
+
+		return { status: res.status, body };
+	}
+
+	// ── Embedded PPR: retry route with payment signature ─────────────────
+
+	async submitEmbeddedPayment(opts: {
+		method: string;
+		path: string;
+		auth: EIP3009Auth;
+		paymentRequired: ChallengeResponse["paymentRequired"];
+		serverUrl?: string;
+	}): Promise<{ status: number; body: unknown }> {
+		const requirements = opts.paymentRequired.accepts[0];
+		if (!requirements) throw new Error("No accepted payment requirements");
+
+		const paymentPayload = {
+			x402Version: 2,
+			network: `eip155:${this.chainId}`,
+			scheme: "exact",
+			payload: {
+				signature: opts.auth.signature,
+				authorization: opts.auth.authorization,
+				from: this.account,
+			},
+			accepted: requirements,
+		};
+		const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
+
+		const url = `${opts.serverUrl ?? this.key0Url}${opts.path}`;
+		const res = await fetch(url, {
+			method: opts.method,
+			headers: { "payment-signature": paymentSignature },
+		});
+
+		const body = await res.json();
+		return { status: res.status, body };
 	}
 
 	// ── Agent card ────────────────────────────────────────────────────────

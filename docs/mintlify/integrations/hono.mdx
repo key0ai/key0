@@ -274,6 +274,41 @@ function honoValidateAccessToken(config: ValidateAccessTokenConfig): MiddlewareH
 | -------- | -------- | ------------------------------------ |
 | `secret` | `string` | The JWT secret used to sign tokens   |
 
+## Pay-Per-Request Routes
+
+`key0App` returns the Hono app **and** a `payPerRequest(planId, opts?)` factory. Use it as Hono middleware on individual routes to gate them behind micro-payments — no JWT issued, payment settles inline.
+
+```typescript
+const key0 = key0App({
+  config: {
+    // ...
+    plans: [
+      {
+        planId: "weather-query",
+        unitAmount: "$0.01",
+        mode: "per-request",
+        routes: [{ method: "GET", path: "/api/weather/:city" }],
+      },
+    ],
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),
+  },
+  adapter, store, seenTxStore,
+});
+
+const app = new Hono();
+app.route("/", key0);
+
+// Gate the route — every call needs a PAYMENT-SIGNATURE header
+app.get("/api/weather/:city", key0.payPerRequest("weather-query"), (c) => {
+  const payment = c.get("key0Payment"); // PaymentInfo
+  return c.json({ city: c.req.param("city"), temp: 72, txHash: payment?.txHash });
+});
+```
+
+Without a `PAYMENT-SIGNATURE` header the middleware returns `402` with x402 payment requirements. After settlement, the `PaymentInfo` is available via `c.get("key0Payment")`.
+
+For standalone gateway mode, add `proxyTo` to `SellerConfig` — see the [Express integration](/integrations/express#pay-per-request-routes) for the full proxy configuration reference.
+
 ## Next Steps
 
 <CardGroup cols={2}>

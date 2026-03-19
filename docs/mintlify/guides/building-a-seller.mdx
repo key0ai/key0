@@ -400,17 +400,49 @@ Run it:
 WALLET_ADDRESS=0x... ACCESS_TOKEN_SECRET=your-32-char-secret REDIS_URL=redis://localhost:6379 bun run seller.ts
 ```
 
+## Pay-Per-Request Alternative
+
+The subscription model above issues a JWT that the buyer uses for subsequent requests. If you want to charge for each individual API call instead (no long-lived token), use `mode: "per-request"` plans with `key0.payPerRequest()` middleware:
+
+```typescript
+plans: [
+  // Subscription plan (issues JWT)
+  { planId: "basic", unitAmount: "$0.10" },
+  // Per-request plan (no JWT — settles inline per call)
+  {
+    planId: "weather-query",
+    unitAmount: "$0.01",
+    mode: "per-request",
+    routes: [{ method: "GET", path: "/api/weather/:city" }],
+  },
+],
+```
+
+```typescript
+// Gate individual routes — validateAccessToken NOT needed here
+app.get(
+  "/api/weather/:city",
+  key0.payPerRequest("weather-query"),
+  (req, res) => {
+    const txHash = req.key0Payment?.txHash;
+    res.json({ city: req.params.city, temp: 72, paid: true, txHash });
+  },
+);
+```
+
+Subscription and per-request plans can coexist on the same server. Use the [ppr-embedded example](/examples/ppr-embedded) for a runnable walkthrough.
+
 ## Next Steps
 
 <CardGroup cols={2}>
+  <Card title="Pay-Per-Request (Embedded)" icon="coins" href="/examples/ppr-embedded">
+    Full example with per-request weather and joke routes.
+  </Card>
   <Card title="Paying for Access" icon="credit-card" href="/guides/paying-for-access">
     Show your clients how to discover, pay, and call your API — the buyer's perspective.
   </Card>
   <Card title="Production Checklist" icon="clipboard-check" href="/guides/production-checklist">
     Security, networking, settlement, and observability — everything before going live.
-  </Card>
-  <Card title="Settlement Strategies" icon="link" href="/architecture/settlement-strategies">
-    Gas wallet vs. CDP facilitator: choose your on-chain settlement mode.
   </Card>
   <Card title="SellerConfig Reference" icon="sliders" href="/sdk-reference/seller-config">
     Complete reference for every configuration option.

@@ -83,7 +83,7 @@ describe("x402 settlement helpers", () => {
 
 			expect(() =>
 				buildHttpPaymentRequirements("invalid-tier", "default", config, networkConfig),
-			).toThrow('Plan "invalid-tier" not found');
+			).toThrow('Plan or route "invalid-tier" not found');
 		});
 	});
 

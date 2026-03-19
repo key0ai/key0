@@ -32,8 +32,10 @@ npm install @key0ai/key0
   <Step title="Agent pays on-chain">
     The agent signs an EIP-3009 authorization off-chain (no gas required on their side). Key0's gas wallet executes the USDC transfer on Base.
   </Step>
-  <Step title="Agent receives a token and calls your API">
-    Key0 returns a signed JWT (`AccessGrant`). The agent uses it as a Bearer token to call your protected endpoints.
+  <Step title="Agent receives access">
+    **Subscription plans:** Key0 returns a signed JWT (`AccessGrant`). The agent uses it as a Bearer token to call your protected endpoints.
+
+    **Per-request plans:** Key0 returns the API response directly (`ResourceResponse`) — no token issued, payment settled per call.
   </Step>
 </Steps>
 

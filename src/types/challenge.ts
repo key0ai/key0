@@ -14,6 +14,12 @@ export type AccessRequest = {
 	readonly planId: string; // must match a Plan.planId
 	readonly clientAgentId: string; // DID or URL of client agent
 	readonly callbackUrl?: string; // optional async webhook
+	/** For per-request plans in standalone mode: the backend resource to call after payment. */
+	readonly resource?: {
+		readonly method: string;
+		readonly path: string;
+		readonly body?: unknown;
+	};
 };
 
 export type X402Challenge = {
@@ -53,6 +59,31 @@ export type AccessGrant = {
 	readonly txHash: `0x${string}`;
 	readonly explorerUrl: string;
 };
+
+/**
+ * Returned by /x402/access for route-based calls.
+ * Contains the actual backend resource data instead of an access token.
+ */
+export type ResourceResponse = {
+	readonly type: "ResourceResponse";
+	readonly challengeId: string;
+	readonly requestId: string;
+	readonly planId?: string; // present for subscription flows
+	readonly routeId?: string; // present for route-based calls
+	readonly txHash?: `0x${string}`; // absent for free routes
+	readonly explorerUrl?: string; // absent for free routes
+	readonly resource: {
+		readonly status: number;
+		readonly headers?: Record<string, string>;
+		readonly body: unknown;
+	};
+};
+
+/**
+ * Alias for ResourceResponse — used in specs and docs as "ProxyGrant".
+ * Represents the data returned by Key0 after proxying a paid or free plan call.
+ */
+export type ProxyGrant = ResourceResponse;
 
 // Internal challenge record (stored in IChallengeStore)
 export type ChallengeRecord = {

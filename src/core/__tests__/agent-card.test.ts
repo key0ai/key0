@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import type { SellerConfig } from "../../types";
 import { X402_EXTENSION_URI } from "../../types";
 import { buildAgentCard } from "../agent-card.js";
@@ -62,18 +62,18 @@ describe("buildAgentCard", () => {
 	test("has two A2A spec-compliant skills", () => {
 		const card = buildAgentCard(makeConfig());
 		expect(card.skills).toHaveLength(2);
-		expect(card.skills[0]!.id).toBe("discover-plans");
-		expect(card.skills[1]!.id).toBe("request-access");
+		expect(card.skills[0]!.id).toBe("discover");
+		expect(card.skills[1]!.id).toBe("access");
 	});
 
-	test("discover-plans skill has correct structure", () => {
+	test("discover skill has correct structure", () => {
 		const card = buildAgentCard(makeConfig());
 		const skill = card.skills[0]!;
 
-		expect(skill.id).toBe("discover-plans");
-		expect(skill.name).toBe("Discover Plans");
+		expect(skill.id).toBe("discover");
+		expect(skill.name).toBe("Discover");
 		expect(skill.description).toContain("Browse available");
-		expect(skill.description).toContain("/discovery");
+		expect(skill.description).toContain("/discover");
 		expect(skill.tags).toContain("discovery");
 		expect(skill.tags).toContain("catalog");
 		expect(skill.examples).toBeDefined();
@@ -85,12 +85,12 @@ describe("buildAgentCard", () => {
 		expect((skill as any).url).toBeUndefined();
 	});
 
-	test("request-access skill has correct structure", () => {
+	test("access skill has correct structure", () => {
 		const card = buildAgentCard(makeConfig());
 		const skill = card.skills[1]!;
 
-		expect(skill.id).toBe("request-access");
-		expect(skill.name).toBe("Request Access");
+		expect(skill.id).toBe("access");
+		expect(skill.name).toBe("Access");
 		expect(skill.description).toContain("Purchase access");
 		expect(skill.description).toContain("x402 payment");
 		expect(skill.tags).toContain("payment");
@@ -116,7 +116,7 @@ describe("buildAgentCard", () => {
 		const discoverSkill = card.skills[0]!;
 		expect(discoverSkill.examples).toBeDefined();
 		expect(discoverSkill.examples!.length).toBeGreaterThan(0);
-		expect(discoverSkill.examples!.some((ex) => ex.includes("/discovery"))).toBe(true);
+		expect(discoverSkill.examples!.some((ex) => ex.includes("/discover"))).toBe(true);
 
 		const requestSkill = card.skills[1]!;
 		expect(requestSkill.examples).toBeDefined();
@@ -153,8 +153,8 @@ describe("buildAgentCard", () => {
 
 		// Still just two skills regardless of tier count
 		expect(card.skills).toHaveLength(2);
-		expect(card.skills[0]!.id).toBe("discover-plans");
-		expect(card.skills[1]!.id).toBe("request-access");
+		expect(card.skills[0]!.id).toBe("discover");
+		expect(card.skills[1]!.id).toBe("access");
 	});
 
 	test("mainnet configuration works", () => {
@@ -164,5 +164,67 @@ describe("buildAgentCard", () => {
 		// Verify description mentions mainnet
 		const discoverSkill = card.skills[0]!;
 		expect(discoverSkill.description).toContain("base");
+	});
+});
+
+function makeSellerConfig(overrides?: Partial<SellerConfig>): SellerConfig {
+	return {
+		agentName: "Test Agent",
+		agentDescription: "A test agent",
+		agentUrl: "https://agent.example.com",
+		providerName: "Test Provider",
+		providerUrl: "https://provider.example.com",
+		walletAddress: `0x${"ab".repeat(20)}` as `0x${string}`,
+		network: "testnet",
+		plans: [{ planId: "single", unitAmount: "$0.10" }],
+		fetchResourceCredentials: async () => ({ token: "test-token" }),
+		...overrides,
+	};
+}
+
+describe("skill renames", () => {
+	it("uses id 'discover' (not discover-plans)", () => {
+		const card = buildAgentCard(makeSellerConfig());
+		const ids = card.skills.map((s) => s.id);
+		expect(ids).toContain("discover");
+		expect(ids).not.toContain("discover-plans");
+	});
+
+	it("uses id 'access' (not request-access)", () => {
+		const card = buildAgentCard(makeSellerConfig());
+		const ids = card.skills.map((s) => s.id);
+		expect(ids).toContain("access");
+		expect(ids).not.toContain("request-access");
+	});
+
+	it("discover skill endpoint points to /discover", () => {
+		const card = buildAgentCard(makeSellerConfig());
+		const skill = card.skills.find((s) => s.id === "discover")!;
+		expect(skill.endpoint?.url).toContain("/discover");
+	});
+});
+
+describe("per-route skills from config.routes", () => {
+	it("builds one skill per config.routes entry", () => {
+		const config = makeSellerConfig({
+			plans: [],
+			routes: [
+				{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+			],
+			proxyTo: { baseUrl: "http://localhost:9999" },
+		});
+		const card = buildAgentCard(config);
+		const routeSkill = card.skills.find((s) => s.id.startsWith("ppr-weather"));
+		expect(routeSkill).toBeDefined();
+		const props = routeSkill?.inputSchema?.["properties"] as Record<string, unknown> | undefined;
+		expect(props?.["routeId"]).toBeDefined();
+	});
+
+	it("does NOT build skills from plans[].routes (old API)", () => {
+		const config = makeSellerConfig();
+		const card = buildAgentCard(config);
+		// No skills with ppr- prefix when config.routes is empty
+		const pprSkills = card.skills.filter((s) => s.id.startsWith("ppr-"));
+		expect(pprSkills).toHaveLength(0);
 	});
 });

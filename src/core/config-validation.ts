@@ -34,34 +34,78 @@ export function validateSellerConfig(config: SellerConfig): void {
 		);
 	}
 
-	// Validate plans array
-	if (!config.plans || config.plans.length === 0) {
-		throw new Error("SellerConfig: plans must contain at least one plan");
+	const hasPlans = (config.plans?.length ?? 0) > 0;
+	const hasRoutes = (config.routes?.length ?? 0) > 0;
+
+	// Subscription plans require fetchResourceCredentials
+	const hasSubscriptionPlans = (config.plans ?? []).some(
+		(p) => !p.free && p.mode !== "per-request",
+	);
+	if (hasSubscriptionPlans && typeof config.fetchResourceCredentials !== "function") {
+		throw new Error("fetchResourceCredentials is required when plans are configured");
+	}
+
+	// Developer mode — warn but don't throw
+	if (!hasPlans && !hasRoutes) {
+		console.warn("[key0] Warning: no plans or routes configured");
 	}
 
 	// Validate each plan
-	const planIds = new Set<string>();
-	for (const plan of config.plans) {
-		if (!plan.planId || plan.planId.trim().length === 0) {
-			throw new Error("SellerConfig: each plan must have a non-empty planId");
-		}
+	if (hasPlans) {
+		const planIds = new Set<string>();
+		for (const plan of config.plans!) {
+			if (!plan.planId || plan.planId.trim().length === 0) {
+				throw new Error("SellerConfig: each plan must have a non-empty planId");
+			}
 
-		if (planIds.has(plan.planId)) {
-			throw new Error(`SellerConfig: duplicate planId "${plan.planId}"`);
-		}
-		planIds.add(plan.planId);
+			if (planIds.has(plan.planId)) {
+				throw new Error(`SellerConfig: duplicate planId "${plan.planId}"`);
+			}
+			planIds.add(plan.planId);
 
-		try {
-			validateDollarAmount(plan.unitAmount, `plans[${plan.planId}].unitAmount`);
-		} catch {
-			throw new Error(
-				`SellerConfig: plan "${plan.planId}" has invalid unitAmount "${plan.unitAmount}" (expected format: "$X.XX")`,
-			);
+			if (!plan.free) {
+				if (!plan.unitAmount) {
+					throw new Error(
+						`SellerConfig: plan "${plan.planId}" must have a unitAmount (or set free: true)`,
+					);
+				}
+				try {
+					validateDollarAmount(plan.unitAmount, `plans[${plan.planId}].unitAmount`);
+				} catch {
+					throw new Error(
+						`SellerConfig: plan "${plan.planId}" has invalid unitAmount "${plan.unitAmount}" (expected format: "$X.XX")`,
+					);
+				}
+			}
 		}
 	}
 
-	// Validate fetchResourceCredentials is a function
-	if (typeof config.fetchResourceCredentials !== "function") {
-		throw new Error("SellerConfig: fetchResourceCredentials must be a function");
+	// Validate each route
+	if (hasRoutes) {
+		const routeIds = new Set<string>();
+		for (const route of config.routes!) {
+			if (!route.routeId?.trim()) throw new Error("each route must have a routeId");
+			if (!route.path?.startsWith("/"))
+				throw new Error(`route "${route.routeId}": path must start with "/"`);
+			if (!["GET", "POST", "PUT", "DELETE", "PATCH"].includes(route.method)) {
+				throw new Error(`route "${route.routeId}": invalid method "${route.method}"`);
+			}
+			if (route.unitAmount) {
+				try {
+					validateDollarAmount(route.unitAmount, `routes[${route.routeId}].unitAmount`);
+				} catch {
+					throw new Error(
+						`route "${route.routeId}": invalid unitAmount "${route.unitAmount}" (expected format: "$X.XX")`,
+					);
+				}
+			}
+			if (routeIds.has(route.routeId)) throw new Error(`duplicate routeId: "${route.routeId}"`);
+			routeIds.add(route.routeId);
+		}
+		if (config.proxyTo && !config.proxyTo.proxySecret) {
+			console.warn(
+				"[key0] Warning: proxyTo.proxySecret not set — backend cannot verify Key0 origin",
+			);
+		}
 	}
 }

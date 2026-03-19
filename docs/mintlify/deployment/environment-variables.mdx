@@ -51,6 +51,12 @@ Configuration differs depending on whether you run Key0 as a **standalone Docker
     | `BACKEND_AUTH_STRATEGY` | No | `none` | Authentication strategy for calls to `ISSUE_TOKEN_API`. Options: `none`, `shared-secret`, `jwt`. |
     | `ISSUE_TOKEN_API_SECRET` | No | -- | Bearer token (when strategy is `shared-secret`) or JWT signing key (when strategy is `jwt`) used to authenticate with `ISSUE_TOKEN_API`. |
 
+    ### Per-Request Proxy (Standalone PPR)
+
+    | Variable | Required | Default | Description |
+    |---|---|---|---|
+    | `PROXY_TO_BASE_URL` | No | -- | Enable per-request gateway mode. When set, `mode: "per-request"` plans route through `/x402/access`: Key0 settles the payment, proxies the request to this base URL, and returns a `ResourceResponse`. `ISSUE_TOKEN_API` is not called for per-request plans. |
+
     ### Token Issuance
 
     | Variable | Required | Default | Description |

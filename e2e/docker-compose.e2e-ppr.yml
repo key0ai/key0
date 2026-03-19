@@ -1,0 +1,32 @@
+services:
+  key0:
+    build: ..
+    ports:
+      - "3002:3000"
+    environment:
+      PORT: 3000
+      KEY0_WALLET_ADDRESS: ${KEY0_WALLET_ADDRESS}
+      KEY0_WALLET_PRIVATE_KEY: ${KEY0_WALLET_KEY}
+      GAS_WALLET_PRIVATE_KEY: ${GAS_WALLET_PRIVATE_KEY}
+      KEY0_NETWORK: testnet
+      # Share the main e2e Redis so withGasWalletLock serialises settlements
+      # across this container and ppr-embedded (which also uses localhost:6380).
+      # This mirrors production where all instances share a single Redis lock.
+      REDIS_URL: redis://host.docker.internal:6380
+      CHALLENGE_TTL_SECONDS: 300
+      AGENT_URL: http://localhost:3002
+      BASE_PATH: /a2a
+      PROXY_TO_BASE_URL: http://host.docker.internal:3001
+      KEY0_PROXY_SECRET: "e2e-gateway-proxy-secret-32-chars!"
+      # PPR-only plans never call this, but docker/server.ts requires it for isConfigured
+      ISSUE_TOKEN_API: http://host.docker.internal:3001/internal/issue-token
+      ALCHEMY_BASE_SEPOLIA_RPC_URL: ${ALCHEMY_BASE_SEPOLIA_RPC_URL:-}
+      PLANS: '[{"planId":"status","free":true,"description":"Service status (free)","proxyPath":"/api/status"},{"planId":"weather-by-city","unitAmount":"$0.01","description":"Weather by city (proxied)","mode":"per-request","proxyPath":"/api/weather/{city}"}]'
+      ROUTES: '[{"routeId":"weather-query","method":"GET","path":"/api/weather/:city","unitAmount":"$0.01","description":"Weather query per request"},{"routeId":"joke-of-the-day","method":"GET","path":"/api/joke","unitAmount":"$0.005","description":"Joke per request"}]'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 20

@@ -12,7 +12,7 @@ Let AI agents discover, pay for, and access your APIs autonomously - no human in
 
 ---
 
-- **Zero proxying** - requests go directly to your server, no latency overhead
+- **Two pricing models** - subscription plans (JWT) and per-request routes (transparent proxy)
 - **Open-source & self-hostable** - every part of the commerce flow is auditable
 - **Automatic refunds** - if anything goes wrong on-chain, key0 handles it
 
@@ -48,7 +48,9 @@ docker compose -f docker/docker-compose.yml --profile full up
 # Open http://localhost:3000 → configure via browser
 ```
 
-### Embedded - Express
+### Embedded - Subscription Plans
+
+One-time payment, JWT issued, client calls your API directly with `Bearer` token.
 
 ```bash
 bun add @key0ai/key0
@@ -61,13 +63,44 @@ app.use(key0Router({
   config: {
     walletAddress: "0xYour...",
     network: "testnet",
-    plans: [{ planId: "basic", unitAmount: "$0.10" }],
+    plans: [{ planId: "basic", unitAmount: "$5.00", description: "100 API calls" }],
     fetchResourceCredentials: async (params) => tokenIssuer.sign(params),
   },
   adapter, store, seenTxStore,
 }));
 app.use("/api", validateAccessToken({ secret: process.env.ACCESS_TOKEN_SECRET! }));
 ```
+
+### Embedded - Per-Request Routes
+
+Per-call payment, key0 proxies to your backend via `proxyTo`, no JWT issued.
+
+```typescript
+import { key0Router } from "@key0ai/key0/express";
+
+app.use(key0Router({
+  config: {
+    walletAddress: "0xYour...",
+    network: "testnet",
+    routes: [
+      { routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+      { routeId: "health", method: "GET", path: "/health" }, // free
+    ],
+    proxyTo: { baseUrl: "http://your-backend.com", proxySecret: process.env.KEY0_PROXY_SECRET },
+  },
+  adapter, store, seenTxStore,
+}));
+```
+
+### Comparison
+
+| | Subscription Plan | Per-Request Route | Free Route |
+|---|---|---|---|
+| **Config** | `plans: [{ planId, unitAmount }]` | `routes: [{ routeId, method, path, unitAmount }]` | `routes: [{ routeId, method, path }]` (no `unitAmount`) |
+| **Payment** | One-time | Every call | None |
+| **Credential** | JWT via `fetchResourceCredentials` | None — transparent proxy | None — transparent proxy |
+| **Traffic flow** | Client calls your API directly | key0 proxies via `proxyTo` | key0 proxies via `proxyTo` |
+| **Discovery** | `GET /discover` → `plans[]` | `GET /discover` → `routes[]` | `GET /discover` → `routes[]` |
 
 `adapter`, `store`, and `seenTxStore` are constructed in the [Embedded Mode](#embedded-mode) section.
 
@@ -113,7 +146,7 @@ Client Agent          key0                    Seller Server
 
 ```
 Client                key0                    Seller Server
-     │  1. GET /discovery │                         │
+     │  1. GET /discover  │                         │
      │ ──────────────────▶│                         │
      │ ◀── plan catalog   │                         │
      │                   │                         │
@@ -132,12 +165,33 @@ Client                key0                    Seller Server
      │ ◀── protected content                       │
 ```
 
+### Per-Request Routes (Transparent Proxy)
+
+For per-request `routes`, no JWT is issued. key0 settles the payment and transparently proxies the request to your backend via `proxyTo`:
+
+```
+Client                key0                    Backend
+     │  POST /x402/access { routeId }              │
+     │ ──────────────────▶│                         │
+     │ ◀── HTTP 402       │                         │
+     │                   │                         │
+     │  POST + PAYMENT-SIGNATURE                   │
+     │ ──────────────────▶│                         │
+     │                   │── settle on-chain        │
+     │                   │── proxy request ────────▶│
+     │                   │◀── backend response      │
+     │ ◀── ResourceResponse (backend data, no token)│
+```
+
+All paths share the same `PENDING → PAID → DELIVERED` lifecycle with automatic refunds if the backend call fails after a successful payment.
 
 ---
 
 ## Standalone Mode
 
 Run key0 as a Docker container alongside your existing backend. No code changes required.
+
+**Subscription plans** — key0 calls your `ISSUE_TOKEN_API` and returns a JWT:
 
 ```
 ┌──────────────┐     ┌──────────────────────┐     ┌──────────────────┐
@@ -148,6 +202,21 @@ Run key0 as a Docker container alongside your existing backend. No code changes 
 │              │     │  verify on-chain      │     │                  │
 │              │     │  POST /issue-token ───│────▶│  issue-token     │
 │              │◀────│  AccessGrant          │◀────│  {token, ...}    │
+└──────────────┘     └──────────────────────┘     └──────────────────┘
+```
+
+**Per-request routes** (set `PROXY_TO_BASE_URL`) — key0 proxies to your backend and returns the response directly:
+
+```
+┌──────────────┐     ┌──────────────────────┐     ┌──────────────────┐
+│ Client Agent │     │    key0 (Docker)      │     │  Your Backend    │
+│              │────▶│  POST /x402/access    │     │                  │
+│              │◀────│  { routeId }          │     │                  │
+│              │     │  402 + requirements   │     │                  │
+│              │     │                       │     │                  │
+│              │     │  verify on-chain      │     │                  │
+│              │     │  proxy request ───────│────▶│  GET /api/...    │
+│              │◀────│  ResourceResponse     │◀────│  200 {data}      │
 └──────────────┘     └──────────────────────┘     └──────────────────┘
 ```
 
@@ -232,12 +301,13 @@ Build from source: `docker build -t key0ai/key0 .`
 | `AGENT_URL` | | `http://localhost:PORT` | Publicly reachable URL of this server - used in the agent card and resource endpoint URLs |
 | `PROVIDER_NAME` | | `key0` | Your organization name shown in the agent card `provider` field |
 | `PROVIDER_URL` | | `https://key0.ai` | Your organization URL shown in the agent card `provider` field |
-| `PLANS` | | `[{"planId":"basic","unitAmount":"$0.10"}]` | JSON array of pricing plans - each with `planId`, `unitAmount`, and optional `description` |
+| `PLANS` | | `[{"planId":"basic","unitAmount":"$0.10"}]` | JSON array of subscription plans - each with `planId`, `unitAmount`, and optional `description` |
+| `ROUTES_B64` | | - | Base64-encoded JSON array of per-request routes - each with `routeId`, `method`, `path`, optional `unitAmount` and `description` |
 | `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
 | `BASE_PATH` | | - | URL path prefix for endpoints (e.g. `/a2a` mounts `/a2a/.well-known/agent.json`). The `/x402/access` endpoint is always at the root. |
 | `BACKEND_AUTH_STRATEGY` | | `none` | How key0 authenticates with `ISSUE_TOKEN_API` - `none`, `shared-secret`, or `jwt` |
 | `ISSUE_TOKEN_API_SECRET` | | - | Secret for `ISSUE_TOKEN_API` auth - Bearer token (shared-secret) or JWT signing key (jwt). Only used when `BACKEND_AUTH_STRATEGY` is not `none` |
-| `MCP_ENABLED` | | `false` | When `true`, mounts MCP routes (`/.well-known/mcp.json` + `POST /mcp`) exposing `discover_plans` and `request_access` tools |
+| `MCP_ENABLED` | | `false` | When `true`, mounts MCP routes (`/.well-known/mcp.json` + `POST /mcp`) exposing `discover` and `access` tools |
 | `STORAGE_BACKEND` | | `redis` | Storage backend - `redis` or `postgres` |
 | `DATABASE_URL` | | - | PostgreSQL connection URL - required when `STORAGE_BACKEND=postgres` |
 | `REDIS_URL` | ✅ | - | Redis connection URL - required for challenge state (or BullMQ refund cron when using Postgres) |
@@ -249,7 +319,8 @@ Build from source: `docker build -t key0ai/key0 .`
 | `REFUND_BATCH_SIZE` | | `50` | Max number of `PAID` records processed per refund cron tick |
 | `TOKEN_ISSUE_TIMEOUT_MS` | | `15000` | Timeout (ms) for each `ISSUE_TOKEN_API` call |
 | `TOKEN_ISSUE_RETRIES` | | `2` | Number of retries for transient `ISSUE_TOKEN_API` failures (does not retry on deterministic errors) |
-
+| `PROXY_TO_BASE_URL` | | - | Enable per-request route proxying. Requests for priced routes are proxied to this base URL after payment settlement. Required when `ROUTES_B64` includes priced routes |
+| `KEY0_PROXY_SECRET` | | - | Shared secret sent as `X-Key0-Internal-Token` header on every proxied request. Your backend validates this to ensure traffic comes from key0 |
 
 See [`docker/.env.example`](docker/.env.example) for a fully annotated example.
 
@@ -383,8 +454,9 @@ app.use(
       providerUrl: "https://example.com",
       walletAddress: "0xYourWalletAddress" as `0x${string}`,
       network: "testnet",
+      // Subscription plans — client pays once, gets a JWT
       plans: [
-        { planId: "basic", unitAmount: "$0.10", description: "Basic API access." },
+        { planId: "basic", unitAmount: "$5.00", description: "100 API calls" },
       ],
       fetchResourceCredentials: async (params) => {
         return tokenIssuer.sign(
@@ -392,6 +464,12 @@ app.use(
           3600,
         );
       },
+      // Per-request routes — key0 proxies to your backend after payment
+      routes: [
+        { routeId: "weather", method: "GET" as const, path: "/api/weather/:city", unitAmount: "$0.01" },
+        { routeId: "health", method: "GET" as const, path: "/health" }, // free
+      ],
+      proxyTo: { baseUrl: "http://localhost:4000", proxySecret: process.env.KEY0_PROXY_SECRET },
     },
     adapter,
     store,
@@ -457,6 +535,95 @@ fastify.addHook("onRequest", fastifyValidateAccessToken({ secret: process.env.AC
 fastify.listen({ port: 3000 });
 ```
 
+### Per-Request Routes (Embedded)
+
+Gate individual routes behind micro-payments. key0 settles payment inline and calls `next()` — no JWT is issued.
+
+```typescript
+const key0 = key0Router({
+  config: {
+    // ...
+    routes: [
+      { routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+      { routeId: "joke", method: "GET", path: "/api/joke", unitAmount: "$0.005" },
+    ],
+  },
+  adapter, store, seenTxStore,
+});
+app.use(key0);
+
+// Gate each route — every call must include a PAYMENT-SIGNATURE header
+app.get(
+  "/api/weather/:city",
+  key0.payPerRequest("weather", {
+    onPayment: (info) => console.log(`Settled: ${info.txHash}`),
+  }),
+  (req, res) => {
+    const payment = req.key0Payment; // PaymentInfo — txHash, routeId, amount, etc.
+    res.json({ city: req.params.city, temp: 72, txHash: payment?.txHash });
+  },
+);
+
+app.get("/api/joke", key0.payPerRequest("joke"), (req, res) => {
+  res.json({ joke: "Why do programmers prefer dark mode? Bugs." });
+});
+```
+
+For Hono, use `key0.payPerRequest(routeId)` as Hono middleware. For Fastify, use `{ preHandler: key0.payPerRequest(routeId) }` in the route options.
+
+The standalone gateway alternative (transparent proxy via `proxyTo`, all traffic via `/x402/access`) is covered in the [Standalone Mode](#standalone-mode) section.
+
+### Coexistence: Plans + Routes on the Same API
+
+A seller can offer **both** subscription plans and per-request routes simultaneously. The discovery endpoint returns both:
+
+```json
+{
+  "agentName": "Weather Pro",
+  "description": "Weather data API",
+  "plans": [{ "planId": "basic", "unitAmount": "$5.00", "description": "100 API calls" }],
+  "routes": [{ "routeId": "weather", "method": "GET", "path": "/api/weather/:city", "unitAmount": "$0.01" }]
+}
+```
+
+**Config:**
+
+```typescript
+app.use(key0Router({
+  config: {
+    // ...
+    plans: [{ planId: "basic", unitAmount: "$5.00" }],
+    routes: [{ routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" }],
+    proxyTo: { baseUrl: "http://localhost:4000", proxySecret: process.env.KEY0_PROXY_SECRET },
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params),
+  },
+  adapter, store, seenTxStore,
+}));
+```
+
+**Backend dual-auth pattern** — your backend checks both auth methods:
+
+```typescript
+// Your backend at localhost:4000
+app.get("/api/weather/:city", (req, res) => {
+  // Per-request path: key0 proxies with X-Key0-Internal-Token
+  const proxyToken = req.headers["x-key0-internal-token"];
+  if (proxyToken === process.env.KEY0_PROXY_SECRET) {
+    return res.json({ city: req.params.city, temp: 72 });
+  }
+
+  // Subscription path: client calls directly with Bearer JWT
+  const bearer = req.headers.authorization?.replace("Bearer ", "");
+  if (bearer && validateJwt(bearer)) {
+    return res.json({ city: req.params.city, temp: 72 });
+  }
+
+  res.status(401).json({ error: "Unauthorized" });
+});
+```
+
+---
+
 ### Configuration Reference
 
 #### SellerConfig
@@ -470,8 +637,9 @@ fastify.listen({ port: 3000 });
 | `providerUrl` | `string` | ✅ | - | Your company/org URL |
 | `walletAddress` | `0x${string}` | ✅ | - | USDC-receiving wallet |
 | `network` | `"testnet" \| "mainnet"` | ✅ | - | Base Sepolia or Base |
-| `plans` | `Plan[]` | ✅ | - | Pricing plans |
-| `fetchResourceCredentials` | `(params) => Promise<TokenIssuanceResult>` | ✅ | - | Issue the credential after payment |
+| `plans` | `Plan[]` | | `[]` | Subscription plans (one-time payment → JWT) |
+| `routes` | `Route[]` | | `[]` | Per-request routes (pay-per-call → transparent proxy) |
+| `fetchResourceCredentials` | `(params) => Promise<TokenIssuanceResult>` | | - | Issue the credential after payment. Required when `plans` is non-empty |
 | `tokenIssueTimeoutMs` | `number` | | `15000` | Timeout for `fetchResourceCredentials` callback (ms) |
 | `tokenIssueRetries` | `number` | | `2` | Max retries for `fetchResourceCredentials` on transient failure |
 | `challengeTTLSeconds` | `number` | | `900` | Challenge validity window |
@@ -482,17 +650,83 @@ fastify.listen({ port: 3000 });
 | `redis` | `IRedisLockClient` | | - | Redis client for distributed gas wallet settlement locking across replicas |
 | `facilitatorUrl` | `string` | | CDP default | Override the x402 facilitator URL |
 | `rpcUrl` | `string` | | public RPC | Override the RPC endpoint for on-chain operations — use Alchemy or other private RPC in production |
+| `fetchResource` | `(params: FetchResourceParams) => Promise<FetchResourceResult>` | | - | Per-request proxy: called after settlement to fetch backend content. Enables standalone mode for `mode: "per-request"` plans |
+| `proxyTo` | `ProxyToConfig` | | - | Per-request proxy shorthand: builds a `fetchResource` that forwards to `baseUrl`. Supports optional `headers` (e.g. shared secret) and `pathRewrite` |
 | `onPaymentReceived` | `(grant) => Promise<void>` | | - | Fired after successful payment |
 | `onChallengeExpired` | `(challengeId) => Promise<void>` | | - | Fired when a challenge expires |
 | `mcp` | `boolean` | | `false` | Enable MCP server - mounts `/.well-known/mcp.json` and `POST /mcp` (Streamable HTTP) |
 
 #### Plan
 
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `planId` | `string` | ✅ | - | Unique plan identifier |
+| `unitAmount` | `string` | ✅ | - | Price (e.g. `"$0.10"`) |
+| `description` | `string` | | - | Free-form description of what the plan includes |
+| `mode` | `"subscription" \| "per-request"` | | `"subscription"` | Billing mode. `"subscription"` issues a JWT; `"per-request"` gates individual calls |
+| `routes` | `PlanRouteInfo[]` | | `[]` | Routes guarded by this per-request plan — used in the agent card and discovery response |
+
+#### Route
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `routeId` | `string` | ✅ | - | Unique route identifier |
+| `method` | `"GET" \| "POST" \| "PUT" \| "DELETE" \| "PATCH"` | ✅ | - | HTTP method |
+| `path` | `string` | ✅ | - | Express-style path (e.g. `"/api/weather/:city"`) |
+| `unitAmount` | `string` | | - | Price per call (e.g. `"$0.01"`). Omit for free routes |
+| `description` | `string` | | - | Human-readable description |
+
+#### PaymentInfo
+
+Available as `req.key0Payment` in embedded route handlers after successful per-request settlement.
+
+| Field | Type | Description |
+|---|---|---|
+| `txHash` | `0x${string}` | On-chain transaction hash |
+| `payer` | `string \| undefined` | Paying wallet address (when available) |
+| `planId` | `string` | Plan that was charged |
+| `amount` | `string` | Amount charged (e.g. `"$0.01"`) |
+| `method` | `string` | HTTP method of the request |
+| `path` | `string` | Route path of the request |
+| `challengeId` | `string` | Internal challenge ID (use for audit / refund tracking) |
+
+#### PlanRouteInfo
+
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `planId` | `string` | ✅ | Unique plan identifier |
-| `unitAmount` | `string` | ✅ | Price (e.g. `"$0.10"`) |
-| `description` | `string` | | Free-form description of what the plan includes |
+| `method` | `string` | ✅ | HTTP method (e.g. `"GET"`) |
+| `path` | `string` | ✅ | Route path (e.g. `"/api/weather/:city"`) |
+| `description` | `string` | | Human-readable description of the route |
+
+#### ProxyToConfig
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `baseUrl` | `string` | ✅ | Base URL of the backend service to proxy to |
+| `headers` | `Record<string, string>` | | Extra headers to inject (e.g. a shared secret so the backend rejects requests that bypass the gateway) |
+| `pathRewrite` | `(path: string) => string` | | Optional function to rewrite the path before forwarding |
+
+#### FetchResourceParams
+
+Passed to your `fetchResource` callback after on-chain settlement.
+
+| Field | Type | Description |
+|---|---|---|
+| `paymentInfo` | `PaymentInfo` | Payment metadata (txHash, payer, planId, amount) |
+| `method` | `string` | HTTP method of the original request |
+| `path` | `string` | Path of the original request |
+| `headers` | `Record<string, string>` | Forwarded request headers |
+| `body` | `unknown` | Request body (if any) |
+
+#### FetchResourceResult
+
+Returned by your `fetchResource` callback — used to build the `ResourceResponse` the client receives.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `status` | `number` | ✅ | HTTP status code from the backend |
+| `body` | `unknown` | ✅ | Response body |
+| `headers` | `Record<string, string>` | | Response headers to forward to the client |
 
 #### IssueTokenParams
 
@@ -620,8 +854,8 @@ This adds:
 - `POST /mcp` - Streamable HTTP transport endpoint
 
 **Two tools are exposed:**
-- `discover_plans` - returns the plan catalog (plans, pricing, wallet, chainId)
-- `request_access` - x402 payment-gated tool: call to get payment requirements, then use `payments-mcp` to complete payment via the HTTPS x402 endpoint. Includes pre-settlement resource verification, Zod payload validation, and deterministic request IDs for idempotent retry recovery
+- `discover` - returns the catalog (plans, routes, pricing, wallet, chainId)
+- `access` - x402 payment-gated tool: call to get payment requirements, then use `payments-mcp` to complete payment via the HTTPS x402 endpoint. Includes pre-settlement resource verification, Zod payload validation, and deterministic request IDs for idempotent retry recovery
 
 **Connect from Claude Code** (`.mcp.json`):
 ```json
@@ -777,6 +1011,8 @@ bun run start
 | [`examples/standalone-service`](./examples/standalone-service) | key0 as a separate service with Redis + gas wallet |
 | [`examples/refund-cron-example`](./examples/refund-cron-example) | BullMQ refund cron with Redis-backed storage |
 | [`examples/backend-integration`](./examples/backend-integration) | key0 service + backend API coordination |
+| [`examples/ppr-embedded`](./examples/ppr-embedded) | Per-request routes in embedded mode — weather + joke routes, inline settlement, no JWT |
+| [`examples/ppr-standalone`](./examples/ppr-standalone) | Per-request routes in standalone gateway mode — key0 proxies to a backend after payment |
 | [`examples/client-agent`](./examples/client-agent) | Buyer agent with real on-chain USDC payments |
 | [`examples/simple-x402-client.ts`](./examples/simple-x402-client.ts) | Minimal x402 HTTP client example (single file) |
 

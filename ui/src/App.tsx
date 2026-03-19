@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Field, Input, Select } from "./components/Field";
 import { OutputPanel } from "./components/OutputPanel";
 import { PlanEditor } from "./components/PlanEditor";
+import { RouteEditor } from "./components/RouteEditor.js";
 import { Section } from "./components/Section";
 import { type Config, defaultConfig } from "./types";
 
@@ -86,16 +87,26 @@ export default function App() {
 	const set = <K extends keyof Config>(key: K, value: Config[K]) =>
 		setConfig((prev) => ({ ...prev, [key]: value }));
 
+	const hasPlans = config.plans.length > 0;
+	const hasRoutes = config.routes.length > 0;
+
+	const planIdsUnique = new Set(config.plans.map((p) => p.planId)).size === config.plans.length;
+	const routeIdsUnique = new Set(config.routes.map((r) => r.routeId)).size === config.routes.length;
+
 	const isValid =
 		config.providerName.length > 0 &&
 		config.walletAddress.startsWith("0x") &&
 		config.walletAddress.length === 42 &&
-		config.issueTokenApi.length > 0 &&
+		(hasPlans || hasRoutes) &&
+		(!hasPlans || config.issueTokenApi.length > 0) &&
+		(!hasRoutes || config.proxyToBaseUrl.length > 0) &&
 		(config.storageBackend === "redis"
 			? isManaged("redis") || config.redisUrl.length > 0
 			: isManaged("postgres") || config.databaseUrl.length > 0) &&
-		config.plans.length > 0 &&
-		config.plans.every((p) => p.planId && p.unitAmount);
+		config.plans.every((p) => p.planId && p.unitAmount) &&
+		config.routes.every((r) => r.routeId && r.path.startsWith("/") && r.method) &&
+		planIdsUnique &&
+		routeIdsUnique;
 
 	const isDockerMode = serverStatus === "setup" || serverStatus === "running";
 
@@ -220,64 +231,109 @@ export default function App() {
 
 						<div className="border-t border-foreground/10" />
 
-						{/* 2. Pricing Plans */}
-						<Section icon="$" title="Pricing Plans" description="Define pricing plans for your API">
-							<PlanEditor plans={config.plans} onChange={(p) => set("plans", p)} />
+						{/* 2. Pay-Per-Call Routes */}
+						<Section
+							icon="→"
+							title="Pay-Per-Call Routes"
+							description="Each API call is individually priced. Key0 collects payment and proxies the request to your backend."
+						>
+							<RouteEditor routes={config.routes} onChange={(r) => set("routes", r)} />
+
+							{config.routes.length > 0 && (
+								<>
+									<div className="border-t border-foreground/10" />
+									<Field
+										label="Backend URL"
+										required
+										hint="Key0 proxies all route requests to this base URL (e.g. http://localhost:3001)"
+									>
+										<Input
+											placeholder="http://localhost:3001"
+											value={config.proxyToBaseUrl}
+											onChange={(e) => set("proxyToBaseUrl", e.target.value)}
+										/>
+									</Field>
+									<Field
+										label="Internal Secret"
+										hint="Sent as x-key0-internal-token on every proxied request. Validate in your backend to verify origin."
+									>
+										<Input
+											type="password"
+											placeholder="optional but recommended"
+											value={config.proxySecret}
+											onChange={(e) => set("proxySecret", e.target.value)}
+										/>
+									</Field>
+								</>
+							)}
 						</Section>
 
 						<div className="border-t border-foreground/10" />
 
-						{/* 3. Token Issuance */}
+						{/* 3. Subscription Plans */}
 						<Section
-							icon="T"
-							title="Token Issuance"
-							description="Your backend endpoint for issuing access tokens"
+							icon="$"
+							title="Subscription Plans"
+							description="Clients pay once and receive a token for ongoing access"
 						>
-							<Field
-								label="Issue Token API"
-								required
-								hint="Key0 POSTs here after payment is verified"
-							>
-								<Input
-									value={config.issueTokenApi}
-									onChange={(e) => set("issueTokenApi", e.target.value)}
-									placeholder="https://api.example.com/issue-token"
-								/>
-							</Field>
+							<PlanEditor plans={config.plans} onChange={(p) => set("plans", p)} />
 
-							<Field label="Backend Auth Strategy" hint="How Key0 authenticates with your backend">
-								<Select
-									value={config.backendAuthStrategy}
-									onChange={(e) =>
-										set("backendAuthStrategy", e.target.value as "none" | "shared-secret" | "jwt")
-									}
-								>
-									<option value="none">None (no auth)</option>
-									<option value="shared-secret">Shared Secret (Bearer token)</option>
-									<option value="jwt">JWT (signed token)</option>
-								</Select>
-							</Field>
+							{config.plans.length > 0 && (
+								<>
+									<div className="border-t border-foreground/10" />
+									<Field
+										label="Issue Token API"
+										required
+										hint="Key0 POSTs here after payment is verified to issue an access token"
+									>
+										<Input
+											value={config.issueTokenApi}
+											onChange={(e) => set("issueTokenApi", e.target.value)}
+											placeholder="https://api.example.com/issue-token"
+										/>
+									</Field>
 
-							{config.backendAuthStrategy !== "none" && (
-								<Field
-									label="API Secret"
-									hint={
-										config.backendAuthStrategy === "jwt"
-											? "Secret used to sign JWT tokens sent to your API"
-											: "Sent as Authorization: Bearer header to your API"
-									}
-								>
-									<Input
-										type="password"
-										value={config.issueTokenApiSecret}
-										onChange={(e) => set("issueTokenApiSecret", e.target.value)}
-										placeholder={
-											config.backendAuthStrategy === "jwt"
-												? "JWT signing secret (min 32 chars)"
-												: "Optional shared secret"
-										}
-									/>
-								</Field>
+									<Field
+										label="Backend Auth Strategy"
+										hint="How Key0 authenticates with your backend"
+									>
+										<Select
+											value={config.backendAuthStrategy}
+											onChange={(e) =>
+												set(
+													"backendAuthStrategy",
+													e.target.value as "none" | "shared-secret" | "jwt",
+												)
+											}
+										>
+											<option value="none">None (no auth)</option>
+											<option value="shared-secret">Shared Secret (Bearer token)</option>
+											<option value="jwt">JWT (signed token)</option>
+										</Select>
+									</Field>
+
+									{config.backendAuthStrategy !== "none" && (
+										<Field
+											label="API Secret"
+											hint={
+												config.backendAuthStrategy === "jwt"
+													? "Secret used to sign JWT tokens sent to your API"
+													: "Sent as Authorization: Bearer header to your API"
+											}
+										>
+											<Input
+												type="password"
+												value={config.issueTokenApiSecret}
+												onChange={(e) => set("issueTokenApiSecret", e.target.value)}
+												placeholder={
+													config.backendAuthStrategy === "jwt"
+														? "JWT signing secret (min 32 chars)"
+														: "Optional shared secret"
+												}
+											/>
+										</Field>
+									)}
+								</>
 							)}
 						</Section>
 

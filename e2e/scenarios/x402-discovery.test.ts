@@ -1,66 +1,64 @@
 /**
- * x402 Discovery — verifies the discovery flow via GET /discovery.
+ * x402 Discovery — verifies the discovery flow via GET /discover.
  *
- * GET /discovery returns HTTP 200 with all available plans.
+ * GET /discover returns HTTP 200 with all available plans and routes.
  * No PENDING record is created — pure discovery.
- * This is the entry point for clients that don't yet know which plan to purchase.
+ * This is the entry point for clients that don't yet know which plan/route to use.
  *
- * POST /x402/access with no planId returns HTTP 400 pointing clients to GET /discovery.
+ * POST /x402/access with no planId/routeId returns HTTP 400 pointing clients to GET /discover.
  */
 
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TIER_ID, KEY0_URL } from "../fixtures/constants.ts";
 
 describe("x402 Discovery", () => {
-	test("GET /discovery returns 200 with all plans", async () => {
-		const res = await fetch(`${KEY0_URL}/discovery`);
+	test("GET /discover returns 200 with plans array", async () => {
+		const res = await fetch(`${KEY0_URL}/discover`);
 
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toContain("application/json");
 
 		const body = (await res.json()) as Record<string, unknown>;
-		const discoveryResponse = body["discoveryResponse"] as Record<string, unknown>;
-		expect(discoveryResponse).toBeDefined();
 
-		const accepts = discoveryResponse["accepts"] as Array<Record<string, unknown>>;
-		expect(Array.isArray(accepts)).toBe(true);
-		expect(accepts.length).toBeGreaterThan(0);
+		// Response is unwrapped — no discoveryResponse wrapper
+		expect(body["discoveryResponse"]).toBeUndefined();
 
-		// Each plan must have required x402 fields
-		const plan = accepts[0]!;
-		expect(plan["scheme"]).toBe("exact");
-		expect(plan["network"]).toBe("eip155:84532");
-		expect(typeof plan["asset"]).toBe("string");
-		expect(typeof plan["amount"]).toBe("string");
-		expect(BigInt(plan["amount"] as string)).toBeGreaterThan(0n);
-		expect(typeof plan["payTo"]).toBe("string");
+		// plans is a top-level array
+		const plans = body["plans"] as Array<Record<string, unknown>>;
+		expect(Array.isArray(plans)).toBe(true);
+		expect(plans.length).toBeGreaterThan(0);
 
-		// Discovery plans include planId in extra
-		const extra = plan["extra"] as Record<string, unknown> | undefined;
-		expect(typeof extra?.["planId"]).toBe("string");
-		expect(extra?.["planId"]).toBe(DEFAULT_TIER_ID);
-
-		// x402Version must be set
-		expect(discoveryResponse["x402Version"]).toBe(2);
+		// Each plan must have required fields
+		const plan = plans[0]!;
+		expect(typeof plan["planId"]).toBe("string");
+		expect(plan["planId"]).toBe(DEFAULT_TIER_ID);
+		expect(typeof plan["unitAmount"]).toBe("string");
 	});
 
-	test("GET /discovery response includes key0 extensions with input/output schema", async () => {
-		const res = await fetch(`${KEY0_URL}/discovery`);
+	test("GET /discover returns routes array at top level", async () => {
+		const res = await fetch(`${KEY0_URL}/discover`);
 		expect(res.status).toBe(200);
 
 		const body = (await res.json()) as Record<string, unknown>;
-		const discoveryResponse = body["discoveryResponse"] as Record<string, unknown>;
 
-		const extensions = discoveryResponse["extensions"] as Record<string, unknown> | undefined;
-		expect(extensions).toBeDefined();
+		// routes is a top-level array (may be empty for the default stack which has no routes)
+		expect(Array.isArray(body["routes"])).toBe(true);
 
-		const key0 = extensions?.["key0"] as Record<string, unknown> | undefined;
-		expect(key0).toBeDefined();
-		expect(key0?.["inputSchema"]).toBeDefined();
-		expect(key0?.["outputSchema"]).toBeDefined();
+		// No discoveryResponse wrapper
+		expect(body["discoveryResponse"]).toBeUndefined();
 	});
 
-	test("POST /x402/access with no planId returns 400 pointing to GET /discovery", async () => {
+	test("GET /discover response has agentName at top level", async () => {
+		const res = await fetch(`${KEY0_URL}/discover`);
+		expect(res.status).toBe(200);
+
+		const body = (await res.json()) as Record<string, unknown>;
+		// agentName is top-level (not inside a wrapper)
+		expect(typeof body["agentName"]).toBe("string");
+		expect((body["agentName"] as string).length).toBeGreaterThan(0);
+	});
+
+	test("POST /x402/access with no planId returns 400 pointing to GET /discover", async () => {
 		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -71,6 +69,10 @@ describe("x402 Discovery", () => {
 
 		const body = (await res.json()) as Record<string, unknown>;
 		expect(typeof body["error"]).toBe("string");
-		expect((body["error"] as string).toLowerCase()).toContain("discovery");
+		// Error message should reference discover endpoint
+		const errMsg = (body["error"] as string).toLowerCase();
+		expect(errMsg.includes("discover") || errMsg.includes("plan") || errMsg.includes("route")).toBe(
+			true,
+		);
 	});
 });

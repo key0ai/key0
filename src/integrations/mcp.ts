@@ -6,6 +6,8 @@ import { z } from "zod";
 import type { ChallengeEngine } from "../core/index.js";
 import type { NetworkConfig, SellerConfig, X402PaymentPayload } from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
+import { interpolateUrlTemplate } from "../utils/url-template.js";
+import { resolveConfigFetchResource } from "./pay-per-request.js";
 import { buildHttpPaymentRequirements, settlePayment } from "./settlement.js";
 
 // ---------------------------------------------------------------------------
@@ -130,8 +132,8 @@ function deriveRequestId(paymentPayload: X402PaymentPayload): string {
  * Create an McpServer with Key0 tools registered.
  *
  * Tools:
- * - `discover_plans` (free) — browse the plan catalog
- * - `request_access` (x402-gated) — purchase an access token
+ * - `discover` (free) — browse the plan and route catalog
+ * - `access` (x402-gated) — purchase access to a plan or route
  *
  * Payment follows the x402 MCP transport spec:
  * 1. Call without `_meta["x402/payment"]` → returns `isError: true` + `structuredContent` with PaymentRequired
@@ -139,7 +141,12 @@ function deriveRequestId(paymentPayload: X402PaymentPayload): string {
  *
  * @see https://github.com/coinbase/x402/blob/main/specs/transports-v2/mcp.md
  */
-export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): McpServer {
+export function createMcpServer(
+	engine: ChallengeEngine,
+	config: SellerConfig,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	_perRequestRoutes?: Map<string, { method: string; path: string }[]>,
+): McpServer {
 	const networkConfig = config.rpcUrl
 		? { ...CHAIN_CONFIGS[config.network], rpcUrl: config.rpcUrl }
 		: CHAIN_CONFIGS[config.network];
@@ -149,62 +156,330 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 		version: config.version ?? "1.0.0",
 	});
 
-	// Tool 1: discover_plans (free)
+	// Tool 1: discover (free)
 	server.registerTool(
-		"discover_plans",
+		"discover",
 		{
 			title: "Discover Plans",
-			description: `Discover available plans and pricing for ${config.agentName}. Returns the plan catalog with plan IDs, prices (USDC), wallet address, and chain ID needed for payment.`,
+			description: `Discover available plans and routes for ${config.agentName}. Returns the catalog with plan IDs, prices (USDC), routes, wallet address, and chain ID needed for payment.`,
 		},
 		async () => {
-			const catalog = {
-				agent: config.agentName,
-				description: config.agentDescription,
-				network: config.network,
-				chainId: networkConfig.chainId,
-				walletAddress: config.walletAddress,
-				asset: "USDC",
-				plans: config.plans.map((tier) => ({
-					planId: tier.planId,
-					unitAmount: tier.unitAmount,
-					...(tier.description ? { description: tier.description } : {}),
-				})),
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: JSON.stringify(
+							{
+								agentName: config.agentName,
+								plans: (config.plans ?? []).map((p) => ({
+									planId: p.planId,
+									unitAmount: p.unitAmount,
+									description: p.description,
+								})),
+								routes: (config.routes ?? []).map((r) => ({
+									routeId: r.routeId,
+									method: r.method,
+									path: r.path,
+									...(r.unitAmount ? { unitAmount: r.unitAmount } : {}),
+									description: r.description,
+								})),
+								walletAddress: config.walletAddress,
+								chainId: networkConfig.chainId,
+							},
+							null,
+							2,
+						),
+					},
+				],
 			};
-			return { content: [{ type: "text" as const, text: JSON.stringify(catalog, null, 2) }] };
 		},
 	);
 
-	// Tool 2: request_access (x402-gated)
+	// Tool 2: access (x402-gated)
+	const accessInputSchema = z
+		.object({
+			planId: z.string().optional().describe("Plan ID from discover"),
+			routeId: z.string().optional().describe("Route ID from discover"),
+			resourceId: z
+				.string()
+				.default("default")
+				.describe("Specific resource ID for subscription plans (defaults to 'default')."),
+			resource: z
+				.object({
+					method: z.string().describe("HTTP method to call on the backend (e.g. GET, POST)"),
+					path: z.string().describe("Path to call on the backend (e.g. /api/weather/london)"),
+					body: z.unknown().optional().describe("Optional request body to forward to the backend"),
+				})
+				.optional()
+				.describe("The backend resource to call after payment."),
+			/** Template parameters for proxyPath interpolation (e.g. { asset: 'BTC' }). */
+			params: z
+				.record(z.string(), z.string())
+				.optional()
+				.describe("Template parameters for path interpolation"),
+		})
+		.refine((d) => !!(d.planId || d.routeId), { message: "Either planId or routeId is required" })
+		.refine((d) => !(d.planId && d.routeId), {
+			message: "Provide either planId or routeId, not both",
+		});
+
 	server.registerTool(
-		"request_access",
+		"access",
 		{
 			title: "Request Access",
 			description: [
-				`Purchase access to a ${config.agentName} plan.`,
+				`Purchase access to a ${config.agentName} plan or route.`,
 				"This tool is x402 payment-gated.",
+				"For plan-based access: call without payment to get requirements, then re-call with x402 payment to receive an access token.",
+				"For route-based access: provide routeId instead of planId.",
 				"Call it to get payment requirements (amount, wallet, chainId, x402PaymentUrl).",
-				"Then use make_http_request_with_x402 to POST to the x402PaymentUrl with {planId, resourceId} in the body and the accepts array as paymentRequirements.",
+				"Then use make_http_request_with_x402 to POST to the x402PaymentUrl with {planId, resource} in the body.",
 				"The x402 endpoint handles EIP-3009 payment signing and settlement automatically.",
 			].join(" "),
-			inputSchema: {
-				planId: z.string().describe("Plan ID from discover_plans"),
-				resourceId: z
-					.string()
-					.default("default")
-					.describe("Specific resource ID (defaults to 'default')"),
-			},
+			inputSchema: accessInputSchema,
 		},
-		async ({ planId, resourceId }, extra) => {
+		async ({ planId, routeId, resourceId, resource, params }, extra) => {
 			const paymentPayload = extractPaymentFromMeta(extra as { _meta?: Record<string, unknown> });
+			const fetchResourceFn = resolveConfigFetchResource(config);
+
+			// routeId branch — full standalone gateway flow
+			if (routeId) {
+				const route = (config.routes ?? []).find((r) => r.routeId === routeId);
+				if (!route) {
+					return {
+						isError: true as const,
+						content: [{ type: "text" as const, text: `Route "${routeId}" not found` }],
+					};
+				}
+
+				if (!paymentPayload) {
+					return buildPaymentRequiredResult(
+						routeId,
+						resource?.path ?? routeId,
+						config,
+						networkConfig,
+					);
+				}
+
+				if (!fetchResourceFn) {
+					return {
+						isError: true as const,
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									error: "EMBEDDED_MODE",
+									message:
+										"Routes in embedded mode must be accessed via their route path directly.",
+								}),
+							},
+						],
+					};
+				}
+
+				const resourcePath = resource?.path ?? route.path;
+				const resourceMethod = resource?.method ?? route.method ?? "GET";
+
+				let txHash: `0x${string}`;
+				let settleResponse: import("../types/index.js").X402SettleResponse;
+				let payer: string | undefined;
+				try {
+					const settled = await settlePayment(paymentPayload, config, networkConfig);
+					txHash = settled.txHash;
+					settleResponse = settled.settleResponse;
+					payer = settled.payer;
+				} catch (err) {
+					const code = err instanceof Key0Error ? err.code : "SETTLEMENT_FAILED";
+					const message =
+						err instanceof Key0Error ? err.message : "Payment settlement failed. Please try again.";
+					return {
+						isError: true as const,
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({ error: code, message }),
+							},
+						],
+					};
+				}
+
+				const requestId = deriveRequestId(paymentPayload);
+
+				const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
+					requestId,
+					routeId,
+					resourcePath,
+					txHash,
+					payer as `0x${string}` | undefined,
+				);
+
+				await engine.assertPaidState(challengeId);
+
+				let backendResult: Awaited<ReturnType<typeof fetchResourceFn>>;
+				try {
+					backendResult = await fetchResourceFn({
+						method: resourceMethod,
+						path: resourcePath,
+						headers: {},
+						paymentInfo: {
+							txHash,
+							payer: payer ?? undefined,
+							planId: routeId,
+							amount: route.unitAmount ?? "$0",
+							method: resourceMethod,
+							path: resourcePath,
+							challengeId,
+						},
+					});
+				} catch (err) {
+					const isTimeout = err instanceof Error && err.name === "AbortError";
+					const msg = isTimeout
+						? "Backend timed out. A refund has been initiated."
+						: `Backend error: ${(err as Error).message}. A refund has been initiated.`;
+					await engine.initiateRefund(challengeId, "proxy_timeout").catch(() => {});
+					return {
+						isError: true as const,
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									error: isTimeout ? "PROXY_TIMEOUT" : "PROXY_ERROR",
+									message: msg,
+								}),
+							},
+						],
+					};
+				}
+
+				if (backendResult.status >= 400) {
+					const msg = `Backend returned ${backendResult.status}. A refund has been initiated.`;
+					await engine.initiateRefund(challengeId, "backend_non_2xx").catch(() => {});
+					return {
+						isError: true as const,
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({ error: "PROXY_ERROR", message: msg }),
+							},
+						],
+					};
+				}
+
+				await engine.markDelivered(challengeId).catch(() => {});
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify(
+								{
+									type: "ResourceResponse",
+									challengeId,
+									requestId,
+									routeId,
+									txHash,
+									explorerUrl,
+									resource: {
+										status: backendResult.status,
+										...(backendResult.headers !== undefined
+											? { headers: backendResult.headers }
+											: {}),
+										body: backendResult.body,
+									},
+								},
+								null,
+								2,
+							),
+						},
+					],
+					_meta: { "x402/payment-response": settleResponse },
+				};
+			}
+
+			// planId branch
+			const effectivePlanId = planId!;
+			const plan = (config.plans ?? []).find((t) => t.planId === effectivePlanId);
+
+			// ===== FREE PLAN FAST-PATH: proxy immediately without payment =====
+			if (plan?.free === true && plan.proxyPath) {
+				if (!fetchResourceFn) {
+					return {
+						isError: true as const,
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									error: "FREE_PLAN_MISCONFIGURED",
+									message: "Free plan requires proxyTo to be configured.",
+								}),
+							},
+						],
+					};
+				}
+				let resolvedPath: string;
+				try {
+					resolvedPath = interpolateUrlTemplate(plan.proxyPath, params ?? {});
+				} catch (err) {
+					return {
+						isError: true as const,
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									error: "TEMPLATE_ERROR",
+									message: (err as Error).message,
+								}),
+							},
+						],
+					};
+				}
+				const qs = plan.proxyQuery
+					? `?${new URLSearchParams(plan.proxyQuery as Record<string, string>).toString()}`
+					: "";
+				const freeResult = await fetchResourceFn({
+					method: plan.proxyMethod ?? "GET",
+					path: resolvedPath + qs,
+					headers: {},
+					paymentInfo: {
+						txHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+						payer: undefined,
+						planId: effectivePlanId,
+						amount: "$0",
+						method: plan.proxyMethod ?? "GET",
+						path: resolvedPath,
+						challengeId: "free",
+					},
+				});
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify(
+								{
+									type: "ResourceResponse",
+									challengeId: "free",
+									planId: effectivePlanId,
+									resource: {
+										status: freeResult.status,
+										...(freeResult.headers !== undefined ? { headers: freeResult.headers } : {}),
+										body: freeResult.body,
+									},
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			}
 
 			try {
 				if (!paymentPayload) {
-					// No payment — return x402 PaymentRequired signal
-					const tier = config.plans.find((t) => t.planId === planId);
-					if (!tier) {
-						throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found`, 400);
+					// No payment — validate plan exists, then return x402 PaymentRequired signal
+					if (!plan) {
+						throw new Key0Error("TIER_NOT_FOUND", `Plan "${effectivePlanId}" not found`, 400);
 					}
-					return buildPaymentRequiredResult(planId, resourceId, config, networkConfig);
+					return buildPaymentRequiredResult(effectivePlanId, resourceId, config, networkConfig);
 				}
 
 				const { txHash, settleResponse, payer } = await settlePayment(
@@ -215,9 +490,125 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 
 				// Derive stable requestId from payment signature for idempotent retry recovery
 				const requestId = deriveRequestId(paymentPayload);
+
+				// Per-request plan with proxyPath: settle then proxy to backend
+				if (plan?.mode === "per-request" && plan.proxyPath && fetchResourceFn) {
+					let resolvedProxyPath: string;
+					try {
+						resolvedProxyPath = interpolateUrlTemplate(plan.proxyPath, params ?? {});
+					} catch (err) {
+						return {
+							isError: true as const,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify({
+										error: "TEMPLATE_ERROR",
+										message: (err as Error).message,
+									}),
+								},
+							],
+						};
+					}
+					const qs = plan.proxyQuery
+						? `?${new URLSearchParams(plan.proxyQuery as Record<string, string>).toString()}`
+						: "";
+
+					const { challengeId, explorerUrl } = await engine.recordPerRequestPayment(
+						requestId,
+						effectivePlanId,
+						resolvedProxyPath,
+						txHash,
+						payer as `0x${string}` | undefined,
+					);
+
+					await engine.assertPaidState(challengeId);
+
+					let backendResult: Awaited<ReturnType<typeof fetchResourceFn>>;
+					try {
+						backendResult = await fetchResourceFn({
+							method: plan.proxyMethod ?? "GET",
+							path: resolvedProxyPath + qs,
+							headers: {},
+							paymentInfo: {
+								txHash,
+								payer: payer ?? undefined,
+								planId: effectivePlanId,
+								amount: plan.unitAmount ?? "$0",
+								method: plan.proxyMethod ?? "GET",
+								path: resolvedProxyPath,
+								challengeId,
+							},
+						});
+					} catch (err) {
+						const isTimeout = err instanceof Error && err.name === "AbortError";
+						const msg = isTimeout
+							? "Backend timed out. A refund has been initiated."
+							: `Backend error: ${(err as Error).message}. A refund has been initiated.`;
+						await engine.initiateRefund(challengeId, "proxy_timeout").catch(() => {});
+						return {
+							isError: true as const,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify({
+										error: isTimeout ? "PROXY_TIMEOUT" : "PROXY_ERROR",
+										message: msg,
+									}),
+								},
+							],
+						};
+					}
+
+					if (backendResult.status >= 400) {
+						const msg = `Backend returned ${backendResult.status}. A refund has been initiated.`;
+						await engine.initiateRefund(challengeId, "backend_non_2xx").catch(() => {});
+						return {
+							isError: true as const,
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify({ error: "PROXY_ERROR", message: msg }),
+								},
+							],
+						};
+					}
+
+					await engine.markDelivered(challengeId).catch(() => {});
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify(
+									{
+										type: "ResourceResponse",
+										challengeId,
+										requestId,
+										planId: effectivePlanId,
+										txHash,
+										explorerUrl,
+										resource: {
+											status: backendResult.status,
+											...(backendResult.headers !== undefined
+												? { headers: backendResult.headers }
+												: {}),
+											body: backendResult.body,
+										},
+									},
+									null,
+									2,
+								),
+							},
+						],
+						_meta: { "x402/payment-response": settleResponse },
+					};
+				}
+
+				// Subscription plan: issue access grant
 				const grant = await engine.processHttpPayment(
 					requestId,
-					planId,
+					effectivePlanId,
 					resourceId,
 					txHash,
 					payer as `0x${string}` | undefined,
@@ -259,12 +650,11 @@ export function createMcpServer(engine: ChallengeEngine, config: SellerConfig): 
 					// Settlement / payment errors — return PaymentRequired with error reason
 					if (err.code === "PAYMENT_FAILED" || err.httpStatus === 402) {
 						const failResult = buildPaymentRequiredResult(
-							planId,
+							effectivePlanId,
 							resourceId,
 							config,
 							networkConfig,
 						);
-						// Override the generic error with the specific failure message
 						const failContent = {
 							...(failResult.structuredContent as Record<string, unknown>),
 							error: err.message,
@@ -312,6 +702,8 @@ export function mountMcpRoutes(
 	router: Router,
 	engine: ChallengeEngine,
 	config: SellerConfig,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	_perRequestRoutes?: Map<string, { method: string; path: string }[]>,
 ): void {
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 

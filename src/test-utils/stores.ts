@@ -67,6 +67,15 @@ export class TestChallengeStore implements IChallengeStore {
 		}
 		return results;
 	}
+
+	/** Test-only helper: list all challenges in a given state. */
+	async listByState(state: ChallengeState): Promise<ChallengeRecord[]> {
+		const results: ChallengeRecord[] = [];
+		for (const record of this.challenges.values()) {
+			if (record.state === state) results.push(record);
+		}
+		return results;
+	}
 }
 
 /**

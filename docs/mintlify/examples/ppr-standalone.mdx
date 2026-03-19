@@ -1,0 +1,245 @@
+---
+title: "Pay-Per-Request: Standalone Gateway"
+sidebarTitle: "PPR (Standalone)"
+description: "Key0 running as a separate payment gateway — clients POST to /x402/access, Key0 settles the payment, proxies to your backend, and returns the response directly. Works for HTTP, A2A, and MCP clients."
+---
+
+A two-process setup: a Key0 payment gateway (port 3000) in front of a backend API (port 3001). Clients never talk to the backend directly — all traffic flows through `POST /x402/access`. After payment, Key0 proxies the request and returns the backend's response as a `ResourceResponse`.
+
+**Source:** [`examples/ppr-standalone`](https://github.com/key0ai/key0/tree/main/examples/ppr-standalone)
+
+## What it demonstrates
+
+- `proxyTo` on `SellerConfig` to enable standalone per-request gateway mode
+- Unified `/x402/access` endpoint handling both subscription (AccessGrant) and per-request (ResourceResponse) plans
+- Automatic payment header injection (`x-key0-tx-hash`, `x-key0-plan-id`, `x-key0-amount`) so the backend can log/audit payments
+- A shared secret (`x-gateway-secret`) that the backend uses to reject requests that bypass the gateway
+- Full HTTP, A2A, and MCP client support with no separate route registrations needed
+- `PENDING → PAID → DELIVERED` state transitions with refund safety when the backend returns non-2xx
+
+## Architecture
+
+```
+Client                    Key0 Gateway (port 3000)         Backend (port 3001)
+  |                              |                                |
+  |-- GET /discovery             |                                |
+  |<-- plan catalog + routes     |                                |
+  |                              |                                |
+  |-- POST /x402/access          |                                |
+  |   { planId, resource:        |                                |
+  |     { method, path } }       |                                |
+  |                              |-- create PENDING challenge      |
+  |<-- HTTP 402 + requirements  |                                |
+  |                              |                                |
+  |  ... signs EIP-3009 off-chain ...
+  |                              |                                |
+  |-- POST /x402/access          |                                |
+  |   + PAYMENT-SIGNATURE        |                                |
+  |                              |-- settle on-chain               |
+  |                              |-- PENDING → PAID                |
+  |                              |                                |
+  |                              |-- GET /api/weather/london ------>|
+  |                              |   (x-key0-tx-hash: 0x...)       |
+  |                              |   (x-gateway-secret: ***)       |
+  |                              |<--- { city, tempF, ... } -------|
+  |                              |-- PAID → DELIVERED              |
+  |<-- ResourceResponse          |                                |
+  |   { type: "ResourceResponse",|                                |
+  |     resource: { status: 200, |                                |
+  |     body: { city, tempF } } }|                                |
+```
+
+## Key differences from embedded mode
+
+| | Embedded | Standalone |
+|---|---|---|
+| **Where Key0 runs** | Inside your application | Separate gateway process |
+| **Route registration** | `app.get("/api/…", key0.payPerRequest())` | None — traffic via `/x402/access` |
+| **Backend call** | Handler runs in-process | Key0 proxies to `proxyTo.baseUrl` |
+| **Response to client** | Your handler's response | `ResourceResponse` wrapper |
+| **A2A / MCP support** | HTTP-only for per-request | Full A2A + MCP via `/x402/access` |
+| **Backend auth** | N/A | Shared secret via `proxyTo.headers` |
+
+## Running locally
+
+### Prerequisites
+
+- Bun v1.3+ or Node 18+
+- Redis running locally
+- A wallet address on Base Sepolia
+- A gas wallet private key (ETH-funded) for settlement
+
+### Setup
+
+```bash
+cd examples/ppr-standalone
+cp .env.example .env
+# Edit .env: set KEY0_WALLET_ADDRESS, GAS_WALLET_PRIVATE_KEY, GATEWAY_SECRET
+
+# Terminal 1: Start the backend API
+bun run start:backend    # Starts on port 3001
+
+# Terminal 2: Start the Key0 gateway
+bun run start:gateway    # Starts on port 3000
+```
+
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `KEY0_WALLET_ADDRESS` | Wallet that receives USDC payments |
+| `GAS_WALLET_PRIVATE_KEY` | ETH-funded wallet for settlement |
+| `KEY0_NETWORK` | `"testnet"` (default) or `"mainnet"` |
+| `REDIS_URL` | Redis connection URL (default: `redis://localhost:6379`) |
+| `BACKEND_URL` | Backend URL for proxying (default: `http://localhost:3001`) |
+| `GATEWAY_SECRET` | Shared secret injected as `x-gateway-secret` header |
+| `GATEWAY_PORT` | Gateway port (default: `3000`) |
+| `PUBLIC_URL` | Public-facing gateway URL (used in agent card) |
+
+## Code walkthrough
+
+### 1. Enable proxy mode with `proxyTo`
+
+```typescript
+const key0 = key0Router({
+  config: {
+    // ...
+    plans: [
+      {
+        planId: "weather-query",
+        unitAmount: "$0.01",
+        mode: "per-request",
+        routes: [{ method: "GET", path: "/api/weather/:city" }],
+      },
+    ],
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),
+
+    // proxyTo enables standalone mode:
+    // After payment, Key0 forwards to BACKEND_URL and returns the response.
+    proxyTo: {
+      baseUrl: process.env.BACKEND_URL!,
+      // Shared secret so the backend rejects direct (non-gateway) requests
+      headers: { "x-gateway-secret": process.env.GATEWAY_SECRET! },
+    },
+  },
+  adapter, store, seenTxStore,
+});
+
+app.use(key0);
+// No app.get() needed — all per-request plans flow through /x402/access
+```
+
+### 2. Client request (HTTP)
+
+```bash
+# Step 1: Challenge
+curl -X POST http://localhost:3000/x402/access \
+  -H "Content-Type: application/json" \
+  -d '{ "planId": "weather-query", "resource": { "method": "GET", "path": "/api/weather/london" } }'
+# → HTTP 402 + PaymentRequirements
+
+# Step 2: Settle (add PAYMENT-SIGNATURE header)
+curl -X POST http://localhost:3000/x402/access \
+  -H "Content-Type: application/json" \
+  -H "PAYMENT-SIGNATURE: eyJ4NDAy..." \
+  -d '{ "planId": "weather-query", "resource": { "method": "GET", "path": "/api/weather/london" } }'
+# → 200 ResourceResponse
+```
+
+### 3. ResourceResponse shape
+
+```json
+{
+  "type": "ResourceResponse",
+  "challengeId": "http-a1b2c3d4-...",
+  "requestId": "550e8400-...",
+  "planId": "weather-query",
+  "txHash": "0x7f9fade1...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0x7f9fade1...",
+  "resource": {
+    "status": 200,
+    "body": { "city": "london", "tempF": 65, "condition": "Cloudy" }
+  }
+}
+```
+
+### 4. Backend receives payment headers
+
+The backend receives these headers on every proxied request:
+
+```
+x-key0-tx-hash: 0x7f9fade1...
+x-key0-plan-id: weather-query
+x-key0-amount:  $0.01
+x-key0-payer:   0xClientWallet...  (when available)
+x-gateway-secret: ***  (reject if missing)
+```
+
+### 5. Non-2xx backend response
+
+If the backend returns 4xx/5xx, Key0 wraps it in a `ResourceResponse` and the challenge stays in `PAID` state. The refund cron will process it:
+
+```json
+{
+  "type": "ResourceResponse",
+  "resource": {
+    "status": 404,
+    "body": { "error": "City not found" }
+  }
+}
+```
+
+## A2A client flow
+
+A2A agents use the same `/x402/access` endpoint with the `X-A2A-Extensions` header (Express only). The `resource` field is included in the `AccessRequest` data part:
+
+```json
+{
+  "method": "message/send",
+  "params": {
+    "message": {
+      "parts": [{
+        "kind": "data",
+        "data": {
+          "type": "AccessRequest",
+          "planId": "weather-query",
+          "resource": { "method": "GET", "path": "/api/weather/london" }
+        }
+      }]
+    }
+  }
+}
+```
+
+After settlement, the executor returns a completed task with a `ResourceResponse` artifact.
+
+## MCP client flow
+
+MCP clients (Claude Code, Cursor) call the `request_access` tool with a `resource` field. Set `mcp: true` in `SellerConfig` to enable:
+
+```json
+{
+  "name": "request_access",
+  "arguments": {
+    "planId": "weather-query",
+    "resource": { "method": "GET", "path": "/api/weather/london" }
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="PPR Embedded Example" icon="server" href="/examples/ppr-embedded">
+    Per-request with Key0 inside your application.
+  </Card>
+  <Card title="SellerConfig: proxyTo" icon="sliders" href="/sdk-reference/seller-config#proxytoconfigconfig">
+    ProxyToConfig, FetchResourceParams, and FetchResourceResult types.
+  </Card>
+  <Card title="POST /x402/access" icon="bolt" href="/api-reference/x402-access">
+    Full API reference for the unified payment endpoint.
+  </Card>
+  <Card title="Two Modes" icon="arrows-left-right" href="/introduction/two-modes">
+    When to use standalone vs. embedded.
+  </Card>
+</CardGroup>

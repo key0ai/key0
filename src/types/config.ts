@@ -29,10 +29,96 @@ export type NetworkConfig = {
 	};
 };
 
+/** Route metadata for a per-request plan (embedded or standalone). */
+export type PlanRouteInfo = {
+	readonly method: string;
+	readonly path: string;
+	readonly description?: string;
+};
+
 export type Plan = {
 	readonly planId: string;
-	readonly unitAmount: string; // "$0.10"
+	/** Required for paid plans; may be omitted for free plans. */
+	readonly unitAmount?: string;
 	readonly description?: string;
+	/** "subscription" (default) or "per-request". */
+	readonly mode?: "subscription" | "per-request";
+	/** Route endpoints exposed for this plan (per-request plans). */
+	readonly routes?: readonly PlanRouteInfo[];
+	/** When true, the plan is free (no payment required). */
+	readonly free?: boolean;
+	/** Proxy path template for standalone gateway mode (e.g. "/api/{param}"). */
+	readonly proxyPath?: string;
+	/** Static query params appended to the proxied request. */
+	readonly proxyQuery?: Record<string, string>;
+	/** HTTP method for the proxied request (default: "GET"). */
+	readonly proxyMethod?: string;
+};
+
+export type RouteParam = {
+	readonly name: string;
+	/** "path" = extracted from :param in path; "query" = URL query string; "body" = request body */
+	readonly in: "path" | "query" | "body";
+	readonly description?: string;
+	readonly required?: boolean;
+	readonly type?: "string" | "number" | "boolean" | "object";
+};
+
+export type Route = {
+	readonly routeId: string;
+	readonly method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+	readonly path: string; // Express-style :param (e.g. "/api/weather/:city")
+	readonly unitAmount?: string; // absent = free
+	readonly description?: string;
+	/** Request parameter definitions (path params auto-derived; add query/body params here). */
+	readonly params?: readonly RouteParam[];
+};
+
+// ---------------------------------------------------------------------------
+// Per-request / proxy types
+// ---------------------------------------------------------------------------
+
+/** Parameters passed to a fetchResource callback for proxying a backend call. */
+export type FetchResourceParams = {
+	readonly method: string;
+	readonly path: string;
+	readonly headers: Record<string, string>;
+	readonly body?: unknown;
+	readonly paymentInfo: PaymentInfo;
+};
+
+/** Result returned by a fetchResource callback after proxying a backend call. */
+export type FetchResourceResult = {
+	readonly status: number;
+	readonly headers?: Record<string, string>;
+	readonly body: unknown;
+};
+
+export type PaymentInfo = {
+	readonly txHash: `0x${string}`;
+	readonly payer: string | undefined;
+	readonly planId: string;
+	readonly amount: string;
+	readonly method: string;
+	readonly path: string;
+	readonly challengeId: string;
+};
+
+/**
+ * Shorthand for proxying route-based calls to a backend URL.
+ */
+export type ProxyToConfig = {
+	readonly baseUrl: string;
+	/** Extra headers merged into the proxied request (e.g. service auth). */
+	readonly headers?: Record<string, string>;
+	/** Optional path rewrite applied before forwarding (e.g. strip a prefix). */
+	readonly pathRewrite?: (path: string) => string;
+	/**
+	 * When set, attached as `X-Key0-Internal-Token` header on every proxied request.
+	 * The backend validates this to ensure all traffic originates from Key0.
+	 * Set via `KEY0_PROXY_SECRET` env var in the standalone Docker.
+	 */
+	readonly proxySecret?: string;
 };
 
 /**
@@ -58,21 +144,35 @@ export type SellerConfig = {
 	readonly network: NetworkName;
 
 	// Product catalog
-	readonly plans: readonly Plan[];
+	readonly plans?: readonly Plan[];
+	readonly routes?: readonly Route[];
 
 	// Challenge
 	readonly challengeTTLSeconds?: number; // defaults to 900
 
-	// Credential issuance callback (required)
+	// Credential issuance callback (required for subscription plans)
 	/**
 	 * Callback that fetches/issues resource credentials after payment is verified.
 	 * The implementation is fully up to you — generate a JWT, call another service, return an API key, etc.
+	 * Not called for route-based calls when proxyTo is configured.
 	 */
-	readonly fetchResourceCredentials: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
+	readonly fetchResourceCredentials?: (params: IssueTokenParams) => Promise<TokenIssuanceResult>;
 	/** Timeout for fetchResourceCredentials callback in ms. Default: 15000. */
 	readonly tokenIssueTimeoutMs?: number;
 	/** Max retries for fetchResourceCredentials on failure. Default: 2. */
 	readonly tokenIssueRetries?: number;
+
+	/**
+	 * Callback for proxying route-based calls to a backend.
+	 * Called after settlement for per-request plans.
+	 * Takes precedence over proxyTo if both are set.
+	 */
+	readonly fetchResource?: (params: FetchResourceParams) => Promise<FetchResourceResult>;
+	/**
+	 * Shorthand: proxy route-based calls to a backend URL.
+	 * Builds a fetch callback automatically.
+	 */
+	readonly proxyTo?: ProxyToConfig;
 
 	// Lifecycle hooks (optional)
 	readonly onPaymentReceived?: (grant: AccessGrant) => Promise<void>;

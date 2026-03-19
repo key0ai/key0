@@ -147,7 +147,9 @@
 				"examples/hono-seller",
 				"examples/standalone-service",
 				"examples/refund-cron",
-				"examples/backend-integration"
+				"examples/backend-integration",
+				"examples/ppr-embedded",
+				"examples/ppr-standalone"
 			]
 		}
 	],

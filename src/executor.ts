@@ -2,11 +2,13 @@ import type { Message, Task } from "@a2a-js/sdk";
 import type { AgentExecutor, ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
 import { v4 as uuidv4 } from "uuid";
 import type { ChallengeEngine } from "./core/index.js";
+import { resolveConfigFetchResource } from "./integrations/pay-per-request.js";
 import { settlePayment } from "./integrations/settlement.js";
 import type {
 	AccessGrant,
 	AccessRequest,
 	NetworkConfig,
+	ResourceResponse,
 	SellerConfig,
 	X402PaymentPayload,
 } from "./types/index.js";
@@ -107,7 +109,7 @@ export class Key0Executor implements AgentExecutor {
 			chainId: this.networkConfig.chainId,
 			walletAddress: this.config.walletAddress,
 			asset: "USDC",
-			plans: this.config.plans.map((plan) => ({
+			plans: (this.config.plans ?? []).map((plan) => ({
 				planId: plan.planId,
 				unitAmount: plan.unitAmount,
 				description: plan.description,
@@ -148,7 +150,47 @@ export class Key0Executor implements AgentExecutor {
 		contextId: string,
 		eventBus: ExecutionEventBus,
 	): Promise<void> {
-		const challenge = await this.engine.requestAccess(req);
+		const plan = (this.config.plans ?? []).find((p) => p.planId === req.planId);
+		const fetchResourceFn = resolveConfigFetchResource(this.config);
+
+		// Per-request plan in embedded mode: A2A not supported — direct to HTTP route
+		if (plan?.mode === "per-request" && !fetchResourceFn) {
+			const routePath = plan.routes?.[0]?.path ?? "/";
+			const routeMethod = plan.routes?.[0]?.method ?? "GET";
+			this.sendErrorTask(
+				eventBus,
+				taskId,
+				contextId,
+				"failed",
+				"PER_REQUEST_EMBEDDED_MODE",
+				`Per-request plans are not available via A2A in embedded mode. ` +
+					`Use direct HTTP calls: ${routeMethod} ${routePath} with PAYMENT-SIGNATURE header.`,
+			);
+			return;
+		}
+
+		// Per-request plan in standalone mode: encode method+path into resourceId for storage
+		let resolvedReq = req;
+		if (plan?.mode === "per-request" && fetchResourceFn) {
+			if (!req.resource?.method || !req.resource?.path) {
+				this.sendErrorTask(
+					eventBus,
+					taskId,
+					contextId,
+					"failed",
+					"MISSING_RESOURCE_FIELD",
+					'Per-request plans require a "resource" field: { method: "GET", path: "/api/example" }',
+				);
+				return;
+			}
+			// Encode resource as "METHOD:PATH" in resourceId so it survives the challenge store round-trip
+			resolvedReq = {
+				...req,
+				resourceId: `${req.resource.method}:${req.resource.path}`,
+			};
+		}
+
+		const challenge = await this.engine.requestAccess(resolvedReq);
 
 		// Get the full challenge record to build x402 metadata
 		const record = await this.engine.getChallengeRecord(challenge.challengeId);
@@ -255,7 +297,141 @@ export class Key0Executor implements AgentExecutor {
 			throw err;
 		}
 
-		// 5. Emit payment-verified (working state)
+		// 5. Determine plan mode and deployment mode
+		const plan = (this.config.plans ?? []).find((p) => p.planId === planId);
+		const fetchResourceFn = resolveConfigFetchResource(this.config);
+
+		if (plan?.mode === "per-request") {
+			if (!fetchResourceFn) {
+				// Embedded mode: should not reach here (rejected at handleAccessRequest), but guard anyway
+				this.sendErrorTask(
+					eventBus,
+					taskId,
+					contextId,
+					"failed",
+					"PER_REQUEST_EMBEDDED_MODE",
+					"Per-request plans are not available via A2A in embedded mode.",
+				);
+				return;
+			}
+
+			// Parse METHOD:PATH from resourceId
+			const colonIdx = resourceId.indexOf(":");
+			const resourceMethod = colonIdx > 0 ? resourceId.slice(0, colonIdx) : "GET";
+			const resourcePath = colonIdx > 0 ? resourceId.slice(colonIdx + 1) : resourceId;
+
+			// Emit payment-verified
+			this.publishWorkingTask(
+				eventBus,
+				taskId,
+				contextId,
+				"payment-verified",
+				`Payment verified (tx: ${txHash}). Fetching resource...`,
+			);
+
+			// Record payment (PENDING → PAID) without token issuance
+			const { challengeId, explorerUrl } = await this.engine.recordPerRequestPayment(
+				requestId,
+				planId,
+				resourcePath,
+				txHash,
+				payer as `0x${string}` | undefined,
+			);
+
+			// Proxy to backend
+			const backendResult = await fetchResourceFn({
+				paymentInfo: {
+					txHash,
+					payer: payer ?? undefined,
+					planId,
+					amount: plan.unitAmount!,
+					method: resourceMethod,
+					path: resourcePath,
+					challengeId,
+				},
+				method: resourceMethod,
+				path: resourcePath,
+				headers: {},
+			});
+
+			// Mark delivered if backend returned 2xx
+			if (backendResult.status >= 200 && backendResult.status < 300) {
+				await this.engine.markDelivered(challengeId);
+			} else {
+				console.warn(
+					`[Key0 A2A] Backend returned ${backendResult.status} — challenge stays PAID (refund cron eligible)`,
+				);
+			}
+
+			const resourceResponse: ResourceResponse = {
+				type: "ResourceResponse",
+				challengeId,
+				requestId,
+				planId,
+				txHash,
+				explorerUrl,
+				resource: {
+					status: backendResult.status,
+					...(backendResult.headers !== undefined ? { headers: backendResult.headers } : {}),
+					body: backendResult.body,
+				},
+			};
+
+			const receipt = this.engine.buildX402Receipt(record, {
+				type: "AccessGrant",
+				challengeId,
+				requestId,
+				accessToken: "",
+				tokenType: "Bearer",
+				resourceEndpoint: resourcePath,
+				resourceId: resourcePath,
+				planId,
+				txHash,
+				explorerUrl,
+			});
+
+			const pprTask: Task = {
+				kind: "task",
+				id: taskId,
+				contextId,
+				status: {
+					state: "completed",
+					timestamp: new Date().toISOString(),
+					message: {
+						kind: "message",
+						messageId: uuidv4(),
+						role: "agent",
+						parts: [
+							{
+								kind: "text",
+								text: `Payment successful. Resource fetched (HTTP ${backendResult.status}).`,
+							},
+							{
+								kind: "data",
+								data: resourceResponse as any,
+							},
+						],
+						metadata: {
+							[X402_METADATA_KEYS.STATUS]: "payment-completed",
+							[X402_METADATA_KEYS.RECEIPTS]: [receipt],
+						},
+					},
+				} as any,
+				artifacts: [
+					{
+						artifactId: uuidv4(),
+						name: "resource-response",
+						parts: [{ kind: "data", data: resourceResponse as any }],
+					},
+				],
+			};
+
+			eventBus.publish(pprTask);
+			return;
+		}
+
+		// Subscription plan
+		// 5b. Emit payment-verified (working state)
 		this.publishWorkingTask(
 			eventBus,
 			taskId,

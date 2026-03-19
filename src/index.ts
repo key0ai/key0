@@ -24,6 +24,10 @@ export {
 export type { RemoteTokenIssuerConfig } from "./helpers/remote.js";
 // Remote Helpers (for separate service deployments)
 export { createRemoteTokenIssuer } from "./helpers/remote.js";
+export type {
+	PayPerRequestConfig,
+	PayPerRequestOptions,
+} from "./integrations/pay-per-request.js";
 export type { AccessTokenPayload, ValidateAccessTokenConfig } from "./middleware.js";
 // Middleware
 export { validateToken } from "./middleware.js";

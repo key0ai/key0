@@ -4,6 +4,23 @@ export interface Plan {
 	description: string;
 }
 
+export interface RouteParam {
+	name: string;
+	in: "path" | "query" | "body";
+	description: string;
+	required: boolean;
+	type: "string" | "number" | "boolean" | "object";
+}
+
+export interface Route {
+	routeId: string;
+	method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+	path: string;
+	unitAmount: string;
+	description: string;
+	params: RouteParam[];
+}
+
 export interface Config {
 	// Required
 	walletAddress: string;
@@ -26,6 +43,11 @@ export interface Config {
 
 	// Plans
 	plans: Plan[];
+
+	// Routes
+	routes: Route[];
+	proxyToBaseUrl: string;
+	proxySecret: string;
 
 	// Challenge
 	challengeTtlSeconds: string;
@@ -69,6 +91,10 @@ export const defaultConfig: Config = {
 			description: "",
 		},
 	],
+
+	routes: [] as Route[],
+	proxyToBaseUrl: "",
+	proxySecret: "",
 
 	challengeTtlSeconds: "900",
 

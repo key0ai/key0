@@ -1,4 +1,5 @@
 import { DefaultRequestHandler, InMemoryTaskStore } from "@a2a-js/sdk/server";
+import { validateSellerConfig } from "./core/config-validation.js";
 import { buildAgentCard, ChallengeEngine } from "./core/index.js";
 import { Key0Executor } from "./executor.js";
 import type {
@@ -11,7 +12,7 @@ import type {
 
 export type Key0Config = {
 	readonly config: SellerConfig;
-	readonly adapter: IPaymentAdapter;
+	readonly adapter?: IPaymentAdapter;
 	readonly store: IChallengeStore;
 	readonly seenTxStore: ISeenTxStore;
 };
@@ -24,6 +25,9 @@ export type Key0Instance = {
 };
 
 export function createKey0(opts: Key0Config): Key0Instance {
+	// Validate config at factory creation time
+	validateSellerConfig(opts.config);
+
 	if (!opts.store) {
 		throw new Error(
 			"[Key0] store is required. Use RedisChallengeStore for production.\n" +
@@ -45,7 +49,7 @@ export function createKey0(opts: Key0Config): Key0Instance {
 		config: opts.config,
 		store,
 		seenTxStore,
-		adapter: opts.adapter,
+		adapter: opts.adapter as IPaymentAdapter, // safe: only used when plan has no proxyPath
 	});
 
 	const executor = new Key0Executor(engine, opts.config);

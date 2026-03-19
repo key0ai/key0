@@ -1,0 +1,113 @@
+---
+title: "Routes vs Plans"
+description: "When to use subscription plans, per-request routes, or both"
+---
+
+## Two Pricing Models
+
+key0 supports two distinct pricing models that can be used independently or together:
+
+| | Subscription Plan | Per-Request Route |
+|---|---|---|
+| **Payment** | One-time | Every call |
+| **Credential** | JWT via `fetchResourceCredentials` | None -- transparent proxy |
+| **Traffic** | Client calls your API directly with `Bearer` token | key0 proxies to your backend via `proxyTo` |
+| **Config key** | `plans` | `routes` |
+| **Use case** | API access tiers, monthly subscriptions | Micro-transactions, pay-per-query |
+
+## Subscription Plans
+
+Best for APIs where the client pays once and gets ongoing access.
+
+```typescript
+{
+  plans: [
+    { planId: "basic", unitAmount: "$5.00", description: "100 API calls" },
+    { planId: "pro", unitAmount: "$25.00", description: "Unlimited calls" },
+  ],
+  fetchResourceCredentials: async (params) => tokenIssuer.sign(params),
+}
+```
+
+Flow: Client pays -> gets JWT -> calls your API directly with `Authorization: Bearer <token>`.
+
+## Per-Request Routes
+
+Best for fine-grained pricing where each API call has a cost.
+
+```typescript
+{
+  routes: [
+    { routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+    { routeId: "forecast", method: "GET", path: "/api/forecast/:city", unitAmount: "$0.05" },
+    { routeId: "health", method: "GET", path: "/health" }, // free -- no unitAmount
+  ],
+  proxyTo: {
+    baseUrl: "http://your-backend.com",
+    proxySecret: process.env.KEY0_PROXY_SECRET,
+  },
+}
+```
+
+Flow: Client pays per call -> key0 settles on-chain -> key0 proxies request to your backend -> response returned to client.
+
+Free routes (no `unitAmount`) are proxied without payment.
+
+## Coexistence Pattern
+
+A seller can offer **both** plans and routes on the same API. The `GET /discover` endpoint returns both:
+
+```json
+{
+  "agentName": "Weather Pro",
+  "description": "Weather data API",
+  "plans": [{ "planId": "basic", "unitAmount": "$5.00" }],
+  "routes": [{ "routeId": "weather", "method": "GET", "path": "/api/weather/:city", "unitAmount": "$0.01" }]
+}
+```
+
+### Config
+
+```typescript
+app.use(key0Router({
+  config: {
+    walletAddress: "0xYour...",
+    network: "testnet",
+    plans: [{ planId: "basic", unitAmount: "$5.00" }],
+    routes: [
+      { routeId: "weather", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
+    ],
+    proxyTo: { baseUrl: "http://localhost:4000", proxySecret: process.env.KEY0_PROXY_SECRET },
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params),
+  },
+  adapter, store, seenTxStore,
+}));
+```
+
+### Backend Dual-Auth
+
+Your backend needs to accept both auth paths:
+
+```typescript
+app.get("/api/weather/:city", (req, res) => {
+  // Per-request path: key0 proxies with X-Key0-Internal-Token
+  const proxyToken = req.headers["x-key0-internal-token"];
+  if (proxyToken === process.env.KEY0_PROXY_SECRET) {
+    return res.json({ city: req.params.city, temp: 72 });
+  }
+
+  // Subscription path: client calls directly with Bearer JWT
+  const bearer = req.headers.authorization?.replace("Bearer ", "");
+  if (bearer && validateJwt(bearer)) {
+    return res.json({ city: req.params.city, temp: 72 });
+  }
+
+  res.status(401).json({ error: "Unauthorized" });
+});
+```
+
+## When to Use Each
+
+- **Plans only**: Traditional API access tiers. Client pays once, gets a JWT, calls your API directly.
+- **Routes only**: Micro-transaction APIs. Every call is metered. key0 handles proxying.
+- **Both**: Offer a subscription for power users AND per-request pricing for occasional use. Same API, two payment paths.

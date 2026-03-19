@@ -141,6 +141,100 @@ This endpoint handles the full x402 payment flow over plain HTTP. It responds di
   Include it when you need client-side idempotency.
 </Note>
 
+## Pay-Per-Request Routes
+
+`key0Router` returns the router **and** a `payPerRequest(planId, opts?)` factory. Use it to gate individual routes behind micro-payments — no JWT issued, payment settles inline.
+
+### Embedded mode (route inside your app)
+
+```typescript
+const key0 = key0Router({
+  config: {
+    // ...
+    plans: [
+      {
+        planId: "weather-query",
+        unitAmount: "$0.01",
+        mode: "per-request",
+        routes: [{ method: "GET", path: "/api/weather/:city" }],
+      },
+    ],
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),
+  },
+  adapter, store, seenTxStore,
+});
+app.use(key0);
+
+// Gate the route — every call needs a PAYMENT-SIGNATURE header
+app.get(
+  "/api/weather/:city",
+  key0.payPerRequest("weather-query", {
+    onPayment: (info) => console.log(`Settled: ${info.txHash}`),
+  }),
+  (req, res) => {
+    const payment = req.key0Payment; // PaymentInfo
+    res.json({ city: req.params.city, temp: 72, txHash: payment?.txHash });
+  },
+);
+```
+
+Without a `PAYMENT-SIGNATURE` header the middleware returns `402` with x402 payment requirements. After settlement, `req.key0Payment` contains the `PaymentInfo` object.
+
+### Standalone mode (proxy via `/x402/access`)
+
+Add `proxyTo` to `SellerConfig`. No separate route registrations needed — all per-request traffic flows through `POST /x402/access`.
+
+```typescript
+const key0 = key0Router({
+  config: {
+    // ...
+    plans: [
+      { planId: "weather-query", unitAmount: "$0.01", mode: "per-request",
+        routes: [{ method: "GET", path: "/api/weather/:city" }] },
+    ],
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),
+    proxyTo: {
+      baseUrl: process.env.BACKEND_URL!,
+      // optional: shared secret so your backend rejects requests that bypass the gateway
+      headers: { "x-gateway-secret": process.env.GATEWAY_SECRET! },
+    },
+  },
+  adapter, store, seenTxStore,
+});
+app.use(key0);
+// No app.get() needed — all per-request plans are handled by /x402/access
+```
+
+Client request (HTTP):
+
+```http
+POST /x402/access
+Content-Type: application/json
+
+{ "planId": "weather-query", "resource": { "method": "GET", "path": "/api/weather/london" } }
+```
+
+Server returns `ResourceResponse` (the backend's response body, not a JWT):
+
+```json
+{
+  "type": "ResourceResponse",
+  "challengeId": "...",
+  "planId": "weather-query",
+  "txHash": "0x...",
+  "resource": { "status": 200, "body": { "city": "london", "tempF": 65 } }
+}
+```
+
+### `payPerRequest` options
+
+| Parameter | Type | Description |
+|---|---|---|
+| `onPayment` | `(info: PaymentInfo) => void \| Promise<void>` | Called after successful settlement, before the route handler. Fire-and-forget. |
+| `route` | `PlanRouteInfo` | Explicit route metadata for discovery — useful when you want to override the auto-captured path. |
+| `fetchResource` | `FetchResourceParams => Promise<FetchResourceResult>` | Override or provide a custom backend call for this specific route (standalone mode). |
+| `proxyTo` | `ProxyToConfig` | Shorthand proxy config for this specific route (standalone mode). |
+
 ## `validateAccessToken(config)`
 
 Express middleware that verifies the `Bearer` JWT on incoming requests and attaches the decoded payload to `req.key0Token`.

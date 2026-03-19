@@ -1,0 +1,16 @@
+{
+	"name": "ppr-embedded-example",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "bun run server.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@key0ai/key0": "file:../..",
+		"express": "^4.21.0"
+	},
+	"devDependencies": {
+		"@types/express": "^5.0.0"
+	}
+}

@@ -274,7 +274,7 @@ www-authenticate: Payment realm="...", accept="exact", challenge="http-a1b2c3d4-
 }
 ```
 
-### Case 3: Settlement (planId + payment-signature header)
+### Case 3: Settlement — Subscription (planId + payment-signature → AccessGrant)
 
 The client includes the `payment-signature` header containing a base64-encoded `X402PaymentPayload` with the signed EIP-3009 authorization.
 
@@ -312,6 +312,56 @@ payment-response: eyJzdWNjZXNz... (base64-encoded X402SettleResponse)
   "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx..."
 }
 ```
+
+### Case 4: Per-Request Standalone (planId + resource + payment-signature → ResourceResponse)
+
+For `mode: "per-request"` plans with `proxyTo`/`fetchResource` set on `SellerConfig`, the client includes a `resource` field and the engine proxies to the backend instead of issuing a JWT.
+
+**Challenge request:**
+
+```http
+POST /x402/access
+Content-Type: application/json
+
+{
+  "planId": "weather-query",
+  "resource": { "method": "GET", "path": "/api/weather/london" }
+}
+```
+
+**Response:** `402` (same payment requirements as subscription)
+
+**Settlement request:**
+
+```http
+POST /x402/access
+Content-Type: application/json
+payment-signature: eyJ4NDAyVm...
+
+{
+  "planId": "weather-query",
+  "resource": { "method": "GET", "path": "/api/weather/london" }
+}
+```
+
+**Response:** `200 ResourceResponse` (the backend's response, not a JWT)
+
+```json
+{
+  "type": "ResourceResponse",
+  "challengeId": "http-a1b2c3d4-...",
+  "requestId": "550e8400-...",
+  "planId": "weather-query",
+  "txHash": "0xSettledTx...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx...",
+  "resource": {
+    "status": 200,
+    "body": { "city": "london", "tempF": 65, "condition": "Cloudy" }
+  }
+}
+```
+
+If the backend returns a non-2xx status, the `ResourceResponse` still contains the backend's body and status code, and the challenge stays in `PAID` state so the refund cron can process it.
 
 </Tab>
 
@@ -435,7 +485,26 @@ Returned by the engine after creating a PENDING record. Contains everything the 
 }
 ```
 
-### AccessGrant (Phase 2 response)
+### ResourceResponse (Phase 2 response — per-request standalone)
+
+Returned after successful settlement for `mode: "per-request"` plans in standalone mode. Contains the backend API response directly — no token issued.
+
+```json
+{
+  "type": "ResourceResponse",
+  "challengeId": "http-a1b2c3d4-...",
+  "requestId": "550e8400-...",
+  "planId": "weather-query",
+  "txHash": "0xSettledTx...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx...",
+  "resource": {
+    "status": 200,
+    "body": { "city": "london", "tempF": 65 }
+  }
+}
+```
+
+### AccessGrant (Phase 2 response — subscription)
 
 Returned after successful settlement and token issuance. The `accessToken` is used as a Bearer token to access protected endpoints.
 

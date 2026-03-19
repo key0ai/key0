@@ -197,6 +197,45 @@ const token = (request as typeof request & { key0Token?: unknown }).key0Token;
 
 The payload includes `sub` (request ID), `jti` (challenge ID), `resourceId`, `planId`, and `txHash`.
 
+## Pay-Per-Request Routes
+
+`key0Plugin` registers the plugin **and** exposes a `payPerRequest(planId, opts?)` factory on the plugin instance. Use it as a Fastify `preHandler` hook to gate routes behind micro-payments — no JWT issued, payment settles inline.
+
+```typescript
+await fastify.register(key0Plugin, {
+  config: {
+    // ...
+    plans: [
+      {
+        planId: "weather-query",
+        unitAmount: "$0.01",
+        mode: "per-request",
+        routes: [{ method: "GET", path: "/api/weather/:city" }],
+      },
+    ],
+    fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),
+  },
+  adapter, store, seenTxStore,
+});
+
+// Retrieve the key0 instance from the Fastify decorator
+const key0 = fastify.key0;
+
+// Gate the route — every call needs a PAYMENT-SIGNATURE header
+fastify.get(
+  "/api/weather/:city",
+  { preHandler: key0.payPerRequest("weather-query") },
+  async (request, reply) => {
+    const payment = request.key0Payment; // PaymentInfo
+    reply.send({ city: request.params.city, temp: 72, txHash: payment?.txHash });
+  },
+);
+```
+
+Without a `PAYMENT-SIGNATURE` header the hook returns `402` with x402 payment requirements. After settlement, `request.key0Payment` contains the `PaymentInfo` object.
+
+For standalone gateway mode, add `proxyTo` to `SellerConfig` — see the [Express integration](/integrations/express#pay-per-request-routes) for the full proxy configuration reference.
+
 ## Next Steps
 
 <CardGroup cols={2}>

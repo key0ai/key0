@@ -170,6 +170,24 @@ Pass environment variables via `-e` flags, an `env_file`, or shell exports that 
   For the full list of Key0 application-level environment variables (wallet address, network, JWT secrets, etc.), see the [Environment Variables](/deployment/environment-variables) page.
 </Note>
 
+## Per-Request Proxy Mode
+
+Set `PROXY_TO_BASE_URL` to enable per-request payment gateway mode. After a per-request plan payment is verified, Key0 proxies the request to this base URL and returns the backend response directly to the agent — no `ISSUE_TOKEN_API` call is made for per-request plans.
+
+```bash
+docker run -d \
+  --name key0 \
+  -p 3000:3000 \
+  -e KEY0_WALLET_ADDRESS=0xYourWallet \
+  -e PROXY_TO_BASE_URL=https://api.yourdomain.com \
+  -e PLANS='[{"planId":"weather","unitAmount":"$0.01","mode":"per-request"}]' \
+  key0ai/key0:latest
+```
+
+See the [Environment Variables](/deployment/environment-variables#per-request-proxy-standalone-ppr) reference for the full `PROXY_TO_BASE_URL` description, and the [PPR Standalone example](/examples/ppr-standalone) for a complete walkthrough.
+
+---
+
 ## Health check
 
 The Key0 container includes a built-in health check that polls `GET /health` every 30 seconds.

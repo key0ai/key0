@@ -630,6 +630,104 @@ Executor processes through intermediate working states:
 
 ---
 
+## Per-Request Payment Flow
+
+Pay-per-request (PPR) is a billing mode where each API call is paid for individually — no JWT is issued. Set `mode: "per-request"` on a plan. Two deployment patterns exist.
+
+### PPR Embedded Mode
+
+Key0 middleware (`key0.payPerRequest(planId)`) runs inside the application. After on-chain settlement, the middleware calls `next()` so the local route handler serves the response.
+
+```
+Client                    Application
+  │                            │
+  │  GET /api/weather/london   │
+  │  (no PAYMENT-SIGNATURE)    │
+  │ ─────────────────────────▶ │
+  │ ◀── HTTP 402 (payment-required header) │
+  │                            │
+  │  GET /api/weather/london   │
+  │  + PAYMENT-SIGNATURE       │
+  │ ─────────────────────────▶ │
+  │                            │── settlePayment() on-chain
+  │                            │── store.create() + PENDING→PAID (if store provided)
+  │                            │── req.key0Payment set
+  │                            │── next() called
+  │                            │── route handler runs
+  │                            │── PAID→DELIVERED (on response finish)
+  │ ◀── 200 { city, temp, ... }│
+```
+
+Challenge lifecycle for embedded PPR:
+- Challenge is created **at settlement time** (not during the 402 phase)
+- `challengeId` has prefix `ppr-{uuid}`
+- `clientAgentId` is `"x402-ppr"`
+- If `store` is provided: `PENDING → PAID` on settlement, `PAID → DELIVERED` on successful response finish
+- If backend crashes after settlement: record stays `PAID`; refund cron can process it
+
+### PPR Standalone Mode (Proxy via `/x402/access`)
+
+`proxyTo` or `fetchResource` is set on `SellerConfig`. Clients include a `resource` field (`{ method, path }`) in the `POST /x402/access` body. Key0 proxies to the backend after payment.
+
+```
+Client                    Key0 Gateway                 Backend
+  │                            │                          │
+  │  POST /x402/access         │                          │
+  │  { planId, resource: {...} }│                          │
+  │ ─────────────────────────▶ │                          │
+  │                            │── create PENDING challenge │
+  │ ◀── HTTP 402               │                          │
+  │                            │                          │
+  │  POST /x402/access         │                          │
+  │  + PAYMENT-SIGNATURE       │                          │
+  │ ─────────────────────────▶ │                          │
+  │                            │── settlePayment() on-chain │
+  │                            │── PENDING→PAID            │
+  │                            │                          │
+  │                            │── fetchResource(params) ─▶│
+  │                            │   (injects payment headers)│
+  │                            │ ◀── backend response ─────│
+  │                            │── PAID→DELIVERED (2xx)    │
+  │                            │   (stays PAID on non-2xx) │
+  │ ◀── ResourceResponse       │                          │
+```
+
+Response shape for PPR standalone:
+
+```json
+{
+  "type": "ResourceResponse",
+  "challengeId": "http-a1b2c3d4-...",
+  "requestId": "550e8400-...",
+  "planId": "weather-query",
+  "txHash": "0xSettledTx...",
+  "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx...",
+  "resource": {
+    "status": 200,
+    "body": { "city": "london", "tempF": 65 }
+  }
+}
+```
+
+Headers injected by `proxyToFetchResource` on every proxied request:
+
+| Header | Value |
+|---|---|
+| `x-key0-tx-hash` | On-chain transaction hash |
+| `x-key0-plan-id` | Purchased plan ID |
+| `x-key0-amount` | Amount charged (e.g. `$0.01`) |
+| `x-key0-payer` | Payer wallet address (when available) |
+
+Optional shared secret headers (via `proxyTo.headers`) let the backend reject requests that bypass the gateway.
+
+### PPR Refund Behavior
+
+- **Settlement succeeds, backend returns 2xx**: challenge transitions `PAID → DELIVERED` — no refund needed.
+- **Settlement succeeds, backend returns non-2xx**: challenge stays `PAID`; refund cron will process it after `minAgeMs`.
+- **Settlement fails**: payment never hit the chain — no refund needed (nothing was transferred).
+
+---
+
 ## Settlement Strategies
 
 The `settlePayment()` function is called by all three transports. It routes based on config.

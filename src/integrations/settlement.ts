@@ -7,6 +7,7 @@ import type {
 	FacilitatorVerifyResponse,
 	NetworkConfig,
 	Plan,
+	Route,
 	SellerConfig,
 	X402PaymentPayload,
 	X402PaymentRequiredResponse,
@@ -106,15 +107,20 @@ export function buildHttpPaymentRequirements(
 		description?: string;
 	},
 ): X402PaymentRequiredResponse {
-	const tier = config.plans.find((t: Plan) => t.planId === planId);
-	if (!tier) {
-		throw new Key0Error("TIER_NOT_FOUND", `Plan "${planId}" not found`, 400);
+	// Search plans first, then routes
+	const tier = (config.plans ?? []).find((t: Plan) => t.planId === planId);
+	const route = !tier ? (config.routes ?? []).find((r: Route) => r.routeId === planId) : undefined;
+
+	if (!tier && !route) {
+		throw new Key0Error("TIER_NOT_FOUND", `Plan or route "${planId}" not found`, 400);
 	}
 
+	const unitAmount = tier ? tier.unitAmount! : route!.unitAmount!;
+	const description = tier?.description ?? route?.description ?? `${planId} — ${unitAmount} USDC`;
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const resourceUrl = `${baseUrl}/x402/access`;
 
-	const amountRaw = parseDollarToUsdcMicro(tier.unitAmount);
+	const amountRaw = parseDollarToUsdcMicro(unitAmount);
 	const network = `eip155:${networkConfig.chainId}`;
 
 	const extensions =
@@ -147,7 +153,7 @@ export function buildHttpPaymentRequirements(
 				extra: {
 					name: networkConfig.usdcDomain.name,
 					version: networkConfig.usdcDomain.version,
-					description: tier.description ?? `${tier.planId} — ${tier.unitAmount} USDC`,
+					description,
 				},
 			},
 		],
@@ -156,83 +162,29 @@ export function buildHttpPaymentRequirements(
 }
 
 /**
- * Build a discovery 402 response covering all product tiers.
+ * Build a discovery response covering all product tiers and routes.
  * Used when a bare request is made without specifying a planId.
  * Does not create any PENDING records — pure discovery.
+ *
+ * Returns a simple flat object: { agentName, description, plans, routes }
  */
-export function buildDiscoveryResponse(
-	config: SellerConfig,
-	networkConfig: NetworkConfig,
-): X402PaymentRequiredResponse {
-	const baseUrl = config.agentUrl.replace(/\/$/, "");
-	const resourceUrl = `${baseUrl}/x402/access`;
-
-	const network = `eip155:${networkConfig.chainId}`;
-
-	// Build accepts array with one entry per tier
-	const accepts = config.plans.map((tier: Plan) => {
-		const amountRaw = parseDollarToUsdcMicro(tier.unitAmount);
-		return {
-			scheme: "exact" as const,
-			network,
-			asset: networkConfig.usdcAddress,
-			amount: amountRaw.toString(),
-			payTo: config.walletAddress,
-			maxTimeoutSeconds: config.challengeTTLSeconds ?? 900,
-			extra: {
-				name: networkConfig.usdcDomain.name,
-				version: networkConfig.usdcDomain.version,
-				planId: tier.planId,
-				description: tier.description ?? `${tier.planId} — ${tier.unitAmount} USDC`,
-			},
-		};
-	});
-
+export function buildDiscoveryResponse(config: SellerConfig) {
 	return {
-		x402Version: 2,
-		resource: {
-			url: resourceUrl,
-			method: "POST",
-			description: `${config.agentName} — Pay-per-use access with USDC. POST with { planId } to start a payment flow, or POST with { planId, requestId } + PAYMENT-SIGNATURE header to complete payment.`,
-			mimeType: "application/json",
-		},
-		accepts,
-		extensions: {
-			key0: {
-				inputSchema: {
-					type: "object",
-					properties: {
-						planId: {
-							type: "string",
-							description: `Tier to purchase. Available tiers: ${config.plans.map((t) => t.planId).join(", ")}`,
-						},
-						requestId: {
-							type: "string",
-							description: "Client-generated UUID for idempotency (auto-generated if omitted)",
-						},
-						resourceId: {
-							type: "string",
-							description: "Optional: Specific resource identifier (defaults to 'default')",
-						},
-					},
-					required: ["planId"],
-				},
-				outputSchema: {
-					type: "object",
-					properties: {
-						accessToken: { type: "string", description: "JWT token for API access" },
-						tokenType: { type: "string", description: "Token type (usually 'Bearer')" },
-						resourceEndpoint: {
-							type: "string",
-							description: "URL to access the protected resource",
-						},
-						txHash: { type: "string", description: "On-chain transaction hash" },
-						explorerUrl: { type: "string", description: "Blockchain explorer URL" },
-					},
-				},
-				description: `${config.agentDescription}`,
-			},
-		},
+		agentName: config.agentName,
+		description: config.agentDescription,
+		plans: (config.plans ?? []).map((p) => ({
+			planId: p.planId,
+			unitAmount: p.unitAmount,
+			...(p.description ? { description: p.description } : {}),
+			...(p.free === true ? { free: true } : {}),
+		})),
+		routes: (config.routes ?? []).map((r) => ({
+			routeId: r.routeId,
+			method: r.method,
+			path: r.path,
+			...(r.unitAmount ? { unitAmount: r.unitAmount } : {}),
+			...(r.description ? { description: r.description } : {}),
+		})),
 	};
 }
 

@@ -20,7 +20,7 @@
 
 services:
   key0:
-    image: key0ai/key0:latest
+    image: ${KEY0_IMAGE:-key0ai/key0:latest}
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:

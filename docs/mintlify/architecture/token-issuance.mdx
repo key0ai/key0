@@ -5,6 +5,15 @@ description: "How Key0 issues and validates JWTs after payment. Covers AccessTok
 
 After an agent pays for access, Key0 issues a signed JWT that the agent uses to call your protected endpoints. This page covers the classes and functions involved in creating, signing, and verifying those tokens.
 
+<Note>
+  **Subscription plans only.** Token issuance applies only to `mode: "subscription"` plans (the default). For `mode: "per-request"` plans, `fetchResourceCredentials` is **not called**:
+
+  - **Embedded per-request** — Key0 settles on-chain and calls `next()`, passing control to your route handler. No JWT is issued; `req.key0Payment` contains payment metadata.
+  - **Standalone per-request** — Key0 settles on-chain and proxies the request to your backend via `fetchResource`/`proxyTo`. The backend's response is returned directly as a `ResourceResponse`.
+
+  See [Pay-Per-Request](/introduction/core-concepts#pay-per-request-ppr) for the full per-request flow.
+</Note>
+
 ## Token issuance flow
 
 <Steps>
