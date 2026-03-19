@@ -6,7 +6,7 @@ description: "Generate a branded CLI binary for your Key0 service that agents ca
 The Agent CLI lets you ship a standalone binary for your service. Agents download it once, run `--install`, and then interact with your API by name — no HTTP knowledge required.
 
 <Note>
-  In standalone Docker mode, Key0 can host the CLI install flow automatically via `/install.sh` and `/cli/:target`. The manual build/distribute flow below is still useful for embedded deployments or custom distribution.
+  Key0 does **not** serve CLI binaries over HTTP. In standalone Docker mode, binaries are compiled at startup and written to `/app/config/cli-cache` inside the container — copy them out and host them yourself (GitHub Releases, S3, CDN, etc.). See [Distributing from Docker](#distributing-from-docker) below.
 </Note>
 
 ```bash
@@ -73,6 +73,28 @@ Upload the binaries to your CDN or GitHub Releases. Each agent downloads the bin
 <Tip>
 Tell agents the download URL for their platform in your service's README or agent card description. A platform-specific URL like `https://cdn.example.com/cli/my-service-darwin-arm64` is all they need.
 </Tip>
+
+---
+
+## Distributing from Docker
+
+In standalone Docker mode, Key0 compiles binaries at startup and writes them to `/app/config/cli-cache` inside the container. Key0 does **not** expose them over HTTP — you must copy them out and host them yourself.
+
+**Option A: `docker cp`**
+
+```bash
+docker cp docker-key0-1:/app/config/cli-cache ./cli-dist
+```
+
+**Option B: volume mount** (binaries available on host automatically)
+
+```yaml
+# docker-compose.yml
+volumes:
+  - ./cli-dist:/app/config/cli-cache
+```
+
+Then upload `./cli-dist` to wherever your agents can reach them — GitHub Releases, S3, a CDN, etc.
 
 ---
 

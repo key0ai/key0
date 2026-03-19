@@ -1,11 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { makeSellerConfig } from "../../test-utils/index.js";
-import {
-	buildInstallScript,
-	buildLlmsTxt,
-	buildSkillsMd,
-	slugifyCliName,
-} from "../standalone-onboarding.js";
+import { buildLlmsTxt, buildSkillsMd, slugifyCliName } from "../standalone-onboarding.js";
 
 const baseConfig = makeSellerConfig({
 	agentName: "Weather Pro",
@@ -29,8 +24,6 @@ describe("buildLlmsTxt", () => {
 			mcpEnabled: false,
 			llmsEnabled: true,
 			skillsMdEnabled: true,
-			installShEnabled: false,
-			cliDownloadsEnabled: false,
 		});
 
 		expect(text).toContain("GET https://api.example.com/discover");
@@ -47,22 +40,10 @@ describe("buildSkillsMd", () => {
 			mcpEnabled: true,
 			llmsEnabled: true,
 			skillsMdEnabled: true,
-			installShEnabled: true,
-			cliDownloadsEnabled: true,
 		});
 
 		expect(text).toContain("`https://api.example.com/discover`");
 		expect(text).toContain("Subscription Plans");
 		expect(text).toContain("Pay-Per-Call Routes");
-		expect(text).toContain("/install.sh");
-	});
-});
-
-describe("buildInstallScript", () => {
-	it("downloads the binary from the canonical CLI endpoint", () => {
-		const script = buildInstallScript(baseConfig);
-		expect(script).toContain('URL="$BASE_URL/cli/$TARGET"');
-		expect(script).toContain('"$BIN_PATH" --install');
-		expect(script).toContain('CLI_NAME="weather-pro"');
 	});
 });

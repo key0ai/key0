@@ -50,8 +50,8 @@ docker compose -f docker/docker-compose.yml --profile full up
 
 Standalone auto-hosts the buyer onboarding bundle from your config:
 `GET /discover`, `POST /x402/access`, optional `/.well-known/agent.json`,
-optional `/.well-known/mcp.json`, plus generated `/llms.txt`, `/skills.md`,
-`/install.sh`, and seller CLI downloads at `/cli/:target`.
+optional `/.well-known/mcp.json`, plus generated `/llms.txt` and `/skills.md`.
+CLI binaries are compiled at startup — copy them out and distribute them yourself (see [Agent CLI](#agent-cli)).
 
 ### Embedded - Subscription Plans
 
@@ -266,16 +266,8 @@ By default, standalone key0 generates and hosts these buyer-facing endpoints fro
 | `GET /.well-known/mcp.json` + `POST /mcp` | off | `MCP_ENABLED=true` enables them |
 | `GET /llms.txt` | on | `LLMS_ENABLED=false` disables it |
 | `GET /skills.md` | on | `SKILLS_MD_ENABLED=false` disables it |
-| `GET /install.sh` | on | `INSTALL_SH_ENABLED=false` disables it |
-| `GET /cli/:target` | on | `CLI_DOWNLOADS_ENABLED=false` disables it |
 
-CLI binaries are compiled once at startup and cached — `/cli/:target` is a pure file serve with no per-request build overhead.
-
-For agents, the simplest install path is:
-
-```bash
-curl -fsSL http://localhost:3000/install.sh | sh
-```
+CLI binaries are compiled at startup and written to `/app/config/cli-cache` inside the container. key0 does **not** expose them over HTTP — you are responsible for copying them out and hosting them where your users can download them (e.g. GitHub Releases, S3, a CDN). See [Agent CLI](#agent-cli) for details.
 
 #### Option B: Environment variables
 
@@ -339,8 +331,6 @@ Build from source: `docker build -t key0ai/key0 .`
 | `MCP_ENABLED` | | `false` | When `true`, mounts MCP routes (`/.well-known/mcp.json` + `POST /mcp`) exposing `discover` and `access` tools |
 | `LLMS_ENABLED` | | `true` | When `false`, disables generated `/llms.txt` buyer-onboarding output |
 | `SKILLS_MD_ENABLED` | | `true` | When `false`, disables generated `/skills.md` buyer workflow guide |
-| `INSTALL_SH_ENABLED` | | `true` | When `false`, disables generated `/install.sh` CLI installer |
-| `CLI_DOWNLOADS_ENABLED` | | `true` | When `false`, disables generated seller CLI binaries at `/cli/:target` |
 | `STORAGE_BACKEND` | | `redis` | Storage backend - `redis` or `postgres` |
 | `DATABASE_URL` | | - | PostgreSQL connection URL - required when `STORAGE_BACKEND=postgres` |
 | `REDIS_URL` | ✅ | - | Redis connection URL - required for challenge state (or BullMQ refund cron when using Postgres) |
@@ -908,7 +898,21 @@ See [`docs/mcp-integration.md`](./docs/mcp-integration.md) for architecture deta
 
 Sellers can distribute a branded CLI binary — a standalone executable with your service URL baked in. Agents download it once, install it, and interact with your API by name.
 
-**For sellers — generate the binary:**
+**Standalone Docker** compiles binaries for Linux x64, macOS ARM64, and macOS x64 at startup and writes them to `/app/config/cli-cache` inside the container. key0 does **not** serve them over HTTP — copy them out and host them yourself:
+
+```bash
+# Copy binaries out of the running container
+docker cp docker-key0-1:/app/config/cli-cache ./cli-dist
+
+# Or mount the cache dir as a volume so they're available on the host
+# (add to docker-compose.yml)
+volumes:
+  - ./cli-dist:/app/config/cli-cache
+```
+
+Then upload the binaries to wherever your users can reach them — GitHub Releases, S3, a CDN, etc.
+
+**Embedded SDK** — generate binaries directly:
 
 ```typescript
 import { buildCli } from "@key0ai/key0/cli";

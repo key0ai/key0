@@ -100,9 +100,12 @@ describe("buildAgentCard", () => {
 		expect(skill.examples!.length).toBeGreaterThan(0);
 
 		// inputSchema is present for machine-readable validation
-		expect((skill as any).inputSchema).toBeDefined();
-		expect((skill as any).inputSchema.required).toContain("planId");
-		expect((skill as any).inputSchema.required).toContain("requestId");
+		expect(skill.inputSchema).toBeDefined();
+		expect(skill.inputSchema!["required"]).toContain("planId");
+		expect(skill.inputSchema!["required"]).toContain("requestId");
+		// endpoint and workflow are not included (non-standard, no added value over description+examples)
+		expect((skill as any).endpoint).toBeUndefined();
+		expect((skill as any).workflow).toBeUndefined();
 
 		// A2A spec: skills should NOT have pricing, outputSchema, url
 		expect((skill as any).pricing).toBeUndefined();
@@ -197,10 +200,10 @@ describe("skill renames", () => {
 		expect(ids).not.toContain("request-access");
 	});
 
-	it("discover skill endpoint points to /discover", () => {
+	it("discover skill description mentions /discover endpoint", () => {
 		const card = buildAgentCard(makeSellerConfig());
 		const skill = card.skills.find((s) => s.id === "discover")!;
-		expect(skill.endpoint?.url).toContain("/discover");
+		expect(skill.description).toContain("/discover");
 	});
 });
 
@@ -216,8 +219,8 @@ describe("per-route skills from config.routes", () => {
 		const card = buildAgentCard(config);
 		const routeSkill = card.skills.find((s) => s.id.startsWith("ppr-weather"));
 		expect(routeSkill).toBeDefined();
-		const props = routeSkill?.inputSchema?.["properties"] as Record<string, unknown> | undefined;
-		expect(props?.["routeId"]).toBeDefined();
+		expect(routeSkill?.description).toContain("weather");
+		expect(routeSkill?.examples?.some((ex) => ex.includes("routeId"))).toBe(true);
 	});
 
 	it("does NOT build skills from plans[].routes (old API)", () => {

@@ -163,8 +163,6 @@ app.get("/api/setup/status", (_req, res) => {
 			mcpEnabled: process.env.MCP_ENABLED === "true",
 			llmsEnabled: process.env.LLMS_ENABLED !== "false",
 			skillsMdEnabled: process.env.SKILLS_MD_ENABLED !== "false",
-			installShEnabled: process.env.INSTALL_SH_ENABLED !== "false",
-			cliDownloadsEnabled: process.env.CLI_DOWNLOADS_ENABLED !== "false",
 			refundIntervalMs: process.env.REFUND_INTERVAL_MS ?? "60000",
 			refundMinAgeMs: process.env.REFUND_MIN_AGE_MS ?? "300000",
 		},
@@ -204,8 +202,6 @@ interface SetupBody {
 	mcpEnabled: boolean;
 	llmsEnabled: boolean;
 	skillsMdEnabled: boolean;
-	installShEnabled: boolean;
-	cliDownloadsEnabled: boolean;
 	backendAuthStrategy: "none" | "shared-secret" | "jwt";
 	issueTokenApiSecret: string;
 	gasWalletPrivateKey: string;
@@ -235,13 +231,6 @@ app.post("/api/setup", async (req, res) => {
 		res.status(400).json({ error: "proxyToBaseUrl is required when routes are configured" });
 		return;
 	}
-	if (body.installShEnabled && !body.cliDownloadsEnabled) {
-		res
-			.status(400)
-			.json({ error: "cliDownloadsEnabled is required when installShEnabled is true" });
-		return;
-	}
-
 	// Build .env content — values with spaces must be double-quoted for shell sourcing
 	const q = (v: string) => (v.includes(" ") ? `"${v.replace(/"/g, '\\"')}"` : v);
 	const lines: string[] = [
@@ -298,12 +287,6 @@ app.post("/api/setup", async (req, res) => {
 	}
 	if (!body.skillsMdEnabled) {
 		lines.push(`SKILLS_MD_ENABLED=false`);
-	}
-	if (!body.installShEnabled) {
-		lines.push(`INSTALL_SH_ENABLED=false`);
-	}
-	if (!body.cliDownloadsEnabled) {
-		lines.push(`CLI_DOWNLOADS_ENABLED=false`);
 	}
 	if (body.backendAuthStrategy && body.backendAuthStrategy !== "none") {
 		lines.push(`BACKEND_AUTH_STRATEGY=${body.backendAuthStrategy}`);
@@ -368,8 +351,9 @@ if (!isConfigured) {
 	const key0 = await import("@key0ai/key0");
 	const { key0Router } = await import("@key0ai/key0/express");
 	const { buildDockerTokenIssuer } = await import("../src/helpers/docker-token-issuer.js");
-	const { buildInstallScript, buildLlmsTxt, buildSkillsMd, createCliArtifactManager } =
-		await import("../src/helpers/standalone-onboarding.js");
+	const { buildLlmsTxt, buildSkillsMd, createCliArtifactManager } = await import(
+		"../src/helpers/standalone-onboarding.js"
+	);
 
 	type IAuditStore = key0.IAuditStore;
 	type IChallengeStore = key0.IChallengeStore;
@@ -413,13 +397,6 @@ if (!isConfigured) {
 	const MCP_ENABLED = process.env.MCP_ENABLED === "true";
 	const LLMS_ENABLED = process.env.LLMS_ENABLED !== "false";
 	const SKILLS_MD_ENABLED = process.env.SKILLS_MD_ENABLED !== "false";
-	const INSTALL_SH_ENABLED = process.env.INSTALL_SH_ENABLED !== "false";
-	const CLI_DOWNLOADS_ENABLED = process.env.CLI_DOWNLOADS_ENABLED !== "false";
-
-	if (INSTALL_SH_ENABLED && !CLI_DOWNLOADS_ENABLED) {
-		console.error("FATAL: INSTALL_SH_ENABLED=true requires CLI_DOWNLOADS_ENABLED=true");
-		process.exit(1);
-	}
 
 	// Plans — support both PLANS (raw JSON) and PLANS_B64 (base64-encoded JSON)
 	const DEFAULT_PLANS: Plan[] = [
@@ -545,25 +522,18 @@ if (!isConfigured) {
 		mcpEnabled: MCP_ENABLED,
 		llmsEnabled: LLMS_ENABLED,
 		skillsMdEnabled: SKILLS_MD_ENABLED,
-		installShEnabled: INSTALL_SH_ENABLED,
-		cliDownloadsEnabled: CLI_DOWNLOADS_ENABLED,
 	};
 
 	// Pre-compute static onboarding content once at startup
 	const llmsTxtContent = LLMS_ENABLED ? buildLlmsTxt(sellerConfig, onboardingOptions) : null;
 	const skillsMdContent = SKILLS_MD_ENABLED ? buildSkillsMd(sellerConfig, onboardingOptions) : null;
-	const installShContent = INSTALL_SH_ENABLED ? buildInstallScript(sellerConfig) : null;
 
-	const cliManager = CLI_DOWNLOADS_ENABLED
-		? createCliArtifactManager(sellerConfig, resolve("/app/config/cli-cache"))
-		: null;
-
-	// Kick off CLI build once at startup — endpoint is a pure file serve
-	if (cliManager) {
-		cliManager
-			.buildAll()
-			.catch((err) => console.error("[key0] Failed to build CLI artifacts:", err));
-	}
+	// Build CLI binaries at startup — seller distributes them manually (docker cp or volume mount)
+	const cliManager = createCliArtifactManager(sellerConfig, resolve("/app/config/cli-cache"));
+	cliManager
+		.buildAll()
+		.then(() => console.log(`[key0] CLI artifacts ready in /app/config/cli-cache`))
+		.catch((err) => console.error("[key0] Failed to build CLI artifacts:", err));
 
 	app.get("/health", (_req, res) => {
 		res.json({ status: "ok", network: NETWORK, wallet: WALLET_ADDRESS, storage: STORAGE_BACKEND });
@@ -580,24 +550,6 @@ if (!isConfigured) {
 		app.get("/skills.md", (_req, res) => {
 			res.type("text/markdown; charset=utf-8");
 			res.send(skillsMdContent);
-		});
-	}
-
-	if (installShContent !== null) {
-		app.get("/install.sh", (_req, res) => {
-			res.type("text/x-shellscript; charset=utf-8");
-			res.send(installShContent);
-		});
-	}
-
-	if (CLI_DOWNLOADS_ENABLED && cliManager) {
-		app.get("/cli/:target", (req, res) => {
-			const binaryPath = cliManager.getPath(req.params.target);
-			if (!binaryPath) {
-				return res.status(404).json({ error: `CLI target not available: ${req.params.target}` });
-			}
-			res.setHeader("Content-Disposition", `attachment; filename="${cliManager.cliName}"`);
-			return res.sendFile(binaryPath);
 		});
 	}
 
@@ -828,7 +780,6 @@ if (!isConfigured) {
 		console.log(`  MCP:        ${MCP_ENABLED ? `${AGENT_URL}/.well-known/mcp.json` : "DISABLED"}`);
 		console.log(`  llms.txt:   ${LLMS_ENABLED ? `${AGENT_URL}/llms.txt` : "DISABLED"}`);
 		console.log(`  skills.md:  ${SKILLS_MD_ENABLED ? `${AGENT_URL}/skills.md` : "DISABLED"}`);
-		console.log(`  install.sh: ${INSTALL_SH_ENABLED ? `${AGENT_URL}/install.sh` : "DISABLED"}`);
 		console.log(
 			`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set KEY0_WALLET_PRIVATE_KEY)"}\n`,
 		);

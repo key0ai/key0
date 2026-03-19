@@ -34,8 +34,8 @@ By default, standalone also generates buyer-facing onboarding endpoints from you
 - `GET /.well-known/mcp.json` and `POST /mcp` when MCP is enabled
 - `GET /llms.txt`
 - `GET /skills.md`
-- `GET /install.sh`
-- `GET /cli/:target`
+
+CLI binaries are compiled at startup and written to `/app/config/cli-cache` inside the container. Key0 does **not** serve them over HTTP — you are responsible for copying them out and hosting them where your users can download them (e.g. GitHub Releases, S3, a CDN). See the [Agent CLI](/guides/agent-cli) guide for details.
 
 <Tabs>
   <Tab title="Setup UI">
@@ -241,10 +241,6 @@ curl http://localhost:3000/.well-known/agent.json
 
 ```bash Browse available plans
 curl http://localhost:3000/discover
-```
-
-```bash Install the generated seller CLI
-curl -fsSL http://localhost:3000/install.sh | sh
 ```
 
 ```json Expected output

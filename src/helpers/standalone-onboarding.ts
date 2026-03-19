@@ -11,8 +11,6 @@ type OnboardingOptions = {
 	mcpEnabled: boolean;
 	llmsEnabled: boolean;
 	skillsMdEnabled: boolean;
-	installShEnabled: boolean;
-	cliDownloadsEnabled: boolean;
 };
 
 export function slugifyCliName(name: string): string {
@@ -56,7 +54,6 @@ export function buildLlmsTxt(config: SellerConfig, options: OnboardingOptions): 
 	}
 	if (options.skillsMdEnabled) lines.push(`- GET ${baseUrl}/skills.md`);
 	if (options.llmsEnabled) lines.push(`- GET ${baseUrl}/llms.txt`);
-	if (options.installShEnabled) lines.push(`- GET ${baseUrl}/install.sh`);
 
 	const catalogSummary = summarizeCatalog(config);
 	if (catalogSummary.length > 0) {
@@ -86,11 +83,6 @@ export function buildLlmsTxt(config: SellerConfig, options: OnboardingOptions): 
 	lines.push(`- HTTP x402: enabled`);
 	lines.push(`- A2A: ${options.a2aEnabled ? "enabled" : "disabled"}`);
 	lines.push(`- MCP: ${options.mcpEnabled ? "enabled" : "disabled"}`);
-
-	if (options.installShEnabled && options.cliDownloadsEnabled) {
-		lines.push("", "## CLI");
-		lines.push(`- Install with: curl -fsSL ${baseUrl}/install.sh | sh`);
-	}
 
 	return `${lines.join("\n")}\n`;
 }
@@ -149,60 +141,7 @@ export function buildSkillsMd(config: SellerConfig, options: OnboardingOptions):
 		);
 	}
 
-	if (options.installShEnabled && options.cliDownloadsEnabled) {
-		lines.push(
-			"",
-			"## CLI Install",
-			`Run \`curl -fsSL ${baseUrl}/install.sh | sh\` to install the seller CLI locally.`,
-		);
-	}
-
 	return `${lines.join("\n")}\n`;
-}
-
-export function buildInstallScript(config: SellerConfig): string {
-	const baseUrl = normalizeBaseUrl(config.agentUrl).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-	const cliName = slugifyCliName(config.agentName);
-	return `#!/bin/sh
-set -eu
-
-BASE_URL="${baseUrl}"
-CLI_NAME="${cliName}"
-
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-
-case "$OS:$ARCH" in
-  Darwin:arm64) TARGET="bun-darwin-arm64" ;;
-  Darwin:x86_64) TARGET="bun-darwin-x64" ;;
-  Linux:x86_64) TARGET="bun-linux-x64" ;;
-  *)
-    echo "Unsupported platform: $OS $ARCH" >&2
-    exit 1
-    ;;
-esac
-
-TMP_DIR="$(mktemp -d)"
-BIN_PATH="$TMP_DIR/$CLI_NAME"
-URL="$BASE_URL/cli/$TARGET"
-
-cleanup() {
-  rm -rf "$TMP_DIR"
-}
-trap cleanup EXIT INT TERM
-
-if command -v curl >/dev/null 2>&1; then
-  curl -fsSL "$URL" -o "$BIN_PATH"
-elif command -v wget >/dev/null 2>&1; then
-  wget -qO "$BIN_PATH" "$URL"
-else
-  echo "curl or wget is required" >&2
-  exit 1
-fi
-
-chmod +x "$BIN_PATH"
-"$BIN_PATH" --install
-`;
 }
 
 function buildCliFingerprint(config: SellerConfig, targets: readonly string[]): string {
