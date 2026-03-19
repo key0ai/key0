@@ -9,10 +9,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { BACKEND_URL, DEFAULT_TIER_ID, REFUND_POLL_TIMEOUT_MS } from "../fixtures/constants.ts";
+import { BACKEND_URL, DEFAULT_TIER_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
-import { readChallengeState } from "../helpers/storage-client.ts";
-import { pollUntil } from "../helpers/wait.ts";
+import { readChallengeState, transitionChallengeState } from "../helpers/storage-client.ts";
 
 describe("Token Issuance Failure", () => {
 	test("challenge stays in PAID state when backend /issue-token returns 500", async () => {
@@ -59,17 +58,19 @@ describe("Token Issuance Failure", () => {
 			const state = await readChallengeState(challengeId);
 			expect(state).toBe("PAID");
 		} finally {
-			if (!challengeId) return;
+			if (challengeId) {
+				// Cleanup: close the PAID record deterministically instead of waiting
+				// for the refund cron to race later tests on the shared gas wallet.
+				const cleaned = await transitionChallengeState(challengeId, "PAID", "REFUND_FAILED");
+				expect(cleaned).toBeTrue();
 
-			// Cleanup: do not leave a refundable PAID record behind to contend with
-			// later tests for the shared gas wallet lock / nonce.
-			await pollUntil(async () => {
-				const state = await readChallengeState(challengeId);
-				if (state === "REFUNDED" || state === "REFUND_FAILED") {
-					return state;
-				}
-				return null;
-			}, REFUND_POLL_TIMEOUT_MS);
+				const clearRes = await fetch(`${BACKEND_URL}/test/clear-fail-for-challenge`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ challengeId }),
+				});
+				expect(clearRes.status).toBe(204);
+			}
 		}
 	}, 120_000);
 });

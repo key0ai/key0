@@ -53,6 +53,9 @@ describe("Happy Path with State Verification", () => {
 			paymentRequired,
 		});
 
+		if (result.status !== 200) {
+			throw new Error(`submitPayment failed: ${JSON.stringify(result.error)}`);
+		}
 		expect(result.status).toBe(200);
 		expect(result.grant).toBeDefined();
 

@@ -43,6 +43,21 @@ async function readPprChallengeState(challengeId: string): Promise<string | null
 	return data.state ?? null;
 }
 
+async function transitionPprChallengeState(
+	challengeId: string,
+	fromState: string,
+	toState: string,
+): Promise<boolean> {
+	const res = await fetch(`${PPR_KEY0_URL}/test/transition-challenge`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ challengeId, fromState, toState }),
+	});
+	if (res.ok) return true;
+	if (res.status === 409) return false;
+	throw new Error(`Failed to transition PPR challenge: ${res.status} ${await res.text()}`);
+}
+
 beforeAll(async () => {
 	try {
 		startDockerStack(STACK_CONFIG);
@@ -145,6 +160,7 @@ describe("PPR Standalone: validation and error cases", () => {
 
 	test("backend returns non-2xx → ResourceResponse with non-2xx status, challenge stays PAID", async () => {
 		const client = makeClientE2eClient(PPR_KEY0_URL);
+		let challengeId: string | null = null;
 
 		// Instruct the backend to return 500 for PPR routes
 		await fetch("http://localhost:3001/test/set-ppr-mode", {
@@ -154,10 +170,12 @@ describe("PPR Standalone: validation and error cases", () => {
 		});
 
 		try {
-			const { challengeId, resourceResponse } = await client.purchasePprAccess({
+			const result = await client.purchasePprAccess({
 				routeId: PPR_WEATHER_ROUTE_ID,
 				resource: { method: "GET", path: "/api/weather/berlin" },
 			});
+			challengeId = result.challengeId;
+			const { resourceResponse } = result;
 
 			// The response itself is a ResourceResponse (payment succeeded and we proxied)
 			expect(resourceResponse.type).toBe("ResourceResponse");
@@ -173,6 +191,13 @@ describe("PPR Standalone: validation and error cases", () => {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ mode: "success" }),
 			});
+
+			if (challengeId) {
+				// Cleanup: close the PAID record deterministically instead of leaving
+				// refund work behind for later scenarios in the shared stack.
+				const cleaned = await transitionPprChallengeState(challengeId, "PAID", "REFUND_FAILED");
+				expect(cleaned).toBeTrue();
+			}
 		}
 	}, 120_000);
 

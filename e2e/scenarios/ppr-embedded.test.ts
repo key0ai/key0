@@ -40,6 +40,7 @@ const GAS_WALLET_KEY = process.env["GAS_WALLET_PRIVATE_KEY"] as `0x${string}` | 
 
 let server: Server | null = null;
 let embeddedRedis: Redis | null = null;
+let embeddedStoreRedis: Redis | null = null;
 
 /** Read embedded challenge state directly from Redis. */
 async function readEmbeddedChallengeState(challengeId: string): Promise<string | null> {
@@ -61,9 +62,9 @@ beforeAll(async () => {
 		console.error("[ppr-embedded redis] connection error:", err.message);
 	});
 
-	const redis = new Redis(EMBEDDED_REDIS_URL);
-	const store = new RedisChallengeStore({ redis });
-	const seenTxStore = new RedisSeenTxStore({ redis });
+	embeddedStoreRedis = new Redis(EMBEDDED_REDIS_URL);
+	const store = new RedisChallengeStore({ redis: embeddedStoreRedis });
+	const seenTxStore = new RedisSeenTxStore({ redis: embeddedStoreRedis });
 	const ALCHEMY_RPC = process.env["ALCHEMY_BASE_SEPOLIA_RPC_URL"];
 	const adapter = new X402Adapter({
 		network: NETWORK,
@@ -87,7 +88,7 @@ beforeAll(async () => {
 			network: NETWORK,
 			gasWalletPrivateKey: GAS_WALLET_KEY,
 			// Cast required: ioredis Redis has a wider .set() overload signature than IRedisLockClient
-			redis: redis as any,
+			redis: embeddedStoreRedis as any,
 			challengeTTLSeconds: 300,
 			routes: [
 				{
@@ -170,6 +171,10 @@ afterAll(async () => {
 	if (embeddedRedis) {
 		await embeddedRedis.quit();
 		embeddedRedis = null;
+	}
+	if (embeddedStoreRedis) {
+		await embeddedStoreRedis.quit();
+		embeddedStoreRedis = null;
 	}
 });
 

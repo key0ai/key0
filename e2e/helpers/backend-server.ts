@@ -73,6 +73,16 @@ export function startBackend(): Promise<Server> {
 		res.status(204).send();
 	});
 
+	app.post("/test/clear-fail-for-challenge", (req, res) => {
+		const { challengeId } = req.body as { challengeId: string };
+		if (!challengeId) {
+			res.status(400).json({ error: "challengeId required" });
+			return;
+		}
+		failForChallengeIds.delete(challengeId);
+		res.status(204).send();
+	});
+
 	// ── Mode control ────────────────────────────────────────────────────────
 	app.post("/test/set-mode", (req, res) => {
 		const { mode: newMode } = req.body as { mode: "success" | "fail" };

@@ -12,6 +12,15 @@ export const USDC_DOMAIN = { name: "USDC", version: "2" } as const;
 export const DEFAULT_TIER_ID = "basic";
 export const DEFAULT_TIER_AMOUNT_MICRO = 100_000n; // $0.10 USDC
 
+/** PPR / gateway stack constants (docker-compose.e2e-ppr.yml) */
+export const PPR_KEY0_URL = "http://localhost:3002";
+export const PPR_WEATHER_ROUTE_ID = "weather-query";
+export const PPR_JOKE_ROUTE_ID = "joke-of-the-day";
+export const GATEWAY_KEY0_URL = PPR_KEY0_URL;
+export const GATEWAY_FREE_PLAN_ID = "status";
+export const GATEWAY_SIGNAL_PLAN_ID = "weather-by-city";
+export const GATEWAY_PROXY_SECRET = "e2e-gateway-proxy-secret-32-chars!";
+
 /** Refund-fail stack constants (refund-failure.test.ts) */
 export const REFUND_FAIL_KEY0_URL = "http://localhost:3020";
 export const REFUND_FAIL_REDIS_URL = "redis://localhost:6381";

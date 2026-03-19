@@ -152,44 +152,26 @@ export async function writePaidChallengeRecord(record: {
 }
 
 /**
- * Transition a challenge from one state to another.
- * Works with both Redis and Postgres backends.
+ * Transition a challenge from one state to another through the Key0 test endpoint.
+ * This preserves backend-specific bookkeeping such as the Redis paid sorted set.
  */
 export async function transitionChallengeState(
 	challengeId: string,
 	fromState: string,
 	toState: string,
 ): Promise<boolean> {
-	if (storageBackend === "postgres") {
-		// Use HTTP endpoint for Postgres
-		const res = await fetch(`${baseUrl}/test/transition-challenge`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ challengeId, fromState, toState }),
-		});
-		if (res.ok) {
-			return true;
-		}
-		if (res.status === 409) {
-			return false; // State mismatch
-		}
-		throw new Error(`Failed to transition challenge: ${res.status} ${await res.text()}`);
+	const res = await fetch(`${baseUrl}/test/transition-challenge`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ challengeId, fromState, toState }),
+	});
+	if (res.ok) {
+		return true;
 	}
-
-	// For Redis, use direct Redis operations
-	const redis = connectRedis();
-	const challengeKey = `key0:challenge:${challengeId}`;
-
-	// Atomic transition using Lua script (similar to store.transition)
-	const script = `
-		if redis.call('hget', KEYS[1], 'state') == ARGV[1] then
-			redis.call('hset', KEYS[1], 'state', ARGV[2])
-			return 1
-		end
-		return 0
-	`;
-	const result = await redis.eval(script, 1, challengeKey, fromState, toState);
-	return result === 1;
+	if (res.status === 409) {
+		return false;
+	}
+	throw new Error(`Failed to transition challenge: ${res.status} ${await res.text()}`);
 }
 
 /**

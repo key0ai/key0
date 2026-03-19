@@ -343,31 +343,42 @@ export async function settleViaGasWallet(
 	console.log("[settleViaGasWallet] ✓ Payment verified");
 
 	// STEP 2: Settle (90s timeout — includes on-chain tx confirmation)
+	const MAX_SETTLE_ATTEMPTS = 3;
 	let settlement: any;
-	try {
-		let settleTimer: ReturnType<typeof setTimeout>;
-		settlement = await Promise.race([
-			scheme
-				.settle(paymentPayload as any, requirement as any)
-				.finally(() => clearTimeout(settleTimer)),
-			new Promise<never>((_, reject) => {
-				settleTimer = setTimeout(() => reject(new Error("Gas wallet settle timed out")), 90_000);
-			}),
-		]);
-	} catch (e) {
-		const msg = e instanceof Error ? e.message : "Unknown settlement error";
-		throw new Key0Error("PAYMENT_FAILED", `Settlement failed: ${msg}`, 500);
-	}
+	for (let attempt = 0; attempt < MAX_SETTLE_ATTEMPTS; attempt++) {
+		try {
+			let settleTimer: ReturnType<typeof setTimeout>;
+			settlement = await Promise.race([
+				scheme
+					.settle(paymentPayload as any, requirement as any)
+					.finally(() => clearTimeout(settleTimer)),
+				new Promise<never>((_, reject) => {
+					settleTimer = setTimeout(() => reject(new Error("Gas wallet settle timed out")), 90_000);
+				}),
+			]);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : "Unknown settlement error";
+			throw new Key0Error("PAYMENT_FAILED", `Settlement failed: ${msg}`, 500);
+		}
 
-	if (!settlement.success) {
-		throw new Key0Error(
-			"PAYMENT_FAILED",
-			settlement.errorReason || "Payment settlement failed",
-			500,
+		if (settlement.success && settlement.transaction) {
+			break;
+		}
+
+		const errorReason = settlement?.errorReason || "Payment settlement failed";
+		const shouldRetry = errorReason === "transaction_failed" && attempt < MAX_SETTLE_ATTEMPTS - 1;
+		if (!shouldRetry) {
+			if (!settlement.success) {
+				throw new Key0Error("PAYMENT_FAILED", errorReason, 500);
+			}
+			throw new Key0Error("PAYMENT_FAILED", "Settlement did not return transaction hash", 500);
+		}
+
+		const retryDelayMs = 1_000 * (attempt + 1);
+		console.warn(
+			`[settleViaGasWallet] settlement returned transaction_failed; retrying in ${retryDelayMs}ms (attempt ${attempt + 2}/${MAX_SETTLE_ATTEMPTS})`,
 		);
-	}
-	if (!settlement.transaction) {
-		throw new Key0Error("PAYMENT_FAILED", "Settlement did not return transaction hash", 500);
+		await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
 	}
 
 	console.log(`[settleViaGasWallet] ✓ Settled: ${settlement.transaction}`);
