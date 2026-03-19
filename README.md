@@ -269,6 +269,8 @@ By default, standalone key0 generates and hosts these buyer-facing endpoints fro
 | `GET /install.sh` | on | `INSTALL_SH_ENABLED=false` disables it |
 | `GET /cli/:target` | on | `CLI_DOWNLOADS_ENABLED=false` disables it |
 
+CLI binaries are compiled once at startup and cached — `/cli/:target` is a pure file serve with no per-request build overhead.
+
 For agents, the simplest install path is:
 
 ```bash
