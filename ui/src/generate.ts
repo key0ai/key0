@@ -160,6 +160,9 @@ export function generateAgentCardTerminal(config: Config): TerminalBlock[] {
 	const chainId = CHAIN_IDS[config.network] ?? 84532;
 	const explorer = config.network === "mainnet" ? "basescan.org" : "sepolia.basescan.org";
 
+	const hasPlans = config.plans.some((p) => p.planId);
+	const hasRoutes = config.routes.some((r) => r.path);
+
 	const blocks: TerminalBlock[] = [];
 
 	// 1. Connect
@@ -173,17 +176,20 @@ export function generateAgentCardTerminal(config: Config): TerminalBlock[] {
 		text: `Fetch(${baseUrl}/.well-known/agent.json)\n  ⎿  Received (200 OK)`,
 	});
 
+	const catalogSummary = [
+		hasPlans ? `${config.plans.length} plan${config.plans.length !== 1 ? "s" : ""}` : null,
+		hasRoutes ? `${config.routes.length} route${config.routes.length !== 1 ? "s" : ""}` : null,
+	]
+		.filter(Boolean)
+		.join(", ");
+
 	blocks.push({
 		kind: "collapsible-json",
-		summary: `{  agent.json  •  ${config.plans.length} plan${config.plans.length !== 1 ? "s" : ""}  }`,
+		summary: `{  agent.json  •  ${catalogSummary || "no catalog"}  }`,
 		text: generateAgentCard(config),
 	});
 
 	// 2. Agent summary
-	const planRows = config.plans
-		.filter((p) => p.planId)
-		.map((p) => [p.planId, p.unitAmount || "$0.00", p.description || "—"]);
-
 	let summary = `Successfully connected. Here's a summary of the ${agentName} agent:\n\n`;
 	summary += `  Name: ${agentName}\n`;
 	summary += `  Description: ${agentDescription}\n`;
@@ -193,63 +199,118 @@ export function generateAgentCardTerminal(config: Config): TerminalBlock[] {
 
 	blocks.push({ kind: "status", text: summary });
 
-	// 3. Plans table
-	blocks.push({ kind: "output", text: "  Available Plans\n" });
-	if (planRows.length > 0) {
+	// 3a. Plans table (if any)
+	if (hasPlans) {
+		const planRows = config.plans
+			.filter((p) => p.planId)
+			.map((p) => [p.planId, p.unitAmount || "$0.00", p.description || "—"]);
+		blocks.push({ kind: "output", text: "  Subscription Plans\n" });
+		blocks.push({ kind: "table", text: asciiTable(["Plan", "Price", "Details"], planRows) });
+	}
+
+	// 3b. Routes table (if any)
+	if (hasRoutes) {
+		const routeRows = config.routes
+			.filter((r) => r.path)
+			.map((r) => [
+				`${r.method} ${r.path}`,
+				r.unitAmount ? `$${r.unitAmount}` : "free",
+				r.description || "—",
+			]);
+		blocks.push({ kind: "output", text: "  Pay-Per-Call Routes\n" });
+		blocks.push({ kind: "table", text: asciiTable(["Route", "Price", "Details"], routeRows) });
+	}
+
+	// 4. How it works — adapt to what's configured
+	if (hasPlans && hasRoutes) {
 		blocks.push({
-			kind: "table",
-			text: asciiTable(["Plan", "Price", "Details"], planRows),
+			kind: "output",
+			text: `  How it works\n\n  Subscription (plans):\n  1. POST /x402/access with { planId, requestId, resourceId }\n  2. Server returns HTTP 402 payment challenge\n  3. Pay via PAYMENT-SIGNATURE header\n  4. Receive a JWT Bearer token — use it on every API call\n\n  Pay-Per-Call (routes):\n  1. Call the route directly (e.g. GET ${baseUrl}${config.routes[0]?.path || "/api/..."})\n  2. Server returns HTTP 402 payment challenge\n  3. Pay via PAYMENT-SIGNATURE header\n  4. Receive the API response directly — no token needed\n\n  Would you like to use a plan or make a pay-per-call request?`,
+		});
+	} else if (hasPlans) {
+		blocks.push({
+			kind: "output",
+			text: `  How it works\n\n  1. POST /x402/access with { planId, requestId, resourceId }\n  2. Server returns HTTP 402 payment challenge\n  3. Pay via PAYMENT-SIGNATURE header\n  4. Receive a JWT Bearer token — use it on every subsequent API call\n\n  Would you like to purchase access to a plan?`,
+		});
+	} else if (hasRoutes) {
+		blocks.push({
+			kind: "output",
+			text: `  How it works\n\n  1. Call any route directly (e.g. GET ${baseUrl}${config.routes[0]?.path || "/api/..."})\n  2. Server returns HTTP 402 payment challenge\n  3. Pay via PAYMENT-SIGNATURE header\n  4. Receive the API response directly — no token stored, pay each call\n\n  Would you like to make a pay-per-call request?`,
 		});
 	}
 
-	// 4. How it works
-	blocks.push({
-		kind: "output",
-		text: `  How it works\n\n  1. Send a POST to /x402/access with { planId, requestId, resourceId }\n  2. Server responds with HTTP 402 payment challenge\n  3. Include a PAYMENT-SIGNATURE header with the x402 payment payload\n  4. On success, receive a JWT access token + resource endpoint + tx hash\n\n  Would you like to interact with any of these plans?`,
-	});
+	// 5. Demo interactions — show both plan (JWT) and route (direct response) if both configured
+	const firstRoute = config.routes.find((r) => r.path);
+	const firstPlan = config.plans.find((p) => p.planId);
 
-	// 5. User picks a plan
-	const firstPlan = config.plans[0];
-	if (firstPlan?.planId) {
+	// Plan demo (JWT flow)
+	if (firstPlan) {
 		const planId = firstPlan.planId;
 		const amount = firstPlan.unitAmount || "$0.00";
 
-		blocks.push({ kind: "prompt", text: planId });
-
+		blocks.push({ kind: "prompt", text: `subscribe to ${planId}` });
 		blocks.push({
 			kind: "status",
-			text: `Let me discover the payment requirements and set up the x402 payment for the ${planId} plan.`,
+			text: `Let me set up the x402 payment for the ${planId} plan.`,
 		});
-
-		// 6. Wallet balance check
 		blocks.push({
 			kind: "status",
 			text: `payments-mcp - get_wallet_balance (MCP)(chain: "${networkName}")\n  ⎿  { "balances": { "USDC": "19.385", "ETH": "0.003" } }`,
 		});
-
-		// 7. x402 payment
 		blocks.push({
 			kind: "status",
 			text: `payments-mcp - make_http_request_with_x402 (MCP)\n  baseURL: "${baseUrl}"\n  path: "/x402/access"\n  method: "POST"\n  body: ${JSON.stringify({ planId, requestId: "a1b2c3d4-...", resourceId: "default" })}`,
 		});
+		let planSuccess = `Payment successful!\n\n`;
+		planSuccess += `  Payment: ${amount} USDC on ${networkName}\n`;
+		planSuccess += `  Tx: https://${explorer}/tx/0x62d5b647...f8fc1191\n\n`;
+		planSuccess += `  Access Token: eyJhbGciOiJIUzI1NiJ9... (JWT Bearer)\n`;
+		planSuccess += `  Use this token on every call to the protected API.`;
+		blocks.push({ kind: "status", text: planSuccess });
+	}
 
+	// Route demo (direct API response)
+	if (firstRoute) {
+		const routePath = firstRoute.path.replace(/:([a-z]+)/gi, (_, p) => `example-${p}`);
+		const amount = firstRoute.unitAmount ? `$${firstRoute.unitAmount}` : "free";
+		const routeQueryParams = (firstRoute.params ?? []).filter((p) => p.in === "query");
+		const routeBodyParams = (firstRoute.params ?? []).filter((p) => p.in === "body");
+
+		const exampleValue = (type: string, name: string): unknown =>
+			type === "number" ? 0 : type === "boolean" ? true : type === "object" ? {} : `<${name}>`;
+
+		const queryExample =
+			routeQueryParams.length > 0
+				? Object.fromEntries(routeQueryParams.map((p) => [p.name, exampleValue(p.type, p.name)]))
+				: null;
+		const bodyExample =
+			routeBodyParams.length > 0
+				? Object.fromEntries(routeBodyParams.map((p) => [p.name, exampleValue(p.type, p.name)]))
+				: null;
+
+		let routeCallText = `payments-mcp - make_http_request_with_x402 (MCP)\n  baseURL: "${baseUrl}"\n  path: "${routePath}"\n  method: "${firstRoute.method}"`;
+		if (queryExample) routeCallText += `\n  query: ${JSON.stringify(queryExample)}`;
+		if (bodyExample) routeCallText += `\n  body: ${JSON.stringify(bodyExample)}`;
+
+		blocks.push({ kind: "prompt", text: `${firstRoute.method} ${firstRoute.path}` });
 		blocks.push({
 			kind: "status",
-			text: `  ⎿  { "result": { "status": 200, ... } }`,
+			text: routeCallText,
 		});
-
-		// 8. Payment success
-		let success = `Payment successful! Here's the summary:\n\n`;
-		success += `  Payment: ${amount} USDC on ${networkName.charAt(0).toUpperCase() + networkName.slice(1)}\n`;
-		success += `  Tx Hash:\n  https://${explorer}/tx/0x62d5b647...f8fc1191\n\n`;
-		success += `  Access Grant:\n`;
-		success += `  - Access Token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOi... (JWT Bearer token)\n`;
-		success += `  - Resource Endpoint: ${baseUrl}/api/default\n`;
-		success += `  - Plan: ${planId}\n`;
-		success += `  - Resource ID: default\n\n`;
-		success += `  You can now use the Bearer token to authenticate against the resource endpoint.`;
-
-		blocks.push({ kind: "status", text: success });
+		if (firstRoute.unitAmount) {
+			blocks.push({
+				kind: "status",
+				text: `payments-mcp - get_wallet_balance (MCP)(chain: "${networkName}")\n  ⎿  { "balances": { "USDC": "19.385", "ETH": "0.003" } }`,
+			});
+			let routeSuccess = `Payment successful! API response received:\n\n`;
+			routeSuccess += `  Payment: ${amount} USDC on ${networkName}\n`;
+			routeSuccess += `  Tx: https://${explorer}/tx/0x62d5b647...f8fc1191\n\n`;
+			routeSuccess += `  Response: 200 OK — result returned inline\n`;
+			routeSuccess += `  (No token issued — each call is paid individually)`;
+			blocks.push({ kind: "status", text: routeSuccess });
+		} else {
+			blocks.push({ kind: "status", text: `  ⎿  200 OK — free route, no payment required` });
+		}
 	}
 
 	return blocks;
@@ -260,8 +321,6 @@ export function generateMcpTerminal(config: Config): McpTerminalBlock[] {
 	const agentName = _deriveAgentName(config.providerName);
 	const agentDescription = _deriveAgentDescription(config.providerName);
 	const baseUrl = (config.agentUrl || "http://localhost:3000").replace(/\/$/, "");
-	const chainId = CHAIN_IDS[config.network] ?? 84532;
-	const networkName = NETWORK_NAMES[config.network] ?? "base-sepolia";
 
 	const blocks: McpTerminalBlock[] = [];
 
@@ -294,82 +353,133 @@ export function generateMcpTerminal(config: Config): McpTerminalBlock[] {
 	blocks.push({ kind: "command", text: "mcp list-tools" });
 	blocks.push({
 		kind: "output",
-		text: `2 tools available:\n  discover  — List pricing plans (free)\n  access  — Purchase a plan via x402 payment`,
+		text: `2 tools available:\n  discover  — List plans and pay-per-call routes (free)\n  access  — Purchase a plan or make a pay-per-call request via x402`,
 	});
 
 	// 4. Call discover
-	blocks.push({ kind: "comment", text: "# Discover available plans" });
+	blocks.push({ kind: "comment", text: "# Discover plans and routes" });
 	blocks.push({ kind: "command", text: "mcp call discover" });
 
 	const discoverResult = {
-		agent: agentName,
+		agentName,
 		description: agentDescription,
-		network: config.network,
-		chainId,
-		walletAddress: config.walletAddress || "0x...",
-		asset: "USDC",
-		plans: config.plans.map((p) => ({
-			planId: p.planId || "plan",
-			unitAmount: p.unitAmount || "$0.00",
-			...(p.description ? { description: p.description } : {}),
-		})),
+		plans: config.plans
+			.filter((p) => p.planId)
+			.map((p) => ({
+				planId: p.planId,
+				unitAmount: p.unitAmount || "$0.00",
+				...(p.description ? { description: p.description } : {}),
+			})),
+		routes: config.routes
+			.filter((r) => r.path)
+			.map((r) => {
+				const pathParams = (r.params ?? []).filter((p) => p.in === "path");
+				const queryParams = (r.params ?? []).filter((p) => p.in === "query");
+				const bodyParams = (r.params ?? []).filter((p) => p.in === "body");
+				return {
+					routeId: `${r.method.toLowerCase()}-${r.path.replace(/\//g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "")}`,
+					method: r.method,
+					path: r.path,
+					...(r.unitAmount ? { unitAmount: `$${r.unitAmount}` } : {}),
+					...(r.description ? { description: r.description } : {}),
+					...(pathParams.length > 0
+						? { pathParams: Object.fromEntries(pathParams.map((p) => [p.name, { type: p.type || "string", ...(p.description ? { description: p.description } : {}) }])) }
+						: {}),
+					...(queryParams.length > 0
+						? { queryParams: Object.fromEntries(queryParams.map((p) => [p.name, { type: p.type || "string", required: p.required, ...(p.description ? { description: p.description } : {}) }])) }
+						: {}),
+					...(bodyParams.length > 0
+						? { bodyParams: Object.fromEntries(bodyParams.map((p) => [p.name, { type: p.type || "string", required: p.required, ...(p.description ? { description: p.description } : {}) }])) }
+						: {}),
+				};
+			}),
 	};
 	blocks.push({ kind: "json", text: JSON.stringify(discoverResult, null, 2) });
 
-	// 5. Call access
-	const firstPlan = config.plans[0];
+	const explorerBase =
+		config.network === "mainnet" ? "basescan.org" : "sepolia.basescan.org";
+	const firstRoute = config.routes.find((r) => r.path);
+	const firstPlan = config.plans.find((p) => p.planId);
+
+	// 5a. Plan demo — subscription → JWT
 	if (firstPlan) {
-		const planId = firstPlan.planId || "plan";
-		blocks.push({ kind: "comment", text: "# Request access to a plan" });
-		blocks.push({
-			kind: "command",
-			text: `mcp call access --planId "${planId}"`,
-		});
-		blocks.push({
-			kind: "json",
-			text: JSON.stringify(
-				{
-					status: "payment_required",
-					type: "X402Challenge",
-					challengeId: "ch_xxxxxxxx",
-					planId,
-					amount: firstPlan.unitAmount || "$0.00",
-					asset: "USDC",
-					chainId,
-					network: networkName,
-					destination: config.walletAddress || "0x...",
-					expiresAt: new Date(
-						Date.now() + (Number(config.challengeTtlSeconds) || 900) * 1000,
-					).toISOString(),
-				},
-				null,
-				2,
-			),
-		});
+		const planId = firstPlan.planId;
+		blocks.push({ kind: "comment", text: "# Subscription plan → receive JWT Bearer token" });
+		blocks.push({ kind: "command", text: `mcp call access --planId "${planId}"` });
 		blocks.push({
 			kind: "output",
 			text: "Payment required — agent signs x402 payment and retries automatically",
 		});
-
-		// 6. After payment
-		blocks.push({ kind: "comment", text: "# After x402 payment is settled on-chain" });
+		blocks.push({ kind: "comment", text: "# JWT issued — use on every API call" });
 		blocks.push({
 			kind: "json",
 			text: JSON.stringify(
 				{
-					status: "access_granted",
 					type: "AccessGrant",
-					challengeId: "ch_xxxxxxxx",
 					planId,
 					accessToken: "eyJhbGciOiJIUzI1NiIs...",
 					tokenType: "Bearer",
 					txHash: "0xabc...def",
-					explorerUrl: `https://${config.network === "mainnet" ? "basescan.org" : "sepolia.basescan.org"}/tx/0xabc...def`,
+					explorerUrl: `https://${explorerBase}/tx/0xabc...def`,
 				},
 				null,
 				2,
 			),
 		});
+	}
+
+	// 5b. Route demo — pay-per-call → direct API response
+	if (firstRoute) {
+		const routeId = `${firstRoute.method.toLowerCase()}-${firstRoute.path.replace(/\//g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "")}`;
+		const mcpQueryParams = (firstRoute.params ?? []).filter((p) => p.in === "query");
+		const mcpBodyParams = (firstRoute.params ?? []).filter((p) => p.in === "body");
+
+		const mcpExampleValue = (type: string, name: string): unknown =>
+			type === "number" ? 0 : type === "boolean" ? true : type === "object" ? {} : `<${name}>`;
+
+		let mcpCallCmd = `mcp call access --routeId "${routeId}"`;
+		if (mcpQueryParams.length > 0) {
+			const qEx = Object.fromEntries(mcpQueryParams.map((p) => [p.name, mcpExampleValue(p.type, p.name)]));
+			mcpCallCmd += ` --query '${JSON.stringify(qEx)}'`;
+		}
+		if (mcpBodyParams.length > 0) {
+			const bEx = Object.fromEntries(mcpBodyParams.map((p) => [p.name, mcpExampleValue(p.type, p.name)]));
+			mcpCallCmd += ` --body '${JSON.stringify(bEx)}'`;
+		}
+
+		blocks.push({ kind: "comment", text: "# Pay-per-call route → API response returned inline" });
+		blocks.push({ kind: "command", text: mcpCallCmd });
+		if (firstRoute.unitAmount) {
+			blocks.push({
+				kind: "output",
+				text: "Payment required — agent signs x402 payment and retries automatically",
+			});
+			blocks.push({ kind: "comment", text: "# No token issued — response returned directly" });
+			blocks.push({
+				kind: "json",
+				text: JSON.stringify(
+					{
+						type: "ResourceResponse",
+						routeId,
+						txHash: "0xabc...def",
+						explorerUrl: `https://${explorerBase}/tx/0xabc...def`,
+						resource: { status: 200, body: { result: "..." } },
+					},
+					null,
+					2,
+				),
+			});
+		} else {
+			blocks.push({ kind: "comment", text: "# Free route — no payment required" });
+			blocks.push({
+				kind: "json",
+				text: JSON.stringify(
+					{ type: "ResourceResponse", routeId, resource: { status: 200, body: { result: "..." } } },
+					null,
+					2,
+				),
+			});
+		}
 	}
 
 	return blocks;
@@ -447,6 +557,7 @@ export function generateEnv(config: Config): string {
 			path: r.path,
 			...(r.unitAmount ? { unitAmount: `$${r.unitAmount}` } : {}),
 			...(r.description ? { description: r.description } : {}),
+			...((r.params ?? []).length > 0 ? { params: r.params } : {}),
 		}));
 		lines.push("", _sec("Routes"), "", `ROUTES_B64=${btoa(JSON.stringify(serializedRoutes))}`);
 		if (config.proxyToBaseUrl) lines.push(`PROXY_TO_BASE_URL=${config.proxyToBaseUrl}`);
