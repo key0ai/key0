@@ -92,20 +92,21 @@ async function main() {
 		process.exit(1);
 	}
 
-	const { discoveryResponse } = await discoveryRes.json();
-	if (!discoveryResponse.accepts || discoveryResponse.accepts.length === 0) {
+	const discovery = (await discoveryRes.json()) as {
+		plans?: Array<{ planId: string; unitAmount?: string; description?: string }>;
+	};
+	if (!discovery.plans || discovery.plans.length === 0) {
 		console.error("   No plans found");
 		process.exit(1);
 	}
 
 	// Pick the first tier
-	const tierInfo = discoveryResponse.accepts[0];
-	const tierId = tierInfo.extra?.tierId;
-	const tierLabel = tierInfo.extra?.label || tierId;
-	const tierAmount = tierInfo.extra?.description || tierInfo.amount;
-	const _amountUSDC = tierInfo.amount;
+	const tierInfo = discovery.plans[0];
+	const tierId = tierInfo?.planId;
+	const tierLabel = tierId;
+	const tierAmount = tierInfo?.description || tierInfo?.unitAmount;
 
-	console.log(`   Available plans: ${discoveryResponse.accepts.length}`);
+	console.log(`   Available plans: ${discovery.plans.length}`);
 	console.log(`   Using: ${tierLabel} — ${tierAmount}\n`);
 
 	// -----------------------------------------------------------------------

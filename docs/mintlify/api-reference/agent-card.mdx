@@ -72,10 +72,10 @@ No authentication is required.
     {
       "id": "discover-plans",
       "name": "Discover Plans",
-      "description": "Browse available plans and pricing for Acme Photo API. Returns the product catalog with plan IDs, prices (USDC on base-sepolia), wallet address, and chain ID. GET https://api.acme.com/discovery to discover plans.",
+      "description": "Browse available plans and pricing for Acme Photo API. Returns the product catalog with plan IDs, prices (USDC on base-sepolia), wallet address, and chain ID. GET https://api.acme.com/discover to discover plans.",
       "tags": ["discovery", "catalog", "x402"],
       "examples": [
-        "GET https://api.acme.com/discovery"
+        "GET https://api.acme.com/discover"
       ]
     },
     {
@@ -103,7 +103,7 @@ No authentication is required.
         "required": ["planId"]
       },
       "workflow": [
-        "1. Call GET /discovery to browse available plans and note the planId",
+        "1. Call GET /discover to browse available plans and note the planId",
         "2. POST /x402/access { planId, requestId } — receive 402 with payment challenge",
         "3. Sign EIP-3009 authorization off-chain (no gas required)",
         "4. Retry POST /x402/access with PAYMENT-SIGNATURE header — receive AccessGrant"
@@ -123,7 +123,7 @@ Key0 automatically generates two A2A-compliant skills:
 
 ### discover-plans
 
-A free discovery skill. Clients call this (or GET to `/discovery`) to browse the plan catalog. Returns plan IDs, prices, wallet address, and chain ID.
+A free discovery skill. Clients call this (or GET to `/discover`) to browse the plan catalog. Returns plan IDs, prices, wallet address, and chain ID.
 
 ### request-access
 

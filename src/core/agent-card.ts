@@ -8,8 +8,6 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 
-	const planIds = (config.plans ?? []).map((p) => p.planId);
-
 	// Core A2A skills (discovery + subscription purchase)
 	// Additional per-request skills are appended below for each gated route.
 	const skills: AgentSkill[] = [
@@ -19,45 +17,36 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 			description: [
 				`Browse available plans and pricing for ${config.agentName}.`,
 				`Returns the product catalog with plan IDs, prices (USDC on ${networkName}), wallet address, and chain ID.`,
-				`GET to ${baseUrl}/discover to discover plans.`,
+				`Endpoint: GET ${baseUrl}/discover`,
 			].join(" "),
 			tags: ["discovery", "catalog", "x402"],
 			examples: [`GET ${baseUrl}/discover`],
-			endpoint: { url: `${baseUrl}/discover`, method: "GET" },
 		},
 		{
 			id: "access",
 			name: "Access",
 			description: [
 				`Purchase access to a ${config.agentName} product plan via x402 payment on ${networkName}.`,
-				`First call discover to get available plans.`,
-				`Then POST to ${baseUrl}/x402/access with planId and requestId to initiate purchase.`,
-				`Server responds with x402 payment challenge.`,
-				`Complete payment on-chain and include PAYMENT-SIGNATURE header to receive access token.`,
+				`Step 1: GET ${baseUrl}/discover to list available plans.`,
+				`Step 2: POST ${baseUrl}/x402/access with { planId, requestId } — server returns 402 with payment requirements.`,
+				`Step 3: Pay USDC on-chain, then retry the same POST with PAYMENT-SIGNATURE header to receive the access token.`,
 			].join(" "),
 			tags: ["payment", "x402", "purchase"],
 			examples: [
-				`POST ${baseUrl}/x402/access with { planId: "<plan-id>", requestId: "<uuid>", resourceId: "default" }`,
-				`Receive 402 with payment challenge`,
+				`POST ${baseUrl}/x402/access with { "planId": "<plan-id>", "requestId": "<uuid>", "resourceId": "default" }`,
+				`Receive HTTP 402 with x402 payment requirements`,
 				`Pay USDC on-chain, retry same request with PAYMENT-SIGNATURE header`,
 				`Receive 200 with access token`,
 			],
-			endpoint: { url: `${baseUrl}/x402/access`, method: "POST" },
 			inputSchema: {
 				type: "object",
 				required: ["planId", "requestId"],
 				properties: {
-					planId: { type: "string", enum: planIds },
+					planId: { type: "string", enum: (config.plans ?? []).map((p) => p.planId) },
 					requestId: { type: "string", format: "uuid" },
+					resourceId: { type: "string", default: "default" },
 				},
 			},
-			workflow: [
-				"POST body with planId + requestId to endpoint.url — expect 402",
-				"Extract payment requirements from 402 response body",
-				`Sign and broadcast USDC transfer on ${networkName}`,
-				"Retry same POST with PAYMENT-SIGNATURE header containing the transaction hash",
-				"Receive 200 with accessToken",
-			],
 		},
 	];
 
@@ -65,80 +54,23 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	for (const route of config.routes ?? []) {
 		const skillId = `ppr-${route.routeId}-${route.method.toLowerCase()}-${route.path.replace(/\//g, "-").replace(/[: ]/g, "")}`;
 
-		// Build path param properties from auto-detected :param names
-		const pathParamNames = [...route.path.matchAll(/:([a-zA-Z_][a-zA-Z0-9_]*)/g)].map(
-			(m) => m[1] ?? "",
-		);
 		const explicitParams = route.params ?? [];
-
-		// Path param schema: auto-detected names, enriched with any descriptions from explicit params
-		const pathParamProperties: Record<string, { type: string; description?: string }> = {};
-		for (const name of pathParamNames) {
-			const explicit = explicitParams.find((p) => p.in === "path" && p.name === name);
-			pathParamProperties[name] = {
-				type: explicit?.type ?? "string",
-				...(explicit?.description ? { description: explicit.description } : {}),
-			};
-		}
-
-		// Query param schema
 		const queryParams = explicitParams.filter((p) => p.in === "query");
-		const queryParamProperties: Record<string, { type: string; description?: string }> = {};
-		const requiredQueryParams: string[] = [];
-		for (const qp of queryParams) {
-			queryParamProperties[qp.name] = {
-				type: qp.type ?? "string",
-				...(qp.description ? { description: qp.description } : {}),
-			};
-			if (qp.required) requiredQueryParams.push(qp.name);
-		}
-
-		// Body param schema
 		const bodyParams = explicitParams.filter((p) => p.in === "body");
-		const bodyParamProperties: Record<string, { type: string; description?: string }> = {};
-		const requiredBodyParams: string[] = [];
-		for (const bp of bodyParams) {
-			bodyParamProperties[bp.name] = {
-				type: bp.type ?? "string",
-				...(bp.description ? { description: bp.description } : {}),
-			};
-			if (bp.required) requiredBodyParams.push(bp.name);
-		}
-
 		// Build concrete example path (replace :param with <param>)
 		const examplePath = route.path.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, "<$1>");
 
-		// Resource schema: path + optional query/body
-		const resourceProperties: Record<string, unknown> = {
-			method: { type: "string", const: route.method },
-			path: {
-				type: "string",
-				description: `Path pattern: ${route.path}. Example: ${examplePath}`,
-				...(pathParamNames.length > 0
-					? {
-							pathParams: {
-								type: "object",
-								required: pathParamNames,
-								properties: pathParamProperties,
-							},
-						}
-					: {}),
-			},
-		};
-		if (queryParams.length > 0) {
-			resourceProperties["query"] = {
-				type: "object",
-				...(requiredQueryParams.length > 0 ? { required: requiredQueryParams } : {}),
-				properties: queryParamProperties,
-			};
-		}
-		if (bodyParams.length > 0) {
-			resourceProperties["body"] = {
-				type: "object",
-				...(requiredBodyParams.length > 0 ? { required: requiredBodyParams } : {}),
-				properties: bodyParamProperties,
-			};
-		}
+		const routeExamples = route.unitAmount
+			? [
+					`POST ${baseUrl}/x402/access with { "routeId": "${route.routeId}", "resource": { "method": "${route.method}", "path": "${examplePath}"${queryParams.length > 0 ? ', "query": {...}' : ""}${bodyParams.length > 0 ? ', "body": {...}' : ""} } }`,
+					`Receive HTTP 402 with x402 payment requirements`,
+					`Pay ${route.unitAmount} USDC on-chain, retry with PAYMENT-SIGNATURE header`,
+					`Receive 200 with ResourceResponse`,
+				]
+			: [
+					`POST ${baseUrl}/x402/access with { "routeId": "${route.routeId}", "resource": { "method": "${route.method}", "path": "${examplePath}" } }`,
+					`Receive 200 with ResourceResponse (no payment required)`,
+				];
 
 		skills.push({
 			id: skillId,
@@ -146,10 +78,10 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 			description:
 				route.description ??
 				(route.unitAmount
-					? `Pay-per-call: ${route.unitAmount} USDC per request.`
-					: `Free endpoint: ${route.method} ${route.path}`),
+					? `Pay-per-call route: ${route.unitAmount} USDC per request. POST to ${baseUrl}/x402/access with routeId "${route.routeId}".`
+					: `Free endpoint: ${route.method} ${route.path}. POST to ${baseUrl}/x402/access with routeId "${route.routeId}".`),
 			tags: route.unitAmount ? ["pay-per-call", "x402"] : ["free"],
-			endpoint: { url: `${baseUrl}/x402/access`, method: "POST" },
+			examples: routeExamples,
 			inputSchema: {
 				type: "object",
 				required: ["routeId", "resource"],
@@ -158,23 +90,18 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 					resource: {
 						type: "object",
 						required: ["method", "path"],
-						properties: resourceProperties,
+						properties: {
+							method: { type: "string", const: route.method },
+							path: {
+								type: "string",
+								description: `Path pattern: ${route.path}. Example: ${examplePath}`,
+							},
+							...(queryParams.length > 0 ? { query: { type: "object" } } : {}),
+							...(bodyParams.length > 0 ? { body: { type: "object" } } : {}),
+						},
 					},
 				},
 			},
-			workflow: route.unitAmount
-				? [
-						`POST { routeId: "${route.routeId}", resource: { method: "${route.method}", path: "${examplePath}"${queryParams.length > 0 ? ", query: {...}" : ""}${bodyParams.length > 0 ? ", body: {...}" : ""} } }`,
-						"Receive 402 with payment requirements",
-						`Pay ${route.unitAmount} USDC on-chain`,
-						"Retry with PAYMENT-SIGNATURE header",
-						"Receive 200 with ResourceResponse containing the API response",
-					]
-				: [
-						`POST { routeId: "${route.routeId}", resource: { method: "${route.method}", path: "${examplePath}" } }`,
-						"Free route — no payment required",
-						"Receive 200 with ResourceResponse",
-					],
 		});
 	}
 
@@ -193,9 +120,16 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 				skills.push({
 					id: skillId,
 					name: `${safeRoute.method} ${safeRoute.path}`,
-					description: safeRoute.description ?? defaultDescription,
+					description:
+						safeRoute.description ??
+						`${defaultDescription} POST to ${baseUrl}/x402/access with { planId: "${plan.planId}", resource: { method: "${safeRoute.method}", path: "<actual path>" } }.`,
 					tags: ["pay-per-request", "x402", plan.planId],
-					endpoint: { url: `${baseUrl}/x402/access`, method: "POST" },
+					examples: [
+						`POST ${baseUrl}/x402/access with { "planId": "${plan.planId}", "resource": { "method": "${safeRoute.method}", "path": "<actual path>" } }`,
+						`Receive HTTP 402 with x402 payment requirements`,
+						`Pay ${plan.unitAmount} USDC on-chain, retry with PAYMENT-SIGNATURE header`,
+						`Receive 200 with ResourceResponse`,
+					],
 					inputSchema: {
 						type: "object",
 						required: ["planId", "resource"],
@@ -211,25 +145,19 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 							},
 						},
 					},
-					workflow: [
-						`POST { planId: "${plan.planId}", resource: { method: "${safeRoute.method}", path: "<actual path>" } }`,
-						"Receive 402 with payment requirements",
-						`Pay ${plan.unitAmount} USDC on-chain`,
-						"Retry with PAYMENT-SIGNATURE header",
-						"Receive 200 with ResourceResponse",
-					],
 				} satisfies AgentSkill);
 			} else {
 				// Embedded mode: client calls the route directly with PAYMENT-SIGNATURE
 				skills.push({
 					id: skillId,
 					name: `${safeRoute.method} ${safeRoute.path}`,
-					description: safeRoute.description ?? defaultDescription,
+					description:
+						safeRoute.description ??
+						`${defaultDescription} Call ${safeRoute.method} ${baseUrl}${safeRoute.path} with PAYMENT-SIGNATURE header after paying on-chain.`,
 					tags: ["pay-per-request", "x402", plan.planId],
-					endpoint: {
-						url: `${baseUrl}${safeRoute.path}`,
-						method: safeRoute.method as "GET" | "POST",
-					},
+					examples: [
+						`${safeRoute.method} ${baseUrl}${safeRoute.path} with PAYMENT-SIGNATURE header`,
+					],
 				} satisfies AgentSkill);
 			}
 		}

@@ -39,7 +39,7 @@ type PlanRouteInfo = {
 - `mode` — defaults to `"subscription"` when omitted. Set to `"per-request"` for pay-per-call billing. With `mode: "per-request"`, no JWT is issued; the route handler runs directly (embedded) or the request is proxied to the backend (standalone).
 - `routes` — optional array of routes guarded by this per-request plan. Used to:
   - Populate the agent card skills with route metadata (so A2A agents know which paths to call).
-  - Populate the `/discovery` response with route information.
+  - Populate the `/discover` response with route information.
   - Enable auto-discovery when using `key0.payPerRequest()` middleware (the framework integration captures the path automatically, but `routes` provides explicit metadata and description).
 
 ### Subscription and per-request plans can coexist

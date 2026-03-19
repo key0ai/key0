@@ -27,7 +27,7 @@ npm install @key0ai/key0
 
 <Steps>
   <Step title="Agent discovers your service">
-    The agent calls `GET /discovery` to browse your pricing plans — plan IDs, USDC amounts, and your wallet address. No payment yet.
+    The agent calls `GET /discover` to browse your pricing plans — plan IDs, USDC amounts, and your wallet address. No payment yet.
   </Step>
   <Step title="Agent pays on-chain">
     The agent signs an EIP-3009 authorization off-chain (no gas required on their side). Key0's gas wallet executes the USDC transfer on Base.

@@ -554,8 +554,6 @@ describe("buildAgentCard — per-request skills", () => {
 		const weatherSkill = pprSkills.find((s) => s.name === "GET /api/weather/:city");
 		expect(weatherSkill).toBeDefined();
 		expect(weatherSkill!.description).toBe("Get weather for city");
-		expect(weatherSkill!.endpoint?.method).toBe("GET");
-		expect(weatherSkill!.endpoint?.url).toContain("/api/weather/:city");
 	});
 
 	test("uses default description when route description is absent", () => {
@@ -607,7 +605,7 @@ describe("buildAgentCard — per-request skills", () => {
 		expect(ids).toContain("access");
 	});
 
-	test("per-request skill endpoint URL contains the route path", () => {
+	test("embedded mode: per-request skill description mentions route path", () => {
 		const config = makeConfig({
 			plans: [
 				{
@@ -621,7 +619,7 @@ describe("buildAgentCard — per-request skills", () => {
 
 		const card = buildAgentCard(config);
 		const pprSkill = card.skills.find((s) => s.id.startsWith("ppr-"));
-		expect(pprSkill!.endpoint?.url).toBe("https://agent.example.com/v1/data");
+		expect(pprSkill!.description).toContain("/v1/data");
 	});
 
 	test("per-request skill tags include planId and pay-per-request", () => {
@@ -674,19 +672,18 @@ describe("buildAgentCard — standalone vs embedded mode", () => {
 		routes: [{ method: "GET", path: "/api/weather/:city", description: "Get weather for a city" }],
 	};
 
-	test("embedded mode: per-request skills point to the route URL", () => {
+	test("embedded mode: per-request skill examples mention route path", () => {
 		const config = makeConfig({ plans: [pprPlan] }); // no fetchResource/proxyTo
 		const card = buildAgentCard(config);
 		const pprSkill = card.skills.find((s) => s.id.startsWith("ppr-"));
 
 		expect(pprSkill).toBeDefined();
-		expect(pprSkill!.endpoint?.url).toBe("https://agent.example.com/api/weather/:city");
-		expect(pprSkill!.endpoint?.method).toBe("GET");
-		expect(pprSkill!.workflow).toBeUndefined();
-		expect(pprSkill!.inputSchema).toBeUndefined();
+		expect(pprSkill!.examples?.some((ex) => ex.includes("/api/weather/:city"))).toBe(true);
+		expect((pprSkill as any).endpoint).toBeUndefined();
+		expect((pprSkill as any).workflow).toBeUndefined();
 	});
 
-	test("standalone mode: per-request skills point to /x402/access with workflow", () => {
+	test("standalone mode: per-request skill examples mention /x402/access and payment step", () => {
 		const config = makeConfig({
 			plans: [pprPlan],
 			proxyTo: { baseUrl: "http://backend.example.com" },
@@ -695,13 +692,13 @@ describe("buildAgentCard — standalone vs embedded mode", () => {
 		const pprSkill = card.skills.find((s) => s.id.startsWith("ppr-"));
 
 		expect(pprSkill).toBeDefined();
-		expect(pprSkill!.endpoint?.url).toBe("https://agent.example.com/x402/access");
-		expect(pprSkill!.endpoint?.method).toBe("POST");
-		expect(Array.isArray(pprSkill!.workflow)).toBe(true);
+		expect(pprSkill!.examples?.some((ex) => ex.includes("/x402/access"))).toBe(true);
+		expect(pprSkill!.examples?.some((ex) => ex.includes("PAYMENT-SIGNATURE"))).toBe(true);
+		expect((pprSkill as any).endpoint).toBeUndefined();
 		expect(pprSkill!.inputSchema).toBeDefined();
 	});
 
-	test("standalone mode via proxyTo: per-request skills point to /x402/access", () => {
+	test("standalone mode via proxyTo: per-request skill examples mention /x402/access", () => {
 		const config = makeConfig({
 			plans: [pprPlan],
 			proxyTo: { baseUrl: "http://backend.example.com" },
@@ -709,7 +706,7 @@ describe("buildAgentCard — standalone vs embedded mode", () => {
 		const card = buildAgentCard(config);
 		const pprSkill = card.skills.find((s) => s.id.startsWith("ppr-"));
 
-		expect(pprSkill!.endpoint?.url).toBe("https://agent.example.com/x402/access");
+		expect(pprSkill!.examples?.some((ex) => ex.includes("/x402/access"))).toBe(true);
 	});
 });
 

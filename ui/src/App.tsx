@@ -68,7 +68,10 @@ export default function App() {
 						providerUrl: data.config.providerUrl ?? "",
 						...(data.config.plans?.length > 0 ? { plans: data.config.plans } : {}),
 						challengeTtlSeconds: data.config.challengeTtlSeconds ?? "900",
-						mcpEnabled: data.config.mcpEnabled ?? true,
+						a2aEnabled: data.config.a2aEnabled ?? true,
+						mcpEnabled: data.config.mcpEnabled ?? false,
+						llmsEnabled: data.config.llmsEnabled ?? true,
+						skillsMdEnabled: data.config.skillsMdEnabled ?? true,
 						backendAuthStrategy: data.config.backendAuthStrategy ?? "none",
 						issueTokenApiSecret: data.config.issueTokenApiSecret ?? "",
 						gasWalletPrivateKey: data.config.gasWalletPrivateKey ?? "",
@@ -86,6 +89,15 @@ export default function App() {
 
 	const set = <K extends keyof Config>(key: K, value: Config[K]) =>
 		setConfig((prev) => ({ ...prev, [key]: value }));
+
+	const setOnboardingFlag = (
+		key: "a2aEnabled" | "mcpEnabled" | "llmsEnabled" | "skillsMdEnabled",
+		value: boolean,
+	) =>
+		setConfig((prev) => ({
+			...prev,
+			[key]: value,
+		}));
 
 	const hasPlans = config.plans.length > 0;
 	const hasRoutes = config.routes.length > 0;
@@ -378,28 +390,60 @@ export default function App() {
 							</Field>
 						</Section>
 
-						{/* MCP toggle */}
-						<div className="flex items-center justify-between rounded-button bg-surface shadow-neu px-5 py-4">
-							<div>
-								<span className="text-sm font-medium text-foreground">Enable MCP</span>
-								<p className="text-xs text-muted">
-									Expose discover_plans and request_access as MCP tools
-								</p>
-							</div>
-							<button
-								type="button"
-								onClick={() => set("mcpEnabled", !config.mcpEnabled)}
-								className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-all duration-300 ${
-									config.mcpEnabled ? "shadow-neu-inset bg-accent" : "shadow-neu-inset bg-surface"
-								}`}
-							>
-								<span
-									className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-surface-raised shadow-neu-sm transition-all duration-300 mt-1 ${
-										config.mcpEnabled ? "translate-x-6" : "translate-x-1"
-									}`}
-								/>
-							</button>
-						</div>
+						<Section
+							icon="B"
+							title="Buyer Onboarding"
+							description="Control which discovery and install endpoints standalone Key0 exposes"
+						>
+							{[
+								{
+									key: "a2aEnabled" as const,
+									label: "Enable A2A",
+									hint: "Expose /.well-known/agent.json for agent-card based discovery",
+								},
+								{
+									key: "mcpEnabled" as const,
+									label: "Enable MCP",
+									hint: "Expose /.well-known/mcp.json and POST /mcp",
+								},
+								{
+									key: "llmsEnabled" as const,
+									label: "Enable llms.txt",
+									hint: "Serve /llms.txt with machine-readable buyer onboarding guidance",
+								},
+								{
+									key: "skillsMdEnabled" as const,
+									label: "Enable skills.md",
+									hint: "Serve /skills.md with richer workflow guidance",
+								},
+							].map(({ key, label, hint }) => {
+								const checked = config[key];
+								return (
+									<div
+										key={key}
+										className="flex items-center justify-between rounded-button bg-surface shadow-neu px-5 py-4"
+									>
+										<div>
+											<span className="text-sm font-medium text-foreground">{label}</span>
+											<p className="text-xs text-muted">{hint}</p>
+										</div>
+										<button
+											type="button"
+											onClick={() => setOnboardingFlag(key, !checked)}
+											className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-all duration-300 ${
+												checked ? "shadow-neu-inset bg-accent" : "shadow-neu-inset bg-surface"
+											} cursor-pointer`}
+										>
+											<span
+												className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-surface-raised shadow-neu-sm transition-all duration-300 mt-1 ${
+													checked ? "translate-x-6" : "translate-x-1"
+												}`}
+											/>
+										</button>
+									</div>
+								);
+							})}
+						</Section>
 
 						<div className="border-t border-foreground/10" />
 

@@ -5,6 +5,10 @@ description: "Generate a branded CLI binary for your Key0 service that agents ca
 
 The Agent CLI lets you ship a standalone binary for your service. Agents download it once, run `--install`, and then interact with your API by name — no HTTP knowledge required.
 
+<Note>
+  To generate a CLI binary: install the SDK, call `buildCli()`, and upload the output to your preferred host (GitHub Releases, S3, CDN, etc.). See [For Sellers: Generating the Binary](#for-sellers-generating-the-binary) below.
+</Note>
+
 ```bash
 # Agent installs once
 ./my-service-darwin-arm64 --install
@@ -69,6 +73,12 @@ Upload the binaries to your CDN or GitHub Releases. Each agent downloads the bin
 <Tip>
 Tell agents the download URL for their platform in your service's README or agent card description. A platform-specific URL like `https://cdn.example.com/cli/my-service-darwin-arm64` is all they need.
 </Tip>
+
+---
+
+## Distributing binaries
+
+Run `buildCli()` as part of your build or CI pipeline, then upload the output to wherever your agents can download them — GitHub Releases, S3, a CDN, etc.
 
 ---
 
@@ -180,7 +190,7 @@ Returns `{ binaries: Array<{ path, target, size }> }`.
 
 | Flag | Description |
 |---|---|
-| `discover` | `GET /discovery` — list plans |
+| `discover` | `GET /discover` — list plans |
 | `request --plan <id>` | `POST /x402/access` — request access or submit payment |
 | `--payment-signature <sig>` | Include with `request` to submit a signed payment |
 | `--resource <id>` | Resource ID (defaults to `"default"`) |

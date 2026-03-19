@@ -8,7 +8,7 @@ By the end of this guide you will have a running Key0 Docker container that:
 - Accepts USDC payments from AI agents
 - Either calls your `ISSUE_TOKEN_API` to fetch credentials (subscription plans), or proxies to your backend and returns data directly (per-request plans)
 - Automatically refunds agents if your token endpoint fails or the backend returns an error
-- Exposes `GET /discovery`, `POST /x402/access`, and `GET /.well-known/agent.json`
+- Exposes `GET /discover`, `POST /x402/access`, and the generated buyer-onboarding bundle
 
 <Note>
   New to Key0? Read [Core Concepts](/introduction/core-concepts) first to understand terms like Plan, Challenge, AccessGrant, and EIP-3009. See [Two Modes](/introduction/two-modes) to understand how Standalone differs from Embedded.
@@ -28,6 +28,14 @@ By the end of this guide you will have a running Key0 Docker container that:
 </Frame>
 
 Run Key0 as a standalone service in Docker. It handles agent discovery, payment verification, and credential issuance -- your existing API only needs to expose a single token-issuing endpoint.
+
+By default, standalone also generates buyer-facing onboarding endpoints from your config:
+- `GET /.well-known/agent.json` when A2A is enabled
+- `GET /.well-known/mcp.json` and `POST /mcp` when MCP is enabled
+- `GET /llms.txt`
+- `GET /skills.md`
+
+To distribute a CLI binary to your users: install the SDK, call `buildCli()`, and upload the output to your preferred host. See the [Agent CLI](/guides/agent-cli) guide for step-by-step instructions.
 
 <Tabs>
   <Tab title="Setup UI">
@@ -232,23 +240,17 @@ curl http://localhost:3000/.well-known/agent.json
 ```
 
 ```bash Browse available plans
-curl http://localhost:3000/discovery
+curl http://localhost:3000/discover
 ```
 
 ```json Expected output
 {
-  "discoveryResponse": {
-    "x402Version": 2,
-    "accepts": [
-      {
-        "scheme": "exact",
-        "network": "eip155:84532",
-        "amount": "100000",
-        "payTo": "0xYourWalletAddress",
-        "extra": { "planId": "basic", "description": "Basic plan" }
-      }
-    ]
-  }
+  "agentName": "My Service",
+  "description": "Payment-gated API",
+  "plans": [
+    { "planId": "basic", "unitAmount": "$0.10", "description": "Basic plan" }
+  ],
+  "routes": []
 }
 ```
 

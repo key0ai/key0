@@ -52,8 +52,13 @@ export interface Config {
 	// Challenge
 	challengeTtlSeconds: string;
 
+	// Buyer onboarding
+	a2aEnabled: boolean;
+
 	// MCP
 	mcpEnabled: boolean;
+	llmsEnabled: boolean;
+	skillsMdEnabled: boolean;
 
 	// Token API Auth
 	backendAuthStrategy: "none" | "shared-secret" | "jwt";
@@ -98,7 +103,10 @@ export const defaultConfig: Config = {
 
 	challengeTtlSeconds: "900",
 
-	mcpEnabled: true,
+	a2aEnabled: true,
+	mcpEnabled: false,
+	llmsEnabled: true,
+	skillsMdEnabled: true,
 
 	backendAuthStrategy: "none",
 	issueTokenApiSecret: "",

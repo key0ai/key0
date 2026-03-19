@@ -181,6 +181,8 @@ export type SellerConfig = {
 	// MCP
 	/** When true, MCP discovery and Streamable HTTP endpoint are mounted. */
 	readonly mcp?: boolean | undefined;
+	/** When false, A2A agent card and JSON-RPC fallback are not mounted. */
+	readonly a2a?: boolean | undefined;
 
 	// Customization
 	readonly basePath?: string; // defaults to "/agent"

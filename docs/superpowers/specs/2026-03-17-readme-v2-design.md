@@ -167,7 +167,7 @@ Client Agent          Key0                    Seller Server
 **HTTP x402 Flow:**
 ```
 Client                Key0                    Seller Server
-     │  1. GET /discovery │                         │
+     │  1. GET /discover │                         │
      │ ──────────────────▶│                         │
      │ ◀── plan catalog   │                         │
      │                   │                         │

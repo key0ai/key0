@@ -155,11 +155,14 @@ app.get("/api/setup/status", (_req, res) => {
 			proxyToBaseUrl: process.env.PROXY_TO_BASE_URL ?? "",
 			proxySecret: process.env.KEY0_PROXY_SECRET ? "••••••" : "",
 			challengeTtlSeconds: process.env.CHALLENGE_TTL_SECONDS ?? "900",
+			a2aEnabled: process.env.A2A_ENABLED !== "false",
 			backendAuthStrategy: process.env.BACKEND_AUTH_STRATEGY ?? "none",
 			issueTokenApiSecret: process.env.ISSUE_TOKEN_API_SECRET ? "••••••" : "",
 			gasWalletPrivateKey: process.env.GAS_WALLET_PRIVATE_KEY ? "••••••" : "",
 			walletPrivateKey: process.env.KEY0_WALLET_PRIVATE_KEY ? "••••••" : "",
 			mcpEnabled: process.env.MCP_ENABLED === "true",
+			llmsEnabled: process.env.LLMS_ENABLED !== "false",
+			skillsMdEnabled: process.env.SKILLS_MD_ENABLED !== "false",
 			refundIntervalMs: process.env.REFUND_INTERVAL_MS ?? "60000",
 			refundMinAgeMs: process.env.REFUND_MIN_AGE_MS ?? "300000",
 		},
@@ -195,7 +198,10 @@ interface SetupBody {
 	proxyToBaseUrl?: string;
 	proxySecret?: string;
 	challengeTtlSeconds: string;
+	a2aEnabled: boolean;
 	mcpEnabled: boolean;
+	llmsEnabled: boolean;
+	skillsMdEnabled: boolean;
 	backendAuthStrategy: "none" | "shared-secret" | "jwt";
 	issueTokenApiSecret: string;
 	gasWalletPrivateKey: string;
@@ -225,7 +231,6 @@ app.post("/api/setup", async (req, res) => {
 		res.status(400).json({ error: "proxyToBaseUrl is required when routes are configured" });
 		return;
 	}
-
 	// Build .env content — values with spaces must be double-quoted for shell sourcing
 	const q = (v: string) => (v.includes(" ") ? `"${v.replace(/"/g, '\\"')}"` : v);
 	const lines: string[] = [
@@ -271,8 +276,17 @@ app.post("/api/setup", async (req, res) => {
 	if (body.challengeTtlSeconds && body.challengeTtlSeconds !== "900") {
 		lines.push(`CHALLENGE_TTL_SECONDS=${body.challengeTtlSeconds}`);
 	}
+	if (!body.a2aEnabled) {
+		lines.push(`A2A_ENABLED=false`);
+	}
 	if (body.mcpEnabled) {
 		lines.push(`MCP_ENABLED=true`);
+	}
+	if (!body.llmsEnabled) {
+		lines.push(`LLMS_ENABLED=false`);
+	}
+	if (!body.skillsMdEnabled) {
+		lines.push(`SKILLS_MD_ENABLED=false`);
 	}
 	if (body.backendAuthStrategy && body.backendAuthStrategy !== "none") {
 		lines.push(`BACKEND_AUTH_STRATEGY=${body.backendAuthStrategy}`);
@@ -337,6 +351,7 @@ if (!isConfigured) {
 	const key0 = await import("@key0ai/key0");
 	const { key0Router } = await import("@key0ai/key0/express");
 	const { buildDockerTokenIssuer } = await import("../src/helpers/docker-token-issuer.js");
+	const { buildLlmsTxt, buildSkillsMd } = await import("../src/helpers/standalone-onboarding.js");
 
 	type IAuditStore = key0.IAuditStore;
 	type IChallengeStore = key0.IChallengeStore;
@@ -376,7 +391,10 @@ if (!isConfigured) {
 	const STORAGE_BACKEND = (process.env.STORAGE_BACKEND ?? "redis") as "redis" | "postgres";
 	const DATABASE_URL = process.env.DATABASE_URL;
 	const RPC_URL_OVERRIDE = process.env.ALCHEMY_BASE_SEPOLIA_RPC_URL || process.env.RPC_URL_OVERRIDE;
+	const A2A_ENABLED = process.env.A2A_ENABLED !== "false";
 	const MCP_ENABLED = process.env.MCP_ENABLED === "true";
+	const LLMS_ENABLED = process.env.LLMS_ENABLED !== "false";
+	const SKILLS_MD_ENABLED = process.env.SKILLS_MD_ENABLED !== "false";
 
 	// Plans — support both PLANS (raw JSON) and PLANS_B64 (base64-encoded JSON)
 	const DEFAULT_PLANS: Plan[] = [
@@ -466,9 +484,65 @@ if (!isConfigured) {
 		...(RPC_URL_OVERRIDE ? { rpcUrl: RPC_URL_OVERRIDE } : {}),
 	});
 
+	const sellerConfig = {
+		agentName: AGENT_NAME,
+		agentDescription: AGENT_DESCRIPTION,
+		agentUrl: AGENT_URL,
+		providerName: PROVIDER_NAME,
+		providerUrl: PROVIDER_URL,
+		walletAddress: WALLET_ADDRESS as `0x${string}`,
+		network: NETWORK,
+		plans,
+		routes,
+		challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
+		basePath: BASE_PATH,
+		fetchResourceCredentials,
+		tokenIssueTimeoutMs: TOKEN_ISSUE_TIMEOUT_MS,
+		tokenIssueRetries: TOKEN_ISSUE_RETRIES,
+		a2a: A2A_ENABLED,
+		mcp: MCP_ENABLED,
+		...(RPC_URL_OVERRIDE ? { rpcUrl: RPC_URL_OVERRIDE } : {}),
+		...(GAS_WALLET_PRIVATE_KEY && redis
+			? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY, redis }
+			: {}),
+		...(PROXY_TO_BASE_URL
+			? {
+					proxyTo: {
+						baseUrl: PROXY_TO_BASE_URL,
+						...(KEY0_PROXY_SECRET ? { proxySecret: KEY0_PROXY_SECRET } : {}),
+					},
+				}
+			: {}),
+	} as const;
+
+	const onboardingOptions = {
+		a2aEnabled: A2A_ENABLED,
+		mcpEnabled: MCP_ENABLED,
+		llmsEnabled: LLMS_ENABLED,
+		skillsMdEnabled: SKILLS_MD_ENABLED,
+	};
+
+	// Pre-compute static onboarding content once at startup
+	const llmsTxtContent = LLMS_ENABLED ? buildLlmsTxt(sellerConfig, onboardingOptions) : null;
+	const skillsMdContent = SKILLS_MD_ENABLED ? buildSkillsMd(sellerConfig, onboardingOptions) : null;
+
 	app.get("/health", (_req, res) => {
 		res.json({ status: "ok", network: NETWORK, wallet: WALLET_ADDRESS, storage: STORAGE_BACKEND });
 	});
+
+	if (llmsTxtContent !== null) {
+		app.get("/llms.txt", (_req, res) => {
+			res.type("text/plain; charset=utf-8");
+			res.send(llmsTxtContent);
+		});
+	}
+
+	if (skillsMdContent !== null) {
+		app.get("/skills.md", (_req, res) => {
+			res.type("text/markdown; charset=utf-8");
+			res.send(skillsMdContent);
+		});
+	}
 
 	// ─── Test helper endpoints (for e2e tests) ───────────────────────────────
 
@@ -674,35 +748,7 @@ if (!isConfigured) {
 
 	app.use(
 		key0Router({
-			config: {
-				agentName: AGENT_NAME,
-				agentDescription: AGENT_DESCRIPTION,
-				agentUrl: AGENT_URL,
-				providerName: PROVIDER_NAME,
-				providerUrl: PROVIDER_URL,
-				walletAddress: WALLET_ADDRESS as `0x${string}`,
-				network: NETWORK,
-				plans,
-				routes,
-				challengeTTLSeconds: CHALLENGE_TTL_SECONDS,
-				basePath: BASE_PATH,
-				fetchResourceCredentials,
-				tokenIssueTimeoutMs: TOKEN_ISSUE_TIMEOUT_MS,
-				tokenIssueRetries: TOKEN_ISSUE_RETRIES,
-				mcp: MCP_ENABLED,
-				...(RPC_URL_OVERRIDE ? { rpcUrl: RPC_URL_OVERRIDE } : {}),
-				...(GAS_WALLET_PRIVATE_KEY && redis
-					? { gasWalletPrivateKey: GAS_WALLET_PRIVATE_KEY, redis }
-					: {}),
-				...(PROXY_TO_BASE_URL
-					? {
-							proxyTo: {
-								baseUrl: PROXY_TO_BASE_URL,
-								...(KEY0_PROXY_SECRET ? { proxySecret: KEY0_PROXY_SECRET } : {}),
-							},
-						}
-					: {}),
-			},
+			config: sellerConfig,
 			adapter,
 			store,
 			seenTxStore,
@@ -718,7 +764,13 @@ if (!isConfigured) {
 		console.log(`  Token API:  ${ISSUE_TOKEN_API}`);
 		console.log(`  Storage:    ${STORAGE_BACKEND.toUpperCase()}`);
 		console.log(`  Setup UI:   http://localhost:${PORT}/setup`);
-		console.log(`  Agent Card: ${AGENT_URL}/.well-known/agent.json`);
+		console.log(`  Discover:   ${AGENT_URL}/discover`);
+		console.log(
+			`  Agent Card: ${A2A_ENABLED ? `${AGENT_URL}/.well-known/agent.json` : "DISABLED"}`,
+		);
+		console.log(`  MCP:        ${MCP_ENABLED ? `${AGENT_URL}/.well-known/mcp.json` : "DISABLED"}`);
+		console.log(`  llms.txt:   ${LLMS_ENABLED ? `${AGENT_URL}/llms.txt` : "DISABLED"}`);
+		console.log(`  skills.md:  ${SKILLS_MD_ENABLED ? `${AGENT_URL}/skills.md` : "DISABLED"}`);
 		console.log(
 			`  Refund cron: ${WALLET_PRIVATE_KEY ? `every ${REFUND_INTERVAL_MS / 1000}s` : "DISABLED (set KEY0_WALLET_PRIVATE_KEY)"}\n`,
 		);

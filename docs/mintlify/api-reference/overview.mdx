@@ -11,8 +11,10 @@ Key0 exposes a set of HTTP endpoints for agent discovery, payment-gated access, 
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/.well-known/agent.json` | None | Returns the A2A Agent Card describing your agent's capabilities, skills, and x402 extension. |
-| `GET` | `/discovery` | None | Returns all available plans and pricing (the plan catalog). |
+| `GET` | `/.well-known/agent.json` | None | Returns the A2A Agent Card describing your agent's capabilities, skills, and x402 extension. Only present when A2A is enabled. |
+| `GET` | `/discover` | None | Returns all available plans and pricing (the plan catalog). |
+| `GET` | `/llms.txt` | None | Generated machine-readable buyer onboarding guide. Standalone only. |
+| `GET` | `/skills.md` | None | Generated markdown workflow guide for buyers and agents. Standalone only. |
 
 ### Payment
 

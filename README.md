@@ -48,6 +48,11 @@ docker compose -f docker/docker-compose.yml --profile full up
 # Open http://localhost:3000 → configure via browser
 ```
 
+Standalone auto-hosts the buyer onboarding bundle from your config:
+`GET /discover`, `POST /x402/access`, optional `/.well-known/agent.json`,
+optional `/.well-known/mcp.json`, plus generated `/llms.txt` and `/skills.md`.
+To distribute a CLI binary to your users: run `buildCli()` from the SDK and upload the output to your preferred host (see [Agent CLI](#agent-cli)).
+
 ### Embedded - Subscription Plans
 
 One-time payment, JWT issued, client calls your API directly with `Bearer` token.
@@ -249,6 +254,21 @@ Configuration is persisted in a Docker volume (`key0-config`), so it survives `d
 
 The Setup UI also works as a **standalone config generator** - open it outside Docker to generate `.env` files, `docker run` commands, or `docker-compose.yml` files you can copy. See [`docs/setup-ui.md`](./docs/setup-ui.md) for architecture details.
 
+### Automatic Buyer Onboarding Bundle
+
+By default, standalone key0 generates and hosts these buyer-facing endpoints from your seller config:
+
+| Endpoint | Default | Control |
+|---|---|---|
+| `GET /discover` | on | always on |
+| `POST /x402/access` | on | always on |
+| `GET /.well-known/agent.json` | on | `A2A_ENABLED=false` disables it |
+| `GET /.well-known/mcp.json` + `POST /mcp` | off | `MCP_ENABLED=true` enables them |
+| `GET /llms.txt` | on | `LLMS_ENABLED=false` disables it |
+| `GET /skills.md` | on | `SKILLS_MD_ENABLED=false` disables it |
+
+To distribute a CLI binary to your users: run `buildCli()` from the SDK and upload the output to your preferred host (e.g. GitHub Releases, S3, a CDN). See [Agent CLI](#agent-cli) for details.
+
 #### Option B: Environment variables
 
 Set the two required variables and start immediately:
@@ -305,9 +325,12 @@ Build from source: `docker build -t key0ai/key0 .`
 | `ROUTES_B64` | | - | Base64-encoded JSON array of per-request routes - each with `routeId`, `method`, `path`, optional `unitAmount` and `description` |
 | `CHALLENGE_TTL_SECONDS` | | `900` | How long a payment challenge remains valid before expiring (seconds) |
 | `BASE_PATH` | | - | URL path prefix for endpoints (e.g. `/a2a` mounts `/a2a/.well-known/agent.json`). The `/x402/access` endpoint is always at the root. |
+| `A2A_ENABLED` | | `true` | When `false`, disables A2A discovery (`/.well-known/agent.json`) |
 | `BACKEND_AUTH_STRATEGY` | | `none` | How key0 authenticates with `ISSUE_TOKEN_API` - `none`, `shared-secret`, or `jwt` |
 | `ISSUE_TOKEN_API_SECRET` | | - | Secret for `ISSUE_TOKEN_API` auth - Bearer token (shared-secret) or JWT signing key (jwt). Only used when `BACKEND_AUTH_STRATEGY` is not `none` |
 | `MCP_ENABLED` | | `false` | When `true`, mounts MCP routes (`/.well-known/mcp.json` + `POST /mcp`) exposing `discover` and `access` tools |
+| `LLMS_ENABLED` | | `true` | When `false`, disables generated `/llms.txt` buyer-onboarding output |
+| `SKILLS_MD_ENABLED` | | `true` | When `false`, disables generated `/skills.md` buyer workflow guide |
 | `STORAGE_BACKEND` | | `redis` | Storage backend - `redis` or `postgres` |
 | `DATABASE_URL` | | - | PostgreSQL connection URL - required when `STORAGE_BACKEND=postgres` |
 | `REDIS_URL` | ✅ | - | Redis connection URL - required for challenge state (or BullMQ refund cron when using Postgres) |
@@ -654,6 +677,7 @@ app.get("/api/weather/:city", (req, res) => {
 | `proxyTo` | `ProxyToConfig` | | - | Per-request proxy shorthand: builds a `fetchResource` that forwards to `baseUrl`. Supports optional `headers` (e.g. shared secret) and `pathRewrite` |
 | `onPaymentReceived` | `(grant) => Promise<void>` | | - | Fired after successful payment |
 | `onChallengeExpired` | `(challengeId) => Promise<void>` | | - | Fired when a challenge expires |
+| `a2a` | `boolean` | | `true` | When `false`, disables A2A discovery (`/.well-known/agent.json`) and JSON-RPC routing |
 | `mcp` | `boolean` | | `false` | Enable MCP server - mounts `/.well-known/mcp.json` and `POST /mcp` (Streamable HTTP) |
 
 #### Plan
@@ -875,7 +899,7 @@ See [`docs/mcp-integration.md`](./docs/mcp-integration.md) for architecture deta
 
 Sellers can distribute a branded CLI binary — a standalone executable with your service URL baked in. Agents download it once, install it, and interact with your API by name.
 
-**For sellers — generate the binary:**
+To generate CLI binaries, use the embedded SDK:
 
 ```typescript
 import { buildCli } from "@key0ai/key0/cli";

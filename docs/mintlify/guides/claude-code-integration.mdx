@@ -218,7 +218,7 @@ The `make_http_request_with_x402` tool from `@coinbase/payments-mcp`:
     Your CDP wallet does not have sufficient USDC. Check the network — if the seller is on Base Sepolia, your wallet needs **Base Sepolia USDC** (not mainnet). Get free testnet USDC from [faucet.circle.com](https://faucet.circle.com).
   </Accordion>
   <Accordion title="Request fails with 'wrong network'">
-    The seller is on a different chain than your wallet. Check `GET /discovery` to see the seller's `network` field (e.g., `eip155:84532` = Base Sepolia, `eip155:8453` = Base mainnet). Ensure your payments-mcp wallet is configured for the same network.
+    The seller is on a different chain than your wallet. Check `GET /discover` to see the seller's `network` field (e.g., `eip155:84532` = Base Sepolia, `eip155:8453` = Base mainnet). Ensure your payments-mcp wallet is configured for the same network.
   </Accordion>
   <Accordion title="Claude cannot find the 'discover_plans' tool">
     The seller may not have MCP enabled. Verify by calling `GET https://my-service.example.com/.well-known/mcp.json`. If you get a 404, the seller only supports x402 HTTP — use the [Paying for Access](/guides/paying-for-access) guide instead with a custom script.

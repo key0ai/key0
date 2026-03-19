@@ -83,6 +83,7 @@ export type Key0HonoApp = Hono & {
 export function key0App(opts: Key0Config): Key0HonoApp {
 	const { engine, agentCard } = createKey0(opts);
 	const app = new Hono() as Key0HonoApp;
+	const a2aEnabled = opts.config.a2a !== false;
 	const networkConfig = opts.config.rpcUrl
 		? { ...CHAIN_CONFIGS[opts.config.network], rpcUrl: opts.config.rpcUrl }
 		: CHAIN_CONFIGS[opts.config.network];
@@ -100,8 +101,10 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 	};
 
 	// Agent Card
-	app.get(`/${AGENT_CARD_PATH}`, (c) => c.json(agentCard));
-	app.get("/.well-known/agent.json", (c) => c.json(agentCard));
+	if (a2aEnabled) {
+		app.get(`/${AGENT_CARD_PATH}`, (c) => c.json(agentCard));
+		app.get("/.well-known/agent.json", (c) => c.json(agentCard));
+	}
 
 	// Unified x402 endpoint
 	app.post("/x402/access", async (c) => {

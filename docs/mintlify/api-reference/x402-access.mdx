@@ -10,7 +10,7 @@ Content-Type: application/json
 
 The primary x402 HTTP endpoint. It handles four distinct cases depending on the request body and headers:
 
-1. **No `planId`** -- Returns HTTP 400 directing the client to `GET /discovery`.
+1. **No `planId`** -- Returns HTTP 400 directing the client to `GET /discover`.
 2. **Challenge** -- `planId` in the body, no `PAYMENT-SIGNATURE` header. Returns HTTP 402 with payment requirements and a `challengeId`.
 3. **Settlement (subscription)** -- `planId` in the body and a `PAYMENT-SIGNATURE` header. Settles the payment on-chain and returns HTTP 200 with an `AccessGrant` (JWT).
 4. **Settlement (per-request standalone)** -- Same as (3) but with a `resource` field in the body for `mode: "per-request"` plans. Key0 proxies to the backend and returns a `ResourceResponse` (backend data, no token).
@@ -34,14 +34,14 @@ Sending a body without `planId` returns HTTP 400 with a pointer to the discovery
 
     ```json
     {
-      "error": "Please select a plan from the discovery API response to purchase access. Endpoint: GET /discovery"
+      "error": "Please select a plan from the discovery API response to purchase access. Endpoint: GET /discover"
     }
     ```
 
-    Use `GET /discovery` to browse available plans:
+    Use `GET /discover` to browse available plans:
 
     ```bash
-    curl https://api.example.com/discovery
+    curl https://api.example.com/discover
     ```
   </Tab>
 </Tabs>

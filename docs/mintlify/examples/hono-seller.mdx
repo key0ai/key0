@@ -18,7 +18,7 @@ A lightweight seller agent built with [Hono](https://hono.dev) that monetizes a 
 Agent                          Hono Seller
   |                                |
   |-- GET /.well-known/agent.json -|  (discover capabilities)
-  |-- GET /discovery ------------->|  (browse plans and pricing)
+  |-- GET /discover ------------->|  (browse plans and pricing)
   |<-------- plan catalog ---------|  (planIds, amounts, wallet)
   |-- POST /x402/access ---------->|  (request access, planId)
   |<-------- X402Challenge --------|  (amount, destination, chainId)

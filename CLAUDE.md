@@ -81,6 +81,8 @@ Client → GET /api/route + PAYMENT-SIGNATURE → direct 200 response (embedded,
 
 `noAuth`, `sharedSecretAuth`, `signedJwtAuth`, `oauthClientCredentialsAuth` — service-to-service auth strategies for outbound requests from client agents. `noAuth` sends no headers (local dev / trusted networks). `createRemoteTokenIssuer` wraps a remote HTTP endpoint as a `fetchResourceCredentials` callback.
 
+`standalone-onboarding.ts` — buyer-facing content generators for the standalone Docker deployment: `buildLlmsTxt` and `buildSkillsMd`. CLI binaries are not built by the standalone server — sellers use `buildCli()` from `src/integrations/cli.ts` directly.
+
 ## Key Configuration
 
 `SellerConfig` drives everything: `walletAddress`, `network`, `plans` (array of plans with `planId`, `unitAmount`, optional `description`, optional `mode: "subscription" | "per-request"`, optional `routes: PlanRouteInfo[]`), `basePath` (default `"/agent"` — used for resource endpoint URLs).
@@ -94,6 +96,8 @@ Per-request proxy (standalone gateway mode — optional):
 Optional: `version` (default `"1.0.0"`), `facilitatorUrl` (override CDP default), `gasWalletPrivateKey` (self-contained settlement), `redis` (distributed gas wallet lock), `rpcUrl` (override public RPC for all on-chain ops — recommended in production), `onPaymentReceived`, `onChallengeExpired`.
 
 When `mcp: true` is set, the Express router also mounts MCP routes (`/.well-known/mcp.json` discovery + `POST /mcp` Streamable HTTP endpoint) exposing `discover_plans` and `request_access` tools. Payment follows the x402 MCP transport spec (`isError` + `structuredContent` + `_meta`). See `docs/mcp-integration.md`.
+
+When `a2a: false` is set, the A2A agent card endpoints (`/.well-known/agent.json`) and JSON-RPC fallback handler are not mounted. The `X-A2A-Extensions` header is ignored.
 
 ## Code Style
 

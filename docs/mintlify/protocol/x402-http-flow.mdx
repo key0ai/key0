@@ -3,9 +3,9 @@ title: "x402 HTTP Flow"
 description: "The simplest way to interact with Key0 -- a single POST /x402/access endpoint that handles discovery, challenge creation, and payment settlement."
 ---
 
-The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery uses `GET /discovery`, and the `POST /x402/access` endpoint handles challenge and settlement:
+The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery uses `GET /discover`, and the `POST /x402/access` endpoint handles challenge and settlement:
 
-1. **Discovery** -- `GET /discovery` returns all available plans (HTTP 200). `POST /x402/access` without `planId` returns HTTP 400.
+1. **Discovery** -- `GET /discover` returns all available plans (HTTP 200). `POST /x402/access` without `planId` returns HTTP 400.
 2. **Challenge** -- `planId` present, no `payment-signature` header, creates a PENDING record.
 3. **Settlement (subscription)** -- `planId` + `payment-signature`, settles on-chain, returns an `AccessGrant` (JWT).
 4. **Settlement (per-request standalone)** -- `planId` + `resource` + `payment-signature`, settles on-chain, proxies to the backend, returns a `ResourceResponse` (API data, no token).
@@ -18,14 +18,14 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
 
 <Tabs>
   <Tab title="Case 1: Discovery">
-    Use `GET /discovery` to browse all available plans. No PENDING record is created -- this is a pure pricing query.
+    Use `GET /discover` to browse all available plans. No PENDING record is created -- this is a pure pricing query.
 
     Note: `POST /x402/access` without `planId` returns HTTP 400 with a pointer to this endpoint.
 
     ### Request
 
     ```bash
-    curl https://api.example.com/discovery
+    curl https://api.example.com/discover
     ```
 
     ### Response
@@ -37,53 +37,20 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
 
     ```json
     {
-      "discoveryResponse": {
-        "x402Version": 2,
-        "accepts": [
-          {
-            "scheme": "exact",
-            "network": "eip155:84532",
-            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-            "amount": "100000",
-            "payTo": "0xSellerWallet...",
-            "maxTimeoutSeconds": 900,
-            "extra": {
-              "name": "USDC",
-              "version": "2",
-              "planId": "basic",
-              "description": "Basic plan - $0.10 USDC"
-            }
-          }
-        ],
-        "extensions": {
-          "key0": {
-            "inputSchema": {
-              "type": "object",
-              "properties": {
-                "planId": { "type": "string" },
-                "requestId": { "type": "string" },
-                "resourceId": { "type": "string" }
-              },
-              "required": ["planId"]
-            },
-            "outputSchema": {
-              "type": "object",
-              "properties": {
-                "type": { "type": "string", "enum": ["AccessGrant"] },
-                "accessToken": { "type": "string" },
-                "tokenType": { "type": "string" },
-                "resourceEndpoint": { "type": "string" },
-                "txHash": { "type": "string" }
-              }
-            },
-            "description": "Basic plan - $0.10 USDC"
-          }
+      "agentName": "My Agent",
+      "description": "Payment-gated API",
+      "plans": [
+        {
+          "planId": "basic",
+          "unitAmount": "$0.10",
+          "description": "Basic plan - $0.10 USDC"
         }
-      }
+      ],
+      "routes": []
     }
     ```
 
-    The `accepts` array contains one entry per plan configured in `SellerConfig.plans`. Each entry includes the USDC contract address, the amount in base units (6 decimals), and the seller's wallet address.
+    The discovery response contains one entry per plan configured in `SellerConfig.plans`, plus any route metadata when per-request routes are enabled.
   </Tab>
 
   <Tab title="Case 2: Challenge">

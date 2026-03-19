@@ -11,7 +11,7 @@ Key0 uses a **three-phase payment flow** to gate API access behind on-chain USDC
 
 <Steps>
   <Step title="Discover Plans">
-    The client calls `GET /discovery` to browse available plans and pricing. This returns all plan IDs, USDC amounts, and the seller's wallet address. No payment or challenge is created.
+    The client calls `GET /discover` to browse available plans and pricing. This returns all plan IDs, USDC amounts, and the seller's wallet address. No payment or challenge is created.
   </Step>
   <Step title="Request Access and Pay">
     The client sends `POST /x402/access` with a `planId`. The server creates a PENDING challenge and returns a 402 with the payment amount, destination wallet, and chain ID. The client signs an EIP-3009 authorization off-chain and retries with a `payment-signature` header. The server settles on-chain.
@@ -30,7 +30,7 @@ sequenceDiagram
     participant Base as Base (L2)
 
     Note over Client,Server: Phase 1 -- Discovery
-    Client->>Server: GET /discovery
+    Client->>Server: GET /discover
     Server->>Client: 200 + plan catalog (planIds, amounts, wallet)
 
     Note over Client,Server: Phase 2 -- Challenge
@@ -53,10 +53,10 @@ sequenceDiagram
 
 ## Phase 1 -- Discovery
 
-The client calls `GET /discovery` to retrieve the full plan catalog. The response contains one entry per configured plan with its `planId`, USDC amount, seller wallet, and chain ID. No challenge record is created.
+The client calls `GET /discover` to retrieve the full plan catalog. The response contains one entry per configured plan with its `planId`, USDC amount, seller wallet, and chain ID. No challenge record is created.
 
 <Note>
-  `POST /x402/access` without a `planId` returns HTTP **400** with a pointer to `GET /discovery` — it is not the discovery endpoint.
+  `POST /x402/access` without a `planId` returns HTTP **400** with a pointer to `GET /discover` — it is not the discovery endpoint.
 </Note>
 
 ## Phase 2 -- Challenge

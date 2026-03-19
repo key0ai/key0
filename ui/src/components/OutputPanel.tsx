@@ -134,10 +134,22 @@ export function OutputPanel({ config }: OutputPanelProps) {
 	const agentCardBlocks = generateAgentCardTerminal(config);
 	const mcpBlocks = generateMcpTerminal(config);
 
-	const previewTabs: Record<PreviewTab, { label: string }> = {
-		"agent-card": { label: "Agent Card" },
-		mcp: { label: "MCP" },
-	};
+	const previewTabs = {
+		...(config.a2aEnabled ? { "agent-card": { label: "Agent Card" } } : {}),
+		...(config.mcpEnabled ? { mcp: { label: "MCP" } } : {}),
+	} as Partial<Record<PreviewTab, { label: string }>>;
+
+	useEffect(() => {
+		if (group !== "preview") return;
+		if (previewTab === "agent-card" && !config.a2aEnabled) {
+			if (config.mcpEnabled) setPreviewTab("mcp");
+			else setGroup("deploy");
+		}
+		if (previewTab === "mcp" && !config.mcpEnabled) {
+			if (config.a2aEnabled) setPreviewTab("agent-card");
+			else setGroup("deploy");
+		}
+	}, [config.a2aEnabled, config.mcpEnabled, group, previewTab]);
 
 	const allDeployOutputs: Record<DeployTab, { label: string; content: string; filename?: string }> =
 		{
