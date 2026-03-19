@@ -9,7 +9,10 @@ services:
       KEY0_WALLET_PRIVATE_KEY: ${KEY0_WALLET_KEY}
       GAS_WALLET_PRIVATE_KEY: ${GAS_WALLET_PRIVATE_KEY}
       KEY0_NETWORK: testnet
-      REDIS_URL: redis://redis:6379
+      # Share the main e2e Redis so withGasWalletLock serialises settlements
+      # across this container and ppr-embedded (which also uses localhost:6380).
+      # This mirrors production where all instances share a single Redis lock.
+      REDIS_URL: redis://host.docker.internal:6380
       CHALLENGE_TTL_SECONDS: 300
       AGENT_URL: http://localhost:3002
       BASE_PATH: /a2a
@@ -22,21 +25,8 @@ services:
       ROUTES: '[{"routeId":"weather-query","method":"GET","path":"/api/weather/:city","unitAmount":"$0.01","description":"Weather query per request"},{"routeId":"joke-of-the-day","method":"GET","path":"/api/joke","unitAmount":"$0.005","description":"Joke per request"}]'
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    depends_on:
-      redis:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 3s
       timeout: 3s
       retries: 20
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6382:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 3s
-      timeout: 3s
-      retries: 5

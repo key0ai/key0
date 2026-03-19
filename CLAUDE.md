@@ -40,11 +40,11 @@ Client → PaymentProof (txHash) → AccessGrant (JWT)
 Client → Protected API with Bearer JWT
 ```
 
-**Per-request plans** (`mode: "per-request"`):
+**Per-request plans** (`mode: "per-request"`) and **per-request routes** (`routes: [{ routeId, ... }]`):
 ```
-Client → POST /x402/access { planId, resource: { method, path } } → 402 + PaymentRequirements
+Client → POST /x402/access { planId | routeId, resource: { method, path } } → 402 + PaymentRequirements
 Client → POST /x402/access + PAYMENT-SIGNATURE → ResourceResponse (API response proxied inline)
-  (standalone) or
+  (standalone gateway) or
 Client → GET /api/route + PAYMENT-SIGNATURE → direct 200 response (embedded, no token issued)
 ```
 
@@ -60,7 +60,7 @@ Client → GET /api/route + PAYMENT-SIGNATURE → direct 200 response (embedded,
 
 3. **Adapter** (`src/adapter/`) — `X402Adapter`: verifies ERC-20 Transfer events on Base via viem. Supports `mainnet` (chainId 8453) and `testnet`/Base Sepolia (chainId 84532).
 
-4. **Integrations** (`src/integrations/`) — Framework adapters mount a unified `POST /x402/access` endpoint (with `X-A2A-Extensions` header routing to A2A JSON-RPC), `GET /discovery` (plan catalog, no PENDING record), and export `validateAccessToken` middleware for protecting routes. Available for Express, Hono, Fastify, and MCP (Streamable HTTP transport via `@modelcontextprotocol/sdk`). Settlement helpers in `settlement.ts`: `buildHttpPaymentRequirements`, `buildDiscoveryResponse`, `decodePaymentSignature`, `settleViaFacilitator`, `settleViaGasWallet`, and the unified `settlePayment` entry point (auto-selects strategy based on config, serialises gas wallet calls via `withGasWalletLock`). Per-request middleware in `pay-per-request.ts`: `key0.payPerRequest(planId, opts?)` factory for embedded route-level gating (settles inline, calls `next()`, no token issued); `resolveConfigFetchResource(config)` determines whether standalone proxy mode is active.
+4. **Integrations** (`src/integrations/`) — Framework adapters mount a unified `POST /x402/access` endpoint (with `X-A2A-Extensions` header routing to A2A JSON-RPC), `GET /discovery` (plan catalog, no PENDING record), and export `validateAccessToken` middleware for protecting routes. Available for Express, Hono, Fastify, and MCP (Streamable HTTP transport via `@modelcontextprotocol/sdk`). Settlement helpers in `settlement.ts`: `buildHttpPaymentRequirements`, `buildDiscoveryResponse`, `decodePaymentSignature`, `settleViaFacilitator`, `settleViaGasWallet`, and the unified `settlePayment` entry point (auto-selects strategy based on config, serialises gas wallet calls via `withGasWalletLock`). Per-request middleware in `pay-per-request.ts`: `key0.payPerRequest(planId, opts?)` factory for embedded route-level gating (settles inline, calls `next()`, no token issued); `resolveConfigFetchResource(config)` determines whether standalone proxy mode is active. The `routeId` path inside `POST /x402/access` is handled directly in express.ts (not via `pay-per-request.ts`) with a full two-phase PENDING → PAID → DELIVERED flow and inline proxy call to `fetchResource`/`proxyTo`.
 
 5. **Executor** (`src/executor.ts`) — `Key0Executor` implements `@a2a-js/sdk`'s `AgentExecutor` for the A2A protocol flow.
 
