@@ -28,6 +28,7 @@ import { RedisChallengeStore, RedisSeenTxStore, X402Adapter } from "../../src/in
 import { key0Router } from "../../src/integrations/express.ts";
 import { PPR_JOKE_ROUTE_ID, PPR_WEATHER_ROUTE_ID } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
+import { pollUntil } from "../helpers/wait.ts";
 
 // ── Server config (uses the same env vars as the rest of the e2e suite) ──────
 
@@ -357,9 +358,12 @@ describe("PPR Embedded: state verification", () => {
 		expect(typeof challengeId).toBe("string");
 		expect(challengeId).toMatch(/^ppr-/);
 
-		// The middleware calls markDelivered synchronously before calling next(),
-		// so by the time the handler responds the state should already be DELIVERED.
-		const finalState = await readEmbeddedChallengeState(challengeId);
+		// Wait for the final state to be visible. Postgres-backed CI occasionally
+		// observes the handler response just before the delivered state is readable.
+		const finalState = await pollUntil(async () => {
+			const state = await readEmbeddedChallengeState(challengeId);
+			return state === "DELIVERED" ? state : null;
+		}, 10_000);
 		expect(finalState).toBe("DELIVERED");
 	}, 120_000);
 });
