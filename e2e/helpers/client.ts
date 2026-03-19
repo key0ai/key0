@@ -333,6 +333,55 @@ export class E2eTestClient {
 		return { requestId, challengeId, grant: result.grant };
 	}
 
+	async purchaseAccessWithFreshChallengeRetry(opts: {
+		planId: string;
+		resourceId?: string;
+		maxAttempts?: number;
+	}): Promise<{
+		requestId: string;
+		challengeId: string;
+		grant: AccessGrant;
+	}> {
+		const maxAttempts = opts.maxAttempts ?? 3;
+
+		for (let attempt = 0; attempt < maxAttempts; attempt++) {
+			const requestId = crypto.randomUUID();
+			const { challengeId, paymentRequired } = await this.requestAccess({
+				planId: opts.planId,
+				requestId,
+				...(opts.resourceId !== undefined ? { resourceId: opts.resourceId } : {}),
+			});
+
+			const requirements = paymentRequired.accepts[0];
+			if (!requirements) throw new Error("No payment requirements");
+
+			const auth = await this.signEIP3009({
+				destination: requirements.payTo as `0x${string}`,
+				amountRaw: BigInt(requirements.amount),
+			});
+
+			const result = await this.submitPayment({
+				planId: opts.planId,
+				requestId,
+				...(opts.resourceId !== undefined ? { resourceId: opts.resourceId } : {}),
+				auth,
+				paymentRequired,
+			});
+
+			if (result.grant) {
+				return { requestId, challengeId, grant: result.grant };
+			}
+
+			if (attempt === maxAttempts - 1) {
+				throw new Error(
+					`Payment failed after ${maxAttempts} attempts: ${JSON.stringify(result.error)}`,
+				);
+			}
+		}
+
+		throw new Error("purchaseAccessWithFreshChallengeRetry exhausted attempts");
+	}
+
 	// ── ProxyPath plans: request access using planId + params ──────────────
 
 	async requestProxyPlanAccess(opts: {

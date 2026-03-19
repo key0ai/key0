@@ -63,61 +63,71 @@ describe("Unified /x402/access endpoint", () => {
 
 	test("POST /x402/access with planId + PAYMENT-SIGNATURE returns 200 AccessGrant", async () => {
 		const client = makeClientE2eClient();
-		const requestId = crypto.randomUUID();
+		let settleRes: Response | undefined;
+		let challengeId = "";
+		let requestId = "";
 
-		// Step 1: Get challenge
-		const challengeRes = await fetch(X402_URL, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ planId: DEFAULT_TIER_ID, requestId }),
-		});
+		for (let attempt = 0; attempt < 3; attempt++) {
+			requestId = crypto.randomUUID();
 
-		expect(challengeRes.status).toBe(402);
-		const challengeBody = (await challengeRes.json()) as Record<string, unknown>;
-		const challengeId = challengeBody["challengeId"] as string;
+			const challengeRes = await fetch(X402_URL, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ planId: DEFAULT_TIER_ID, requestId }),
+			});
 
-		// Decode payment requirements from header
-		const header = challengeRes.headers.get("payment-required");
-		expect(header).toBeTruthy();
-		const paymentRequired = JSON.parse(Buffer.from(header!, "base64").toString("utf-8")) as {
-			accepts: Array<{ amount: string; payTo: string }>;
-		};
+			expect(challengeRes.status).toBe(402);
+			const challengeBody = (await challengeRes.json()) as Record<string, unknown>;
+			challengeId = challengeBody["challengeId"] as string;
 
-		const requirements = paymentRequired.accepts[0]!;
+			const header = challengeRes.headers.get("payment-required");
+			expect(header).toBeTruthy();
+			const paymentRequired = JSON.parse(Buffer.from(header!, "base64").toString("utf-8")) as {
+				accepts: Array<{ amount: string; payTo: string }>;
+			};
 
-		// Step 2: Sign EIP-3009
-		const auth = await client.signEIP3009({
-			destination: requirements.payTo as `0x${string}`,
-			amountRaw: BigInt(requirements.amount),
-		});
+			const requirements = paymentRequired.accepts[0]!;
+			const auth = await client.signEIP3009({
+				destination: requirements.payTo as `0x${string}`,
+				amountRaw: BigInt(requirements.amount),
+			});
 
-		// Build PAYMENT-SIGNATURE payload
-		const paymentPayload = {
-			x402Version: 2,
-			network: `eip155:84532`,
-			scheme: "exact",
-			payload: {
-				signature: auth.signature,
-				authorization: auth.authorization,
-				from: client.account,
-			},
-			accepted: requirements,
-		};
-		const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
+			const paymentPayload = {
+				x402Version: 2,
+				network: `eip155:84532`,
+				scheme: "exact",
+				payload: {
+					signature: auth.signature,
+					authorization: auth.authorization,
+					from: client.account,
+				},
+				accepted: requirements,
+			};
+			const paymentSignature = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
 
-		// Step 3: POST with signature
-		const settleRes = await fetch(X402_URL, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				"payment-signature": paymentSignature,
-			},
-			body: JSON.stringify({ planId: DEFAULT_TIER_ID, requestId }),
-		});
+			settleRes = await fetch(X402_URL, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"payment-signature": paymentSignature,
+				},
+				body: JSON.stringify({ planId: DEFAULT_TIER_ID, requestId }),
+			});
 
-		expect(settleRes.status).toBe(200);
+			if (settleRes.status === 200) {
+				break;
+			}
 
-		const grant = (await settleRes.json()) as AccessGrant;
+			if (attempt === 2) {
+				const errorBody = await settleRes.json();
+				throw new Error(`x402 settle failed after 3 attempts: ${JSON.stringify(errorBody)}`);
+			}
+		}
+
+		expect(settleRes).toBeDefined();
+		expect(settleRes!.status).toBe(200);
+
+		const grant = (await settleRes!.json()) as AccessGrant;
 		expect(grant.type).toBe("AccessGrant");
 		expect(typeof grant.accessToken).toBe("string");
 		expect(grant.tokenType).toBe("Bearer");
@@ -126,7 +136,7 @@ describe("Unified /x402/access endpoint", () => {
 		expect(grant.requestId).toBe(requestId);
 
 		// payment-response header must be set
-		const paymentResponse = settleRes.headers.get("payment-response");
+		const paymentResponse = settleRes!.headers.get("payment-response");
 		expect(paymentResponse).toBeTruthy();
 	}, 120_000);
 

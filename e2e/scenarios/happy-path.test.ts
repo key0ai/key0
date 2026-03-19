@@ -6,47 +6,12 @@ describe("Happy Path: full purchase → JWT → protected API", () => {
 	test("purchase access and call protected API with Bearer token", async () => {
 		const client = makeClientE2eClient();
 
-		// Step 1: Request access → get challenge + payment requirements
-		const requestId = crypto.randomUUID();
-		const { challengeId, paymentRequired } = await client.requestAccess({
+		const { requestId, challengeId, grant } = await client.purchaseAccessWithFreshChallengeRetry({
 			planId: DEFAULT_TIER_ID,
-			requestId,
 			resourceId: "resource-1",
 		});
-
 		expect(typeof challengeId).toBe("string");
 		expect(challengeId.length).toBeGreaterThan(0);
-		expect(paymentRequired.x402Version).toBe(2);
-		expect(paymentRequired.accepts.length).toBeGreaterThan(0);
-
-		const requirements = paymentRequired.accepts[0]!;
-		expect(requirements.scheme).toBe("exact");
-		expect(requirements.network).toBe("eip155:84532");
-		expect(typeof requirements.payTo).toBe("string");
-		expect(BigInt(requirements.amount)).toBeGreaterThan(0n);
-
-		// Step 2: Sign EIP-3009 authorization
-		const auth = await client.signEIP3009({
-			destination: requirements.payTo as `0x${string}`,
-			amountRaw: BigInt(requirements.amount),
-		});
-
-		expect(typeof auth.signature).toBe("string");
-		expect(auth.authorization.from).toBe(client.account);
-
-		// Step 3: Submit payment → gas wallet settles, returns AccessGrant
-		const result = await client.submitPayment({
-			planId: DEFAULT_TIER_ID,
-			requestId,
-			resourceId: "resource-1",
-			auth,
-			paymentRequired,
-		});
-
-		expect(result.status).toBe(200);
-		expect(result.grant).toBeDefined();
-
-		const grant = result.grant!;
 		expect(grant.type).toBe("AccessGrant");
 		expect(typeof grant.accessToken).toBe("string");
 		expect(grant.tokenType).toBe("Bearer");

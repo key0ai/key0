@@ -6,12 +6,12 @@
  * then polls until the balance is confirmed on-chain.
  * Fails fast if funding fails or balances remain insufficient.
  *
- *   CLIENT wallet — needs ≥ $1.00 USDC. Uses EIP-3009 gasless signatures;
+ *   CLIENT wallet — needs ≥ $2.00 USDC. Uses EIP-3009 gasless signatures;
  *                   GAS wallet pays on-chain gas, so no ETH needed here.
- *   KEY0 wallet   — needs ≥ $0.10 USDC for refund tests (GAS wallet submits
+ *   KEY0 wallet   — needs ≥ $0.25 USDC for refund tests (GAS wallet submits
  *                   refund txs on KEY0's behalf, so no ETH needed here).
  *   GAS wallet    — needs ≥ 0.002 ETH (submits all on-chain txs) AND
- *                   ≥ $0.20 USDC (second buyer in concurrent-purchases).
+ *                   ≥ $0.30 USDC (second buyer in concurrent-purchases).
  *
  * CDP faucet (base-sepolia):
  *   cdp.evm.requestFaucet({ address, network: "base-sepolia", token: "eth"|"usdc" })
@@ -30,13 +30,13 @@ import { USDC_ADDRESS } from "./fixtures/constants.ts";
 // ─── Thresholds ───────────────────────────────────────────────────────────────
 
 /** Minimum USDC for the CLIENT wallet (buyer in most tests). */
-const CLIENT_MIN_USDC = parseUnits("1.00", 6);
+const CLIENT_MIN_USDC = parseUnits("2.00", 6);
 
 /** Minimum USDC for the KEY0 wallet (refund source). */
-const KEY0_MIN_USDC = parseUnits("0.10", 6);
+const KEY0_MIN_USDC = parseUnits("0.25", 6);
 
 /** Minimum USDC for the GAS wallet (second buyer in concurrent-purchases). */
-const GAS_MIN_USDC = parseUnits("0.20", 6);
+const GAS_MIN_USDC = parseUnits("0.30", 6);
 
 /** Minimum ETH for the GAS wallet (it submits all on-chain transactions). */
 const GAS_MIN_ETH = parseUnits("0.002", 18);
