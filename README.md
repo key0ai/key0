@@ -9,7 +9,7 @@ key0 is an open-source commerce layer for AI agents and APIs. It lets agents dis
 
 This README is intentionally short. Detailed integration, deployment, protocol, and API reference docs live in Mintlify at [docs.key0.ai](https://docs.key0.ai/introduction/overview).
 
-[Docs](https://docs.key0.ai/introduction/overview) · [Embedded Quickstart](https://docs.key0.ai/quickstart/embedded) · [Standalone Quickstart](https://docs.key0.ai/quickstart/standalone) · [Examples](#examples)
+[Docs](https://docs.key0.ai/introduction/overview) · [Standalone Quickstart](https://docs.key0.ai/quickstart/standalone) · [Embedded Quickstart](https://docs.key0.ai/quickstart/embedded) · [Examples](#examples)
 
 ## Why key0
 
@@ -21,14 +21,16 @@ This README is intentionally short. Detailed integration, deployment, protocol, 
 
 ## Choose a Mode
 
-| | Embedded SDK | Standalone Docker |
+> **Recommended for most teams:** Start with **Standalone Docker**. It is the fastest way to expose a paid agent-facing gateway without changing your application code.
+
+| | Standalone Docker | Embedded SDK |
 |---|---|---|
-| Best for | Existing apps that want full control in code | Teams that want a gateway with minimal app changes |
-| Install | `bun add @key0ai/key0` | `docker compose -f docker/docker-compose.yml --profile full up` |
-| Config | `SellerConfig` in TypeScript | Setup UI or environment variables |
-| Subscription flow | `fetchResourceCredentials` callback returns the credential | `ISSUE_TOKEN_API` returns the credential |
-| Per-request flow | Route-level middleware inside your app | Proxy mode through `PROXY_TO_BASE_URL` |
-| Docs | [Embedded](https://docs.key0.ai/quickstart/embedded) | [Standalone](https://docs.key0.ai/quickstart/standalone) |
+| Best for | Teams that want a gateway with minimal app changes | Existing apps that want full control in code |
+| Install | `docker compose -f docker/docker-compose.yml --profile full up` | `bun add @key0ai/key0` |
+| Config | Setup UI or environment variables | `SellerConfig` in TypeScript |
+| Subscription flow | `ISSUE_TOKEN_API` returns the credential | `fetchResourceCredentials` callback returns the credential |
+| Per-request flow | Proxy mode through `PROXY_TO_BASE_URL` | Route-level middleware inside your app |
+| Docs | [Standalone](https://docs.key0.ai/quickstart/standalone) | [Embedded](https://docs.key0.ai/quickstart/embedded) |
 
 For a full comparison, see [Two Modes](https://docs.key0.ai/introduction/two-modes).
 
@@ -36,7 +38,23 @@ For a full comparison, see [Two Modes](https://docs.key0.ai/introduction/two-mod
 
 Use `network: "testnet"` for local development and switch to `mainnet` only when you are ready to accept real payments.
 
-### Embedded
+### Standalone Docker
+
+```bash
+docker compose -f docker/docker-compose.yml --profile full up
+# Open http://localhost:3000
+```
+
+Standalone mode exposes the payment endpoints and generates the buyer onboarding bundle from your config, including `GET /discover`, `POST /x402/access`, optional `/.well-known/agent.json`, optional `/.well-known/mcp.json`, `/llms.txt`, and `/skills.md`.
+
+Continue with:
+
+- [Quickstart: Standalone](https://docs.key0.ai/quickstart/standalone)
+- [Docker deployment](https://docs.key0.ai/deployment/docker)
+- [Environment variables](https://docs.key0.ai/deployment/environment-variables)
+- [Refund architecture](https://docs.key0.ai/architecture/refunds)
+
+### Embedded SDK
 
 ```bash
 bun add @key0ai/key0 ioredis
@@ -88,22 +106,6 @@ Continue with:
 - [Hono integration](https://docs.key0.ai/integrations/hono)
 - [Fastify integration](https://docs.key0.ai/integrations/fastify)
 - [SellerConfig reference](https://docs.key0.ai/sdk-reference/seller-config)
-
-### Standalone
-
-```bash
-docker compose -f docker/docker-compose.yml --profile full up
-# Open http://localhost:3000
-```
-
-Standalone mode exposes the payment endpoints and generates the buyer onboarding bundle from your config, including `GET /discover`, `POST /x402/access`, optional `/.well-known/agent.json`, optional `/.well-known/mcp.json`, `/llms.txt`, and `/skills.md`.
-
-Continue with:
-
-- [Quickstart: Standalone](https://docs.key0.ai/quickstart/standalone)
-- [Docker deployment](https://docs.key0.ai/deployment/docker)
-- [Environment variables](https://docs.key0.ai/deployment/environment-variables)
-- [Refund architecture](https://docs.key0.ai/architecture/refunds)
 
 ## How It Works
 
