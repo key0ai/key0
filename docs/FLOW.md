@@ -632,11 +632,11 @@ Executor processes through intermediate working states:
 
 ## Per-Request Payment Flow
 
-Pay-per-request (PPR) is a route-based billing mode where each API call is paid for individually — no JWT is issued. Define the paid endpoint in top-level `routes`. Two deployment patterns exist.
+Pay-per-request (PPR) is a billing mode where each API call is paid for individually — no JWT is issued. Set `mode: "per-request"` on a plan. Two deployment patterns exist.
 
 ### PPR Embedded Mode
 
-Key0 middleware (`key0.payPerRequest(routeId)`) runs inside the application. After on-chain settlement, the middleware calls `next()` so the local route handler serves the response.
+Key0 middleware (`key0.payPerRequest(planId)`) runs inside the application. After on-chain settlement, the middleware calls `next()` so the local route handler serves the response.
 
 ```
 Client                    Application
@@ -665,19 +665,20 @@ Challenge lifecycle for embedded PPR:
 - If `store` is provided: `PENDING → PAID` on settlement, `PAID → DELIVERED` on successful response finish
 - If backend crashes after settlement: record stays `PAID`; refund cron can process it
 
-### PPR Standalone Mode
+### PPR Standalone Mode (Proxy via `/x402/access`)
 
-`proxyTo` or `fetchResource` is set on `SellerConfig`. Clients call the route directly, receive a 402 challenge for paid routes, then retry the same route with `PAYMENT-SIGNATURE`. Key0 proxies to the backend after payment.
+`proxyTo` or `fetchResource` is set on `SellerConfig`. Clients include a `resource` field (`{ method, path }`) in the `POST /x402/access` body. Key0 proxies to the backend after payment.
 
 ```
 Client                    Key0 Gateway                 Backend
   │                            │                          │
-  │  GET /api/weather/london   │                          │
+  │  POST /x402/access         │                          │
+  │  { planId, resource: {...} }│                          │
   │ ─────────────────────────▶ │                          │
   │                            │── create PENDING challenge │
   │ ◀── HTTP 402               │                          │
   │                            │                          │
-  │  GET /api/weather/london   │                          │
+  │  POST /x402/access         │                          │
   │  + PAYMENT-SIGNATURE       │                          │
   │ ─────────────────────────▶ │                          │
   │                            │── settlePayment() on-chain │
@@ -972,4 +973,5 @@ key0:challenge:{challengeId}
 | Tx Hash       | `^0x[0-9a-fA-F]{64}$`                                                               | `txHash`              |
 | Address       | `^0x[0-9a-fA-F]{40}$`                                                               | Wallet addresses      |
 | Dollar Amount | `^\$\d+(\.\d{1,6})?$`                                                               | Plan `unitAmount`     |
+
 

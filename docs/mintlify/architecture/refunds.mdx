@@ -6,7 +6,7 @@ description: "When token issuance fails after payment, Key0 automatically refund
 
 When a buyer pays for a resource, the SDK records the payment in a `ChallengeRecord`. After on-chain verification succeeds, delivery and the `PAID -> DELIVERED` transition happen in the same request.
 
-For **subscription plans**, delivery means `fetchResourceCredentials` succeeds and the `AccessGrant` is returned. For **route-based pay-per-call flows**, delivery means the route handler responds successfully (embedded) or the proxied backend request returns 2xx (standalone).
+For **subscription plans**, delivery means `fetchResourceCredentials` succeeds and the `AccessGrant` is returned. For **per-request plans**, delivery means the route handler responds successfully (embedded) or the proxied backend request returns 2xx (standalone).
 
 If delivery fails — for any reason — the record stays in `PAID` state. The refund cron picks it up after a configurable grace period and sends USDC back to the buyer's wallet.
 
@@ -25,9 +25,9 @@ stateDiagram-v2
 
 In the full lifecycle, `PAID` is reached via `PENDING -> PAID` after on-chain payment verification. In the happy path, `PAID -> DELIVERED` happens immediately. The refund path only activates when delivery fails.
 
-## Route-Based Refund Path
+## Per-Request Refund Path
 
-Route-based pay-per-call flows share the same refund state machine but have different failure triggers:
+Pay-per-request plans share the same refund state machine but have different failure triggers:
 
 **Standalone PPR** (seller uses `proxyTo`/`fetchResource`):
 - If the backend returns a **non-2xx status**, the challenge stays in `PAID` for refund eligibility. The `ResourceResponse` containing the backend's error body is still returned to the client so it knows what went wrong.

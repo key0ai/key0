@@ -17,7 +17,7 @@ function configWithoutFrc(overrides: object = {}) {
 }
 
 describe("createKey0 — startup validation", () => {
-	test("throws if fetchResourceCredentials absent for a paid plan", () => {
+	test("throws if fetchResourceCredentials absent and a subscription plan has no proxyPath", () => {
 		expect(() =>
 			createKey0({
 				config: {

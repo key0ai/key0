@@ -40,8 +40,7 @@ Fields that populate the A2A agent discovery card.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `plans` | `readonly Plan[]` | No | — | Subscription-style pricing plans. See [Plan](#plan) below. |
-| `routes` | `readonly Route[]` | No | — | Pay-per-call route catalog. Use this for per-request pricing. See [Route](#route) below. |
+| `plans` | `readonly Plan[]` | Yes | — | One or more pricing plans. See [Plan](#plan) below. |
 
 ## Challenge
 
@@ -53,13 +52,13 @@ Fields that populate the A2A agent discovery card.
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `fetchResourceCredentials` | `(params: IssueTokenParams) => Promise<TokenIssuanceResult>` | Yes | — | Called after on-chain payment is verified for **subscription** plans. Return a token (JWT, API key, etc.) that grants the buyer access. Pay-per-call routes use `fetchResource` or `proxyTo` instead. See [IssueTokenParams](#issuetokenparams) and [TokenIssuanceResult](#tokenissuanceresult). |
+| `fetchResourceCredentials` | `(params: IssueTokenParams) => Promise<TokenIssuanceResult>` | Yes | — | Called after on-chain payment is verified for **subscription** plans. Return a token (JWT, API key, etc.) that grants the buyer access. **Not called for per-request plans when `fetchResource` or `proxyTo` is set.** See [IssueTokenParams](#issuetokenparams) and [TokenIssuanceResult](#tokenissuanceresult). |
 | `tokenIssueTimeoutMs` | `number` | No | `15000` | Maximum time (ms) to wait for `fetchResourceCredentials` before timing out. |
 | `tokenIssueRetries` | `number` | No | `2` | Number of retries on transient failures within `fetchResourceCredentials`. |
 
 ## Per-Request Proxy (Standalone Gateway)
 
-Enable standalone gateway mode for top-level `routes`. In standalone mode, clients call the route directly, Key0 returns a 402 challenge for paid routes, and then proxies the request to your backend after payment. Subscription plans still use `POST /x402/access`.
+Enable standalone gateway mode for `mode: "per-request"` plans. When set, clients call `POST /x402/access` with a `resource` field; Key0 settles the payment, forwards the request to your backend, and returns a `ResourceResponse`. Both HTTP, A2A, and MCP clients are supported.
 
 <Note>
   Only one of `fetchResource` or `proxyTo` is needed. Use `proxyTo` for simple URL forwarding; use `fetchResource` when you need full control over the request.
@@ -67,7 +66,7 @@ Enable standalone gateway mode for top-level `routes`. In standalone mode, clien
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `fetchResource` | `(params: FetchResourceParams) => Promise<FetchResourceResult>` | No | — | Called after settlement for pay-per-call routes. Fetch and return the backend response. See [FetchResourceParams](#fetchresourceparams) and [FetchResourceResult](#fetchresourceresult). |
+| `fetchResource` | `(params: FetchResourceParams) => Promise<FetchResourceResult>` | No | — | Called after settlement for per-request plans. Fetch and return the backend response. See [FetchResourceParams](#fetchresourceparams) and [FetchResourceResult](#fetchresourceresult). |
 | `proxyTo` | `ProxyToConfig` | No | — | Shorthand: automatically builds a `fetchResource` that forwards to `baseUrl`. Supports optional `headers` (e.g. a shared secret so your backend can reject requests that bypass the gateway) and `pathRewrite`. See [ProxyToConfig](#proxytoconfigconfig). |
 
 ## Lifecycle Hooks
@@ -115,6 +114,8 @@ type Plan = {
   readonly planId: string;
   readonly unitAmount: string; // e.g. "$0.10"
   readonly description?: string;
+  readonly mode?: "subscription" | "per-request"; // default: "subscription"
+  readonly routes?: PlanRouteInfo[];
 };
 ```
 
@@ -123,25 +124,23 @@ type Plan = {
 | `planId` | `string` | Yes | — | Unique identifier for this plan. |
 | `unitAmount` | `string` | Yes | — | Dollar-formatted price string (e.g. `"$0.10"`, `"$5.00"`). |
 | `description` | `string` | No | — | Human-readable label for the plan. |
+| `mode` | `"subscription" \| "per-request"` | No | `"subscription"` | Billing mode. `"subscription"` issues a JWT; `"per-request"` gates individual API calls without issuing a token. |
+| `routes` | `PlanRouteInfo[]` | No | `[]` | Routes guarded by this per-request plan. Used to generate the agent card and populate the discovery response so agents know which paths are available. |
 
-### Route
+### PlanRouteInfo
 
 ```typescript
-type Route = {
-  readonly routeId: string;
-  readonly method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
-  readonly path: string;
-  readonly unitAmount?: string;
+type PlanRouteInfo = {
+  readonly method: string;  // e.g. "GET"
+  readonly path: string;    // e.g. "/api/weather/:city"
   readonly description?: string;
 };
 ```
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `routeId` | `string` | Yes | Unique identifier for this route. |
-| `method` | `"GET" \| "POST" \| "PUT" \| "DELETE" \| "PATCH"` | Yes | HTTP method for the route. |
-| `path` | `string` | Yes | Route path including any Express-style parameters (for example `"/api/weather/:city"`). |
-| `unitAmount` | `string` | No | Dollar-formatted price string. Omit for free routes. |
+| `method` | `string` | Yes | HTTP method (e.g. `"GET"`, `"POST"`). |
+| `path` | `string` | Yes | Route path including any Express-style parameters (e.g. `"/api/weather/:city"`). |
 | `description` | `string` | No | Human-readable description of the route. |
 
 ### ProxyToConfig
@@ -330,17 +329,15 @@ const config = {
   walletAddress: "0x1234567890abcdef1234567890abcdef12345678" as `0x${string}`,
   network: "mainnet" as const,
 
-  // Product catalog — subscription plans and pay-per-call routes can coexist
+  // Product catalog — subscription and per-request plans can coexist
   plans: [
     { planId: "single", unitAmount: "$0.10", description: "One photo download" },
     { planId: "bulk-50", unitAmount: "$3.50", description: "50 photo downloads" },
-  ],
-  routes: [
     {
-      routeId: "weather-query",
-      method: "GET",
-      path: "/api/weather/:city",
+      planId: "weather-query",
       unitAmount: "$0.01",
+      mode: "per-request",
+      routes: [{ method: "GET", path: "/api/weather/:city" }],
     },
   ],
 

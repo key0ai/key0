@@ -199,18 +199,18 @@ The payload includes `sub` (request ID), `jti` (challenge ID), `resourceId`, `pl
 
 ## Pay-Per-Request Routes
 
-`key0Plugin` registers the plugin **and** exposes a `payPerRequest(routeId, opts?)` factory on the plugin instance. Use it as a Fastify `preHandler` hook to gate routes behind micro-payments — no JWT issued, payment settles inline.
+`key0Plugin` registers the plugin **and** exposes a `payPerRequest(planId, opts?)` factory on the plugin instance. Use it as a Fastify `preHandler` hook to gate routes behind micro-payments — no JWT issued, payment settles inline.
 
 ```typescript
 await fastify.register(key0Plugin, {
   config: {
     // ...
-    routes: [
+    plans: [
       {
-        routeId: "weather-query",
-        method: "GET",
-        path: "/api/weather/:city",
+        planId: "weather-query",
         unitAmount: "$0.01",
+        mode: "per-request",
+        routes: [{ method: "GET", path: "/api/weather/:city" }],
       },
     ],
     fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),

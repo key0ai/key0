@@ -317,33 +317,32 @@ The agent card describes your service. The discovery endpoint lists all plans �
 
 ## Optional: Pay-Per-Request Routes
 
-The quickstart above uses a **subscription plan** — the agent pays once and receives a signed JWT that grants access for the token's lifetime. Key0 also supports **pay-per-call routes**, where each API call is paid for individually and no JWT is issued.
+The quickstart above uses a **subscription plan** — the agent pays once and receives a signed JWT that grants access for the token's lifetime. Key0 also supports **per-request plans**, where each API call is paid for individually and no JWT is issued.
 
-The difference in configuration is adding a paid route to top-level `routes`:
+The only difference in configuration is adding `mode: "per-request"` to the plan object:
 
 ```typescript
 // Subscription plan (default) — agent pays once, receives a JWT
 { planId: "basic", unitAmount: "$0.10", description: "API access token." }
 
-// Pay-per-call route — agent pays per call, receives the route response directly
+// Per-request plan — agent pays per call, receives the route response directly
 {
-  routeId: "single-call",
-  method: "GET",
-  path: "/api/data/:id",
+  planId: "single-call",
   unitAmount: "$0.01",
+  mode: "per-request",  // ← this is all that changes on the plan
   description: "One API call — $0.01.",
+  routes: [{ method: "GET", path: "/api/data/:id" }],
 }
 ```
 
 On the server side, instead of protecting routes with `validateAccessToken`, you gate them with `key0.payPerRequest()` middleware. The middleware handles the entire payment cycle inline: it returns a 402 if no payment header is present, settles on-chain if it is, then calls `next()` so your route handler runs normally:
 
 ```typescript
-// Subscription plans and pay-per-call routes can coexist in the same config
+// Both plan types can coexist in the same config
 plans: [
   { planId: "basic", unitAmount: "$0.10" },             // subscription
-],
-routes: [
-  { routeId: "single-call", method: "GET", path: "/api/data/:id", unitAmount: "$0.01" },
+  { planId: "single-call", unitAmount: "$0.01", mode: "per-request",
+    routes: [{ method: "GET", path: "/api/data/:id" }] }, // per-request
 ],
 
 // Subscription route — protected with JWT middleware (as shown above)

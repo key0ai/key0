@@ -1,7 +1,7 @@
 import type { Message, Task } from "@a2a-js/sdk";
 import type { AgentExecutor, ExecutionEventBus, RequestContext } from "@a2a-js/sdk/server";
 import { v4 as uuidv4 } from "uuid";
-import { findCatalogRoute, listCatalogRoutes, type ChallengeEngine } from "./core/index.js";
+import type { ChallengeEngine } from "./core/index.js";
 import { resolveConfigFetchResource } from "./integrations/pay-per-request.js";
 import { settlePayment } from "./integrations/settlement.js";
 import type {
@@ -52,10 +52,10 @@ export class Key0Executor implements AgentExecutor {
 				return;
 			}
 
-			// ----- Route by access target presence -----
-			// If planId/routeId is present → purchase flow (handleAccessRequest)
+			// ----- Route by planId presence -----
+			// If planId is present → purchase flow (handleAccessRequest)
 			// Otherwise → discovery flow (handleDiscovery)
-			if (payload["planId"] || payload["routeId"]) {
+			if (payload["planId"]) {
 				await this.handleAccessRequest(
 					payload as unknown as AccessRequest,
 					taskId,
@@ -114,13 +114,6 @@ export class Key0Executor implements AgentExecutor {
 				unitAmount: plan.unitAmount,
 				description: plan.description,
 			})),
-			routes: listCatalogRoutes(this.config).map((route) => ({
-				routeId: route.routeId,
-				method: route.method,
-				path: route.path,
-				unitAmount: route.unitAmount,
-				description: route.description,
-			})),
 		};
 
 		const task: Task = {
@@ -157,166 +150,47 @@ export class Key0Executor implements AgentExecutor {
 		contextId: string,
 		eventBus: ExecutionEventBus,
 	): Promise<void> {
-		if (req.planId && req.routeId) {
+		const plan = (this.config.plans ?? []).find((p) => p.planId === req.planId);
+		const fetchResourceFn = resolveConfigFetchResource(this.config);
+
+		// Per-request plan in embedded mode: A2A not supported — direct to HTTP route
+		if (plan?.mode === "per-request" && !fetchResourceFn) {
+			const routePath = plan.routes?.[0]?.path ?? "/";
+			const routeMethod = plan.routes?.[0]?.method ?? "GET";
 			this.sendErrorTask(
 				eventBus,
 				taskId,
 				contextId,
 				"failed",
-				"INVALID_REQUEST",
-				'Provide either "planId" or "routeId", not both.',
+				"PER_REQUEST_EMBEDDED_MODE",
+				`Per-request plans are not available via A2A in embedded mode. ` +
+					`Use direct HTTP calls: ${routeMethod} ${routePath} with PAYMENT-SIGNATURE header.`,
 			);
 			return;
 		}
 
-		const plan = (this.config.plans ?? []).find((p) => p.planId === req.planId);
-		const route = req.routeId ? findCatalogRoute(this.config, req.routeId) : undefined;
-		const fetchResourceFn = resolveConfigFetchResource(this.config);
-
-		if (route) {
-			if (!fetchResourceFn) {
-				this.sendErrorTask(
-					eventBus,
-					taskId,
-					contextId,
-					"failed",
-					"ROUTE_ACCESS_EMBEDDED_MODE",
-					`Route-based A2A access is only available in standalone proxy mode. Use direct HTTP calls: ${route.method} ${route.path}${route.unitAmount ? " with PAYMENT-SIGNATURE after payment" : ""}.`,
-				);
-				return;
-			}
-
-			const resourceMethod = req.resource?.method ?? route.method;
-			const resourcePath = req.resource?.path;
-			if (!resourcePath) {
+		// Per-request plan in standalone mode: encode method+path into resourceId for storage
+		let resolvedReq = req;
+		if (plan?.mode === "per-request" && fetchResourceFn) {
+			if (!req.resource?.method || !req.resource?.path) {
 				this.sendErrorTask(
 					eventBus,
 					taskId,
 					contextId,
 					"failed",
 					"MISSING_RESOURCE_FIELD",
-					'Route-based access requires a "resource" field: { method: "GET", path: "/api/example" }',
+					'Per-request plans require a "resource" field: { method: "GET", path: "/api/example" }',
 				);
 				return;
 			}
-
-			if (!route.unitAmount) {
-				const backendResult = await fetchResourceFn({
-					paymentInfo: {
-						txHash: "0x0",
-						payer: undefined,
-						planId: route.routeId,
-						amount: "$0.00",
-						method: resourceMethod,
-						path: resourcePath,
-						challengeId: `free-${req.requestId}`,
-					},
-					method: resourceMethod,
-					path: resourcePath,
-					headers: {},
-					...(req.resource?.body !== undefined ? { body: req.resource.body } : {}),
-				});
-
-				const resourceResponse: ResourceResponse = {
-					type: "ResourceResponse",
-					challengeId: `free-${req.requestId}`,
-					requestId: req.requestId,
-					routeId: route.routeId,
-					resource: {
-						status: backendResult.status,
-						...(backendResult.headers !== undefined ? { headers: backendResult.headers } : {}),
-						body: backendResult.body,
-					},
-				};
-
-				const task: Task = {
-					kind: "task",
-					id: taskId,
-					contextId,
-					status: {
-						state: "completed",
-						timestamp: new Date().toISOString(),
-						message: {
-							kind: "message",
-							messageId: uuidv4(),
-							role: "agent",
-							parts: [
-								{ kind: "text", text: `Free route fetched (HTTP ${backendResult.status}).` },
-								{ kind: "data", data: resourceResponse as any },
-							],
-						},
-					},
-					artifacts: [
-						{
-							artifactId: uuidv4(),
-							name: "resource-response",
-							parts: [{ kind: "data", data: resourceResponse as any }],
-						},
-					],
-				};
-
-				eventBus.publish(task);
-				return;
-			}
-
-			const challenge = await this.engine.requestAccess({
+			// Encode resource as "METHOD:PATH" in resourceId so it survives the challenge store round-trip
+			resolvedReq = {
 				...req,
-				routeId: route.routeId,
-				resourceId: `${resourceMethod}:${resourcePath}`,
-			});
-
-			const record = await this.engine.getChallengeRecord(challenge.challengeId);
-			if (!record) {
-				throw new Key0Error("INTERNAL_ERROR", "Challenge record not found after creation", 500);
-			}
-
-			const x402PaymentRequired = this.engine.buildX402PaymentRequired(record);
-			const task: Task = {
-				kind: "task",
-				id: taskId,
-				contextId,
-				status: {
-					state: "input-required",
-					timestamp: new Date().toISOString(),
-					message: {
-						kind: "message",
-						messageId: uuidv4(),
-						role: "agent",
-						parts: [
-							{
-								kind: "text",
-								text: challenge.description,
-							},
-							{
-								kind: "data",
-								data: challenge as any,
-							},
-						],
-						metadata: {
-							[X402_METADATA_KEYS.STATUS]: "payment-required",
-							[X402_METADATA_KEYS.REQUIRED]: x402PaymentRequired,
-						},
-					},
-				},
+				resourceId: `${req.resource.method}:${req.resource.path}`,
 			};
-
-			eventBus.publish(task);
-			return;
 		}
 
-		if (!plan) {
-			this.sendErrorTask(
-				eventBus,
-				taskId,
-				contextId,
-				"failed",
-				"TIER_NOT_FOUND",
-				`Plan "${req.planId}" not found.`,
-			);
-			return;
-		}
-
-		const challenge = await this.engine.requestAccess(req);
+		const challenge = await this.engine.requestAccess(resolvedReq);
 
 		// Get the full challenge record to build x402 metadata
 		const record = await this.engine.getChallengeRecord(challenge.challengeId);
@@ -425,34 +299,37 @@ export class Key0Executor implements AgentExecutor {
 
 		// 5. Determine plan mode and deployment mode
 		const plan = (this.config.plans ?? []).find((p) => p.planId === planId);
-		const route = findCatalogRoute(this.config, planId);
 		const fetchResourceFn = resolveConfigFetchResource(this.config);
 
-		if (route?.unitAmount) {
+		if (plan?.mode === "per-request") {
 			if (!fetchResourceFn) {
+				// Embedded mode: should not reach here (rejected at handleAccessRequest), but guard anyway
 				this.sendErrorTask(
 					eventBus,
 					taskId,
 					contextId,
 					"failed",
-					"ROUTE_ACCESS_EMBEDDED_MODE",
-					"Route-based A2A access is not available in embedded mode.",
+					"PER_REQUEST_EMBEDDED_MODE",
+					"Per-request plans are not available via A2A in embedded mode.",
 				);
 				return;
 			}
 
+			// Parse METHOD:PATH from resourceId
 			const colonIdx = resourceId.indexOf(":");
-			const resourceMethod = colonIdx > 0 ? resourceId.slice(0, colonIdx) : route.method;
+			const resourceMethod = colonIdx > 0 ? resourceId.slice(0, colonIdx) : "GET";
 			const resourcePath = colonIdx > 0 ? resourceId.slice(colonIdx + 1) : resourceId;
 
+			// Emit payment-verified
 			this.publishWorkingTask(
 				eventBus,
 				taskId,
 				contextId,
 				"payment-verified",
-				`Payment verified (tx: ${txHash}). Fetching route...`,
+				`Payment verified (tx: ${txHash}). Fetching resource...`,
 			);
 
+			// Record payment (PENDING → PAID) without token issuance
 			const { challengeId, explorerUrl } = await this.engine.recordPerRequestPayment(
 				requestId,
 				planId,
@@ -461,12 +338,13 @@ export class Key0Executor implements AgentExecutor {
 				payer as `0x${string}` | undefined,
 			);
 
+			// Proxy to backend
 			const backendResult = await fetchResourceFn({
 				paymentInfo: {
 					txHash,
 					payer: payer ?? undefined,
-					planId: route.routeId,
-					amount: route.unitAmount,
+					planId,
+					amount: plan.unitAmount!,
 					method: resourceMethod,
 					path: resourcePath,
 					challengeId,
@@ -476,11 +354,12 @@ export class Key0Executor implements AgentExecutor {
 				headers: {},
 			});
 
+			// Mark delivered if backend returned 2xx
 			if (backendResult.status >= 200 && backendResult.status < 300) {
 				await this.engine.markDelivered(challengeId);
 			} else {
 				console.warn(
-					`[Key0 A2A] Backend returned ${backendResult.status} for route "${route.routeId}" — challenge stays PAID (refund cron eligible)`,
+					`[Key0 A2A] Backend returned ${backendResult.status} — challenge stays PAID (refund cron eligible)`,
 				);
 			}
 
@@ -488,7 +367,7 @@ export class Key0Executor implements AgentExecutor {
 				type: "ResourceResponse",
 				challengeId,
 				requestId,
-				routeId: route.routeId,
+				planId,
 				txHash,
 				explorerUrl,
 				resource: {
@@ -506,12 +385,12 @@ export class Key0Executor implements AgentExecutor {
 				tokenType: "Bearer",
 				resourceEndpoint: resourcePath,
 				resourceId: resourcePath,
-				planId: route.routeId,
+				planId,
 				txHash,
 				explorerUrl,
 			});
 
-			const routeTask: Task = {
+			const pprTask: Task = {
 				kind: "task",
 				id: taskId,
 				contextId,
@@ -525,7 +404,7 @@ export class Key0Executor implements AgentExecutor {
 						parts: [
 							{
 								kind: "text",
-								text: `Payment successful. Route fetched (HTTP ${backendResult.status}).`,
+								text: `Payment successful. Resource fetched (HTTP ${backendResult.status}).`,
 							},
 							{
 								kind: "data",
@@ -547,7 +426,7 @@ export class Key0Executor implements AgentExecutor {
 				],
 			};
 
-			eventBus.publish(routeTask);
+			eventBus.publish(pprTask);
 			return;
 		}
 

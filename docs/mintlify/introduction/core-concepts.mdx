@@ -127,35 +127,38 @@ This page defines every domain-specific term you will encounter in the Key0 docs
       planId: string;       // Unique identifier, e.g. "basic"
       unitAmount: string;   // Dollar-formatted price, e.g. "$0.10"
       description?: string; // Human-readable description
+      mode?: "subscription" | "per-request"; // default: "subscription"
+      routes?: Array<{ method: string; path: string; description?: string }>;
     };
     ```
+
+    `mode` controls whether a plan issues a JWT (`"subscription"`, the default) or gates individual API calls directly (`"per-request"`). See [Pay-Per-Request](#pay-per-request-ppr) for details and [SellerConfig](/sdk-reference/seller-config) for the full type reference.
   </Accordion>
   <Accordion title="Pay-Per-Request (PPR)">
     A billing mode where each API call is paid for individually — no long-lived JWT is issued.
 
-    **How to enable it:** define a paid endpoint in top-level `SellerConfig.routes`.
+    **How to enable it:** add `mode: "per-request"` to a plan inside `SellerConfig.plans`. This is the only change needed on the plan itself:
 
     ```typescript
     plans: [
       // Subscription plan (default) — agent pays once, receives a JWT
       { planId: "basic", unitAmount: "$0.10" },
-    ]
 
-    routes: [
+      // Per-request plan — agent pays per call, receives the API response directly
       {
-        routeId: "weather-query",
-        method: "GET",
-        path: "/api/weather/:city",
+        planId: "weather-query",
         unitAmount: "$0.01",
+        mode: "per-request",           // ← enables PPR for this plan
         description: "Current weather — $0.01 per call.",
+        routes: [{ method: "GET", path: "/api/weather/:city" }],
       },
     ]
     ```
 
     Key0 supports two PPR deployment styles:
 
-    - **Embedded** — use `key0.payPerRequest(routeId)` middleware on individual routes. After on-chain settlement the request is passed to your route handler. The handler receives payment metadata in `req.key0Payment` (Express/Fastify) or `c.get("key0Payment")` (Hono).
-    - **Standalone** — set `proxyTo.baseUrl` (or `fetchResource`) on `SellerConfig`. Clients call the paid route directly. After payment Key0 proxies the request to your backend and returns a `ResourceResponse` with the API data directly.
+    - **Embedded** — use `key0.payPerRequest(planId)` middleware on individual routes. After on-chain settlement the request is passed to your route handler. The handler receives payment metadata in `req.key0Payment` (Express/Fastify) or `c.get("key0Payment")` (Hono).
+    - **Standalone** — set `proxyTo.baseUrl` (or `fetchResource`) on `SellerConfig`. Clients call `POST /x402/access` with a `resource` field specifying the route they want. After payment Key0 proxies the request to your backend and returns a `ResourceResponse` with the API data directly.
 
     Both modes share the `PENDING → PAID → DELIVERED` lifecycle and are eligible for automatic refunds if delivery fails after payment.
   </Accordion>

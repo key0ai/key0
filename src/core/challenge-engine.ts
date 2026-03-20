@@ -18,7 +18,6 @@ import type {
 import { CHAIN_CONFIGS, CHAIN_ID_TO_NETWORK, Key0Error } from "../types/index.js";
 
 import { validateSellerConfig } from "./config-validation.js";
-import { findCatalogRoute } from "./route-catalog.js";
 import { validateNonEmpty, validateTxHash, validateUUID } from "./validation.js";
 
 export type ChallengeEngineConfig = {
@@ -109,84 +108,18 @@ export class ChallengeEngine {
 		return (this.config.plans ?? []).find((t: Plan) => t.planId === planId);
 	}
 
-	private findPaidRoute(routeId: string) {
-		const route = findCatalogRoute(this.config, routeId);
-		if (!route?.unitAmount) return undefined;
-		return route;
-	}
-
-	private resolveChargeTarget(req: AccessRequest):
-		| { kind: "plan"; id: string; amount: string; description: string }
-		| { kind: "route"; id: string; amount: string; description: string } {
-		if (req.planId && req.routeId) {
-			throw new Key0Error(
-				"INVALID_REQUEST",
-				'Provide either "planId" or "routeId", not both.',
-				400,
-			);
-		}
-
-		if (req.routeId) {
-			const route = this.findPaidRoute(req.routeId);
-			if (!route) {
-				throw new Key0Error(
-					"TIER_NOT_FOUND",
-					`Route "${req.routeId}" not found in route catalog or is free`,
-					400,
-				);
-			}
-			return {
-				kind: "route",
-				id: route.routeId,
-				amount: route.unitAmount!,
-				description: route.description ?? `${route.method} ${route.path}`,
-			};
-		}
-
-		if (!req.planId) {
-			throw new Key0Error(
-				"INVALID_REQUEST",
-				'AccessRequest requires either "planId" or "routeId".',
-				400,
-			);
-		}
-
-		const plan = this.findPlan(req.planId);
-		if (!plan) {
-			throw new Key0Error("TIER_NOT_FOUND", `Plan "${req.planId}" not found in plan catalog`, 400);
-		}
-
-		return {
-			kind: "plan",
-			id: plan.planId,
-			amount: plan.unitAmount!,
-			description: plan.description ?? `${plan.planId} plan access`,
-		};
-	}
-
 	private challengeToResponse(record: ChallengeRecord): X402Challenge {
-		const route = findCatalogRoute(this.config, record.planId);
-		const target = route
-			? {
-					label: `route "${route.routeId}"`,
-					id: route.routeId,
-				}
-			: {
-					label: `plan "${record.planId}"`,
-					id: record.planId,
-				};
-
 		return {
 			type: "X402Challenge",
 			challengeId: record.challengeId,
 			requestId: record.requestId,
-			...(route ? { routeId: route.routeId } : { planId: record.planId }),
+			planId: record.planId,
 			amount: record.amount,
 			asset: "USDC",
 			chainId: record.chainId,
 			destination: record.destination,
 			expiresAt: record.expiresAt.toISOString(),
-			description: `Send ${record.amount} USDC to ${record.destination} on chain ${record.chainId} to purchase ${target.label}. Then replay the same access request with the signed PAYMENT-SIGNATURE for ${target.id}.`,
+			description: `Send ${record.amount} USDC to ${record.destination} on chain ${record.chainId}. Then replay the same POST /x402/access request with the PAYMENT-SIGNATURE header containing the signed EIP-3009 authorization for challengeId "${record.challengeId}", requestId "${record.requestId}", chainId ${record.chainId}, amount "${record.amount}", asset "USDC".`,
 			resourceVerified: true,
 		};
 	}
@@ -200,10 +133,6 @@ export class ChallengeEngine {
 		// x402 v2: Use CAIP-2 format for network
 		const network = `eip155:${record.chainId}`;
 		const resourceUrl = this.buildResourceEndpoint(record.resourceId);
-		const route = findCatalogRoute(this.config, record.planId);
-		const description = route
-			? `${route.routeId} route access — ${record.amount} USDC`
-			: `${record.planId} plan access — ${record.amount} USDC`;
 
 		return {
 			x402Version: 2,
@@ -224,11 +153,11 @@ export class ChallengeEngine {
 					extra: {
 						challengeId: record.challengeId,
 						requestId: record.requestId,
-						...(route ? { routeId: route.routeId } : { planId: record.planId }),
+						planId: record.planId,
 						amount: record.amount,
 						chainId: record.chainId,
 						expiresAt: record.expiresAt.toISOString(),
-						description,
+						description: `${record.planId} plan access — ${record.amount} USDC`,
 					},
 				},
 			],
@@ -263,15 +192,18 @@ export class ChallengeEngine {
 	}
 
 	async requestAccess(req: AccessRequest): Promise<X402Challenge> {
-		// 1. Validate input
+		// 1. Validate input - only requestId and planId are mandatory
 		validateUUID(req.requestId, "requestId");
 
 		// Provide defaults for optional fields
 		const resourceId = req.resourceId || "default";
 		const clientAgentId = req.clientAgentId || "anonymous";
 
-		// 2. Validate charge target
-		const target = this.resolveChargeTarget(req);
+		// 2. Validate plan
+		const tier = this.findPlan(req.planId);
+		if (!tier) {
+			throw new Key0Error("TIER_NOT_FOUND", `Plan "${req.planId}" not found in plan catalog`, 400);
+		}
 
 		// 3. Idempotency check
 		const existing = await this.store.findActiveByRequestId(req.requestId);
@@ -296,8 +228,8 @@ export class ChallengeEngine {
 		const payload = await this.adapter.issueChallenge({
 			requestId: req.requestId,
 			resourceId: resourceId,
-			planId: target.id,
-			amount: target.amount,
+			planId: req.planId,
+			amount: tier.unitAmount!,
 			destination: this.config.walletAddress,
 			expiresAt,
 			metadata: { clientAgentId: clientAgentId },
@@ -310,9 +242,9 @@ export class ChallengeEngine {
 			requestId: req.requestId,
 			clientAgentId: clientAgentId,
 			resourceId: resourceId,
-			planId: target.id,
-			amount: target.amount,
-			amountRaw: parseDollarToUsdcMicro(target.amount),
+			planId: req.planId,
+			amount: tier.unitAmount!,
+			amountRaw: parseDollarToUsdcMicro(tier.unitAmount!),
 			asset: "USDC",
 			chainId: this.networkConfig.chainId,
 			destination: this.config.walletAddress,
@@ -861,14 +793,14 @@ export class ChallengeEngine {
 	}
 
 	/**
-	 * Records a route payment: validates the charged identifier, guards against double-spend,
+	 * Records a per-request payment: validates the plan, guards against double-spend,
 	 * creates/finds the PENDING challenge record, transitions to PAID, and marks the txHash used.
 	 *
 	 * Unlike `processHttpPayment`, this does NOT call `fetchResourceCredentials` and does NOT
 	 * transition to DELIVERED. The caller is responsible for proxying to the backend and calling
 	 * `markDelivered` if the backend returns a success response.
 	 *
-	 * Used by the HTTP, A2A, and MCP handlers for paid route access.
+	 * Used by the HTTP, A2A, and MCP handlers when plan.mode === "per-request" in standalone mode.
 	 */
 	async recordPerRequestPayment(
 		requestId: string,

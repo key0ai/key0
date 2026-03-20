@@ -49,7 +49,7 @@ export function createKey0(opts: Key0Config): Key0Instance {
 		config: opts.config,
 		store,
 		seenTxStore,
-		adapter: opts.adapter as IPaymentAdapter,
+		adapter: opts.adapter as IPaymentAdapter, // safe: only used when plan has no proxyPath
 	});
 
 	const executor = new Key0Executor(engine, opts.config);

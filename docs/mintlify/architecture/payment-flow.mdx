@@ -297,9 +297,9 @@ payment-response: eyJzdWNjZXNz... (base64-encoded X402SettleResponse)
 }
 ```
 
-### Case 4: Route-Based Standalone (routeId + resource + payment-signature → ResourceResponse)
+### Case 4: Per-Request Standalone (planId + resource + payment-signature → ResourceResponse)
 
-For top-level paid `routes` with `proxyTo` or `fetchResource` set on `SellerConfig`, the client includes a `resource` field and the engine proxies to the backend instead of issuing a JWT.
+For `mode: "per-request"` plans with `proxyTo`/`fetchResource` set on `SellerConfig`, the client includes a `resource` field and the engine proxies to the backend instead of issuing a JWT.
 
 **Challenge request:**
 
@@ -308,7 +308,7 @@ POST /x402/access
 Content-Type: application/json
 
 {
-  "routeId": "weather-query",
+  "planId": "weather-query",
   "resource": { "method": "GET", "path": "/api/weather/london" }
 }
 ```
@@ -323,7 +323,7 @@ Content-Type: application/json
 payment-signature: eyJ4NDAyVm...
 
 {
-  "routeId": "weather-query",
+  "planId": "weather-query",
   "resource": { "method": "GET", "path": "/api/weather/london" }
 }
 ```
@@ -335,7 +335,7 @@ payment-signature: eyJ4NDAyVm...
   "type": "ResourceResponse",
   "challengeId": "http-a1b2c3d4-...",
   "requestId": "550e8400-...",
-  "routeId": "weather-query",
+  "planId": "weather-query",
   "txHash": "0xSettledTx...",
   "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx...",
   "resource": {
@@ -469,9 +469,9 @@ Returned by the engine after creating a PENDING record. Contains everything the 
 }
 ```
 
-### ResourceResponse (Phase 2 response — route-based standalone)
+### ResourceResponse (Phase 2 response — per-request standalone)
 
-Returned after successful settlement for standalone route-based purchases. Contains the backend API response directly — no token issued.
+Returned after successful settlement for `mode: "per-request"` plans in standalone mode. Contains the backend API response directly — no token issued.
 
 ```json
 {

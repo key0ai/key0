@@ -58,7 +58,7 @@ Configuration differs depending on whether you run Key0 as a **standalone Docker
 
     | Variable | Required | Default | Description |
     |---|---|---|---|
-    | `PROXY_TO_BASE_URL` | No | -- | Enable route-based gateway mode. When set, paid top-level `routes` can be called directly: Key0 returns a 402 challenge, proxies the request to this base URL after payment, and returns a `ResourceResponse`. `ISSUE_TOKEN_API` is not called for route purchases. |
+    | `PROXY_TO_BASE_URL` | No | -- | Enable per-request gateway mode. When set, `mode: "per-request"` plans route through `/x402/access`: Key0 settles the payment, proxies the request to this base URL, and returns a `ResourceResponse`. `ISSUE_TOKEN_API` is not called for per-request plans. |
 
     ### Token Issuance
 

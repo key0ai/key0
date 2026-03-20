@@ -16,7 +16,7 @@ Key0 ships in two deployment modes. Both use the same payment engine, state mach
     - **Published to Docker Hub** as `key0ai/key0`
     - **Configure** via the browser-based Setup UI at `/setup`, or through environment variables
     - **Token issuance (subscription)** is delegated to your `ISSUE_TOKEN_API` endpoint -- Key0 POSTs to it after a successful payment and forwards the credential back to the agent
-    - **Pay-per-request (standalone proxy)** is enabled by setting `PROXY_TO_BASE_URL` and defining top-level `routes`. Clients buy a `routeId`, Key0 settles the payment, forwards the request to your backend, and returns the backend response directly as a `ResourceResponse`. No `ISSUE_TOKEN_API` call for route-based purchases.
+    - **Pay-per-request (standalone proxy)** is enabled by setting `PROXY_TO_BASE_URL`. For `mode: "per-request"` plans, clients POST to `/x402/access` with a `resource` field; Key0 settles the payment, forwards the request to your backend, and returns the backend response directly as a `ResourceResponse`. No `ISSUE_TOKEN_API` call for per-request plans.
     - **Docker Compose profiles** control which infrastructure is managed for you:
 
     | Profile | What it includes |
@@ -56,7 +56,7 @@ Key0 ships in two deployment modes. Both use the same payment engine, state mach
     ```
 
     - **Token issuance (subscription)** is handled by your `fetchResourceCredentials` callback -- you have full control over what credential is returned (JWT, API key, signed URL, etc.)
-    - **Pay-per-request (embedded)** is handled by `key0.payPerRequest(routeId)` middleware on individual routes. After on-chain settlement the middleware calls `next()` so your route handler runs normally. No JWT issued; your handler receives `req.key0Payment` with payment metadata.
+    - **Pay-per-request (embedded)** is handled by `key0.payPerRequest(planId)` middleware on individual routes. After on-chain settlement the middleware calls `next()` so your route handler runs normally. No JWT issued; your handler receives `req.key0Payment` with payment metadata.
     - **Configuration** lives in TypeScript as a `SellerConfig` object passed directly to the SDK
 
     Best for teams that want full programmatic control, are integrating into an existing application, or need custom token issuance logic.

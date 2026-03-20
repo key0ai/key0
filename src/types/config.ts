@@ -29,13 +29,30 @@ export type NetworkConfig = {
 	};
 };
 
+/** Route metadata for a per-request plan (embedded or standalone). */
+export type PlanRouteInfo = {
+	readonly method: string;
+	readonly path: string;
+	readonly description?: string;
+};
+
 export type Plan = {
 	readonly planId: string;
 	/** Required for paid plans; may be omitted for free plans. */
 	readonly unitAmount?: string;
 	readonly description?: string;
+	/** "subscription" (default) or "per-request". */
+	readonly mode?: "subscription" | "per-request";
+	/** Route endpoints exposed for this plan (per-request plans). */
+	readonly routes?: readonly PlanRouteInfo[];
 	/** When true, the plan is free (no payment required). */
 	readonly free?: boolean;
+	/** Proxy path template for standalone gateway mode (e.g. "/api/{param}"). */
+	readonly proxyPath?: string;
+	/** Static query params appended to the proxied request. */
+	readonly proxyQuery?: Record<string, string>;
+	/** HTTP method for the proxied request (default: "GET"). */
+	readonly proxyMethod?: string;
 };
 
 export type RouteParam = {
@@ -147,7 +164,7 @@ export type SellerConfig = {
 
 	/**
 	 * Callback for proxying route-based calls to a backend.
-	 * Called after settlement for paid routes.
+	 * Called after settlement for per-request plans.
 	 * Takes precedence over proxyTo if both are set.
 	 */
 	readonly fetchResource?: (params: FetchResourceParams) => Promise<FetchResourceResult>;

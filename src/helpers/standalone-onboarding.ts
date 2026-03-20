@@ -1,5 +1,4 @@
-import { listCatalogRoutes } from "../core/route-catalog.js";
-import type { SellerConfig } from "../types/index.js";
+import type { PlanRouteInfo, SellerConfig } from "../types/index.js";
 
 type OnboardingOptions = {
 	a2aEnabled: boolean;
@@ -28,19 +27,40 @@ type RouteSummary = {
 	path: string;
 	price?: string;
 	description?: string;
+	source: "route" | "plan";
+	planId?: string;
 };
 
 function collectRouteSummaries(config: SellerConfig): RouteSummary[] {
 	const routeSummaries: RouteSummary[] = [];
 
-	for (const route of listCatalogRoutes(config)) {
+	for (const route of config.routes ?? []) {
 		routeSummaries.push({
 			id: route.routeId,
 			method: route.method,
 			path: route.path,
+			source: "route",
 			...(route.unitAmount ? { price: route.unitAmount } : {}),
 			...(route.description ? { description: route.description } : {}),
 		});
+	}
+
+	for (const plan of config.plans ?? []) {
+		if (plan.mode !== "per-request") continue;
+		for (const route of plan.routes ?? []) {
+			const typedRoute = route as PlanRouteInfo;
+			routeSummaries.push({
+				id: `${plan.planId}:${typedRoute.method}:${typedRoute.path}`,
+				method: typedRoute.method,
+				path: typedRoute.path,
+				source: "plan",
+				planId: plan.planId,
+				...(plan.unitAmount ? { price: plan.unitAmount } : {}),
+				...((typedRoute.description ?? plan.description)
+					? { description: typedRoute.description ?? plan.description }
+					: {}),
+			});
+		}
 	}
 
 	return routeSummaries;
@@ -85,7 +105,7 @@ export function buildLlmsTxt(config: SellerConfig, options: OnboardingOptions): 
 		lines.push("", "## Pay-Per-Call Routes");
 		lines.push(
 			"- Routes are listed in GET /discover alongside plans.",
-			"- Call the route directly to initiate payment; paid routes return 402 first, then the backend response directly.",
+			"- Paid routes settle via x402 and return the backend response directly.",
 			"- Free routes can be advertised in discovery without payment requirements.",
 		);
 	}
@@ -107,7 +127,8 @@ export function buildSkillsMd(config: SellerConfig, options: OnboardingOptions):
 	});
 	const routeLines = routeSummaries.map((route) => {
 		const price = route.price ? route.price : "free";
-		return `- \`${route.method} ${route.path}\` — ${price}${route.description ? ` — ${route.description}` : ""}`;
+		const prefix = route.planId ? `${route.planId} · ` : "";
+		return `- \`${prefix}${route.method} ${route.path}\` — ${price}${route.description ? ` — ${route.description}` : ""}`;
 	});
 
 	const lines: string[] = [
@@ -148,9 +169,8 @@ export function buildSkillsMd(config: SellerConfig, options: OnboardingOptions):
 			"",
 			"### Route Flow",
 			"1. `GET /discover` and inspect `routes`.",
-			"2. Call the route directly (for example `GET /api/weather/london`).",
-			"3. Paid routes return 402 first; retry the same request with `PAYMENT-SIGNATURE` after payment.",
-			"4. Key0 returns the backend response directly.",
+			'2. For standalone gateway routes, call `POST /x402/access` with `{ "routeId": "...", "resource": { "method": "GET", "path": "/actual/path" } }`.',
+			"3. Paid routes return 402 first, then a `ResourceResponse` after payment.",
 		);
 	}
 

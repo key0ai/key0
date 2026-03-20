@@ -177,18 +177,6 @@ describe("routes validation", () => {
 		).toThrow(/duplicate routeId/);
 	});
 
-	it("throws when a routeId overlaps an existing planId", () => {
-		expect(() =>
-			validateSellerConfig(
-				makeSellerConfig({
-					plans: [{ planId: "shared", unitAmount: "$1.00" }],
-					routes: [{ routeId: "shared", method: "GET", path: "/shared", unitAmount: "$0.01" }],
-					proxyTo: { baseUrl: "http://localhost:3001" },
-				}),
-			),
-		).toThrow(/must not overlap an existing planId/);
-	});
-
 	it("throws if route path does not start with /", () => {
 		expect(() =>
 			validateSellerConfig(

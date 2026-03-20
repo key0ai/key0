@@ -32,7 +32,7 @@
  * // Using the proxyTo shorthand:
  * app.get("/api/weather/:city",
  *   key0PayPerRequest({
- *     routeId: "weather-query",
+ *     planId: "weather-query",
  *     config,
  *     seenTxStore,
  *     proxyTo: { baseUrl: "https://weather-api.internal" },
@@ -42,7 +42,7 @@
  * // Or the full fetchResource callback:
  * app.get("/api/weather/:city",
  *   key0PayPerRequest({
- *     routeId: "weather-query",
+ *     planId: "weather-query",
  *     config,
  *     seenTxStore,
  *     fetchResource: async ({ method, path, headers, body, paymentInfo }) => {
@@ -63,6 +63,8 @@ import type {
 	ISeenTxStore,
 	NetworkConfig,
 	PaymentInfo,
+	Plan,
+	PlanRouteInfo,
 	ProxyToConfig,
 	Route,
 	SellerConfig,
@@ -95,7 +97,7 @@ export type PayPerRequestOptions = {
 	 * The framework integration also captures it automatically — supply this
 	 * when you want to be explicit or override the default metadata.
 	 */
-	readonly route?: { method: string; path: string; description?: string };
+	readonly route?: PlanRouteInfo;
 	/** Standalone gateway: full control over how the backend is called. */
 	readonly fetchResource?: (params: FetchResourceParams) => Promise<FetchResourceResult>;
 	/** Standalone gateway: shorthand that builds a `fetchResource` for you. */
@@ -107,8 +109,8 @@ export type PayPerRequestOptions = {
  * (`key0PayPerRequest`, `honoPayPerRequest`, `fastifyPayPerRequest`).
  */
 export type PayPerRequestConfig = {
-	/** Which route from config.routes to charge per request */
-	readonly routeId: string;
+	/** Which plan from config.plans to charge per request */
+	readonly planId: string;
 	/** Seller configuration (same config used in key0Router) */
 	readonly config: SellerConfig;
 	/** Double-spend protection (required) */
@@ -138,6 +140,23 @@ export type PayPerRequestDeps = {
 	readonly store?: IChallengeStore;
 };
 
+// ---------------------------------------------------------------------------
+// Internal: fully resolved deps (planId + tier + fetchResource included)
+// ---------------------------------------------------------------------------
+
+type ResolvedDeps = {
+	readonly planId: string;
+	readonly config: SellerConfig;
+	readonly networkConfig: NetworkConfig;
+	readonly tier: Plan;
+	readonly seenTxStore: ISeenTxStore;
+	readonly store: IChallengeStore | undefined;
+	readonly onPayment: ((info: PaymentInfo) => void | Promise<void>) | undefined;
+	readonly fetchResource:
+		| ((params: FetchResourceParams) => Promise<FetchResourceResult>)
+		| undefined;
+};
+
 /**
  * @internal Resolved deps for the routes-based path (routeId + Route + proxyFetch).
  * Used by createExpressPayPerRequest, createHonoPayPerRequest, createFastifyPayPerRequest.
@@ -155,6 +174,18 @@ type ResolvedRouteDeps = {
 		| undefined;
 	readonly isDirectProxy: boolean;
 };
+
+function resolveTier(planId: string, config: SellerConfig): Plan {
+	const plans = config.plans ?? [];
+	const tier = plans.find((p) => p.planId === planId);
+	if (!tier) {
+		throw new Error(
+			`[Key0 PayPerRequest] Plan "${planId}" not found in config.plans. ` +
+				`Available: ${plans.map((p) => p.planId).join(", ")}`,
+		);
+	}
+	return tier;
+}
 
 function resolveRoute(routeId: string, config: SellerConfig): Route {
 	const route = (config.routes ?? []).find((r) => r.routeId === routeId);
@@ -308,7 +339,7 @@ function proxyToFetchResource(
 /**
  * Resolves a `fetchResource` callback from `SellerConfig`.
  * Returns the explicit callback if set, builds one from `proxyTo` if set, or returns `undefined`
- * (embedded mode — routes use `payPerRequest` middleware on local endpoints instead).
+ * (embedded mode — per-request plans use `payPerRequest` middleware on local routes instead).
  *
  * Used by the HTTP, A2A, and MCP handlers to determine the deployment mode at runtime.
  */
@@ -320,35 +351,208 @@ export function resolveConfigFetchResource(
 	return undefined;
 }
 
-function resolveFromStandaloneConfig(opts: PayPerRequestConfig): ResolvedRouteDeps {
+/** Resolve deps from standalone PayPerRequestConfig */
+function resolveFromConfig(opts: PayPerRequestConfig): ResolvedDeps {
 	const networkConfig = CHAIN_CONFIGS[opts.config.network];
+	const tier = resolveTier(opts.planId, opts.config);
 	const fetchResource =
 		opts.fetchResource ?? (opts.proxyTo ? proxyToFetchResource(opts.proxyTo) : undefined);
 
 	if (fetchResource && !opts.store) {
 		console.warn(
-			`[Key0 PayPerRequest] WARNING: route "${opts.routeId}" is in standalone gateway mode ` +
+			`[Key0 PayPerRequest] WARNING: plan "${opts.planId}" is in standalone gateway mode ` +
 				"(fetchResource/proxyTo) without a store. If fetchResource throws after on-chain " +
 				"settlement, the payer cannot be automatically refunded. Pass a store for recovery.",
 		);
 	}
 
 	return {
-		routeId: opts.routeId,
+		planId: opts.planId,
 		config: opts.config,
 		networkConfig,
-		route: resolveRoute(opts.routeId, opts.config),
+		tier,
 		seenTxStore: opts.seenTxStore,
 		store: opts.store,
 		onPayment: opts.onPayment,
 		fetchResource,
-		isDirectProxy: fetchResource != null,
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Route registry helpers (used by framework integrations for discovery)
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge per-request routes from two sources into a single map, deduped by
+ * `"METHOD path"`. Config-declared routes take precedence; runtime-registered
+ * routes are appended after them.
+ *
+ * @param plans - The full plans array from SellerConfig.
+ * @param registry - Routes registered at runtime via .payPerRequest(routeId, { route }).
+ * @returns Map from planId → deduplicated PlanRouteInfo[].
+ */
+export function mergePerRequestRoutes(
+	plans: readonly Plan[] | undefined,
+	registry: Map<string, PlanRouteInfo[]>,
+): Map<string, PlanRouteInfo[]> {
+	const result = new Map<string, PlanRouteInfo[]>();
+
+	for (const plan of plans ?? []) {
+		const configRoutes = [...(plan.routes ?? [])] as PlanRouteInfo[];
+		const runtimeRoutes = registry.get(plan.planId) ?? [];
+		const seen = new Set<string>();
+		const merged: PlanRouteInfo[] = [];
+
+		for (const r of [...configRoutes, ...runtimeRoutes]) {
+			const key = `${r.method.toUpperCase()} ${r.path}`;
+			if (!seen.has(key)) {
+				seen.add(key);
+				merged.push(r);
+			}
+		}
+
+		if (merged.length > 0) {
+			result.set(plan.planId, merged);
+		}
+	}
+
+	return result;
 }
 
 // ---------------------------------------------------------------------------
 // Shared helpers (framework-agnostic)
 // ---------------------------------------------------------------------------
+
+function build402Response(deps: ResolvedDeps, resourceUrl: string, method: string, path: string) {
+	const requirements = buildHttpPaymentRequirements(
+		deps.planId,
+		path,
+		deps.config,
+		deps.networkConfig,
+		{
+			description:
+				deps.tier.description ??
+				`Pay-per-request: ${deps.tier.planId} (${deps.tier.unitAmount ?? "free"} USDC)`,
+		},
+	);
+
+	// Override the resource URL to point to the actual endpoint being called
+	return {
+		...requirements,
+		resource: {
+			...requirements.resource,
+			url: resourceUrl,
+			method,
+		},
+	};
+}
+
+async function settleAndRecord(
+	deps: ResolvedDeps,
+	paymentSignature: string,
+	method: string,
+	path: string,
+	onDelivered: (challengeId: string) => void,
+): Promise<{
+	paymentInfo: PaymentInfo;
+	settleResponseBase64: string;
+}> {
+	const challengeId = `ppr-${crypto.randomUUID()}`;
+
+	// 1. Decode the payment signature
+	const paymentPayload = decodePaymentSignature(paymentSignature);
+
+	// 2. Settle on-chain (facilitator or gas wallet, determined by config).
+	// Settlement happens before markUsed because on-chain authorization nonces
+	// are single-use at the EVM level, so replaying the same signature a second
+	// time will always fail on-chain. The seenTxStore guard below then prevents
+	// the same txHash from being credited twice.
+	const { txHash, settleResponse, payer } = await settlePayment(
+		paymentPayload,
+		deps.config,
+		deps.networkConfig,
+	);
+
+	// 3. Double-spend guard — mark txHash as used (atomic SET NX)
+	const marked = await deps.seenTxStore.markUsed(txHash, challengeId);
+	if (!marked) {
+		throw new Key0Error(
+			"TX_ALREADY_REDEEMED",
+			"This payment has already been used for a previous request",
+			409,
+		);
+	}
+
+	// 4. Record payment for audit + refund safety (if store provided)
+	if (deps.store) {
+		const now = new Date();
+		const record: ChallengeRecord = {
+			challengeId,
+			requestId: challengeId,
+			clientAgentId: "x402-ppr",
+			resourceId: path,
+			planId: deps.planId,
+			amount: deps.tier.unitAmount!,
+			amountRaw: parseDollarToUsdcMicro(deps.tier.unitAmount!),
+			asset: "USDC",
+			chainId: deps.networkConfig.chainId,
+			destination: deps.config.walletAddress,
+			state: "PENDING",
+			expiresAt: new Date(now.getTime() + 60_000),
+			createdAt: now,
+			updatedAt: now,
+		};
+
+		await deps.store.create(record, {
+			actor: "engine",
+			reason: "pay_per_request_created",
+		});
+
+		// Transition PENDING → PAID (adds to paid sorted set for refund cron)
+		const transitioned = await deps.store.transition(
+			challengeId,
+			"PENDING",
+			"PAID",
+			{
+				txHash,
+				paidAt: now,
+				...(payer ? { fromAddress: payer as `0x${string}` } : {}),
+			},
+			{ actor: "engine", reason: "pay_per_request_settled" },
+		);
+		if (!transitioned) {
+			throw new Key0Error("INVALID_REQUEST", "Challenge already processed", 409);
+		}
+
+		// Tell the caller to mark DELIVERED when the response succeeds
+		onDelivered(challengeId);
+	}
+
+	// 5. Build payment info
+	const paymentInfo: PaymentInfo = {
+		txHash,
+		payer,
+		planId: deps.planId,
+		amount: deps.tier.unitAmount!,
+		method,
+		path,
+		challengeId,
+	};
+
+	// 6. Fire callback (fire-and-forget — must not block or fail the settlement path
+	// after on-chain settlement and markUsed have already succeeded).
+	if (deps.onPayment) {
+		const maybePromise = deps.onPayment(paymentInfo);
+		if (maybePromise && typeof maybePromise.catch === "function") {
+			maybePromise.catch(() => {});
+		}
+	}
+
+	return {
+		paymentInfo,
+		settleResponseBase64: Buffer.from(JSON.stringify(settleResponse)).toString("base64"),
+	};
+}
 
 function markDelivered(store: IChallengeStore, challengeId: string): void {
 	store
@@ -515,14 +719,14 @@ export function createExpressPayPerRequest(
  * ```ts
  * // Embedded
  * app.get("/api/weather/:city",
- *   key0PayPerRequest({ routeId: "weather-query", config, seenTxStore }),
+ *   key0PayPerRequest({ planId: "weather-query", config, seenTxStore }),
  *   (req, res) => res.json({ city: req.params.city, temp: 72 }),
  * );
  *
  * // Standalone (proxy)
  * app.get("/api/weather/:city",
  *   key0PayPerRequest({
- *     routeId: "weather-query",
+ *     planId: "weather-query",
  *     config,
  *     seenTxStore,
  *     proxyTo: { baseUrl: "https://weather-api.internal" },
@@ -531,7 +735,98 @@ export function createExpressPayPerRequest(
  * ```
  */
 export function key0PayPerRequest(opts: PayPerRequestConfig) {
-	return expressRoutePayPerRequestHandler(resolveFromStandaloneConfig(opts));
+	const deps = resolveFromConfig(opts);
+	return expressPayPerRequestHandler(deps);
+}
+
+function expressPayPerRequestHandler(deps: ResolvedDeps) {
+	return async (
+		req: {
+			method: string;
+			path: string;
+			originalUrl: string;
+			headers: Record<string, unknown>;
+			body?: unknown;
+		},
+		res: {
+			status: (code: number) => { json: (data: unknown) => unknown };
+			setHeader: (name: string, value: string) => void;
+			statusCode: number;
+			on: (event: string, cb: () => void) => void;
+		},
+		next: () => void,
+	) => {
+		const paymentSignature = req.headers["payment-signature"] as string | undefined;
+
+		// ===== No payment → 402 Payment Required =====
+		if (!paymentSignature) {
+			const baseUrl = deps.config.agentUrl.replace(/\/$/, "");
+			const response = build402Response(deps, `${baseUrl}${req.originalUrl}`, req.method, req.path);
+
+			const encoded = Buffer.from(JSON.stringify(response)).toString("base64");
+			res.setHeader("payment-required", encoded);
+			return res.status(402).json(response);
+		}
+
+		// ===== Payment present → decode + settle + deliver =====
+		try {
+			let deliveredChallengeId: string | undefined;
+
+			const { paymentInfo, settleResponseBase64 } = await settleAndRecord(
+				deps,
+				paymentSignature,
+				req.method,
+				req.path,
+				(challengeId) => {
+					deliveredChallengeId = challengeId;
+				},
+			);
+
+			res.setHeader("payment-response", settleResponseBase64);
+
+			if (deps.fetchResource) {
+				// STANDALONE MODE: proxy to backend
+				const result = await deps.fetchResource({
+					paymentInfo,
+					method: req.method,
+					path: req.path,
+					headers: req.headers as Record<string, string>,
+					body: req.body,
+				});
+
+				for (const [k, v] of Object.entries(result.headers ?? {})) {
+					res.setHeader(k, v);
+				}
+
+				if (deliveredChallengeId && deps.store && result.status >= 200 && result.status < 400) {
+					markDelivered(deps.store, deliveredChallengeId);
+				}
+
+				return res.status(result.status).json(result.body);
+			} else {
+				// EMBEDDED MODE: pass to local handler
+				// Mark DELIVERED when response finishes successfully
+				if (deliveredChallengeId && deps.store) {
+					res.on("finish", () => {
+						if (res.statusCode >= 200 && res.statusCode < 400) {
+							markDelivered(deps.store!, deliveredChallengeId!);
+						}
+					});
+				}
+				(req as Record<string, unknown>)["key0Payment"] = paymentInfo;
+				next();
+			}
+		} catch (err: unknown) {
+			if (err instanceof Key0Error) {
+				return res.status(err.httpStatus).json(err.toJSON());
+			}
+			return res.status(500).json({
+				type: "Error",
+				code: "PAYMENT_SETTLEMENT_FAILED",
+				message: err instanceof Error ? err.message : "Payment settlement failed",
+			});
+		}
+	};
 }
 
 /**
@@ -695,14 +990,14 @@ export function createHonoPayPerRequest(
  *
  * // Embedded
  * app.get("/api/weather/:city",
- *   honoPayPerRequest({ routeId: "weather-query", config, seenTxStore }),
+ *   honoPayPerRequest({ planId: "weather-query", config, seenTxStore }),
  *   (c) => c.json({ temp: 72 }),
  * );
  *
  * // Standalone (proxy)
  * app.get("/api/weather/:city",
  *   honoPayPerRequest({
- *     routeId: "weather-query",
+ *     planId: "weather-query",
  *     config,
  *     seenTxStore,
  *     proxyTo: { baseUrl: "https://weather-api.internal" },
@@ -711,7 +1006,111 @@ export function createHonoPayPerRequest(
  * ```
  */
 export function honoPayPerRequest(opts: PayPerRequestConfig) {
-	return honoRoutePayPerRequestHandler(resolveFromStandaloneConfig(opts));
+	const deps = resolveFromConfig(opts);
+	return honoPayPerRequestHandler(deps);
+}
+
+function honoPayPerRequestHandler(deps: ResolvedDeps) {
+	return async (
+		c: {
+			req: {
+				method: string;
+				path: string;
+				url: string;
+				header: (name: string) => string | undefined;
+				raw: Request;
+			};
+			header: (name: string, value: string) => void;
+			json: (data: unknown, status?: number) => Response;
+			set: (key: string, value: unknown) => void;
+			status: (code: number) => void;
+			res: { status: number };
+		},
+		next: () => Promise<void>,
+	) => {
+		const paymentSignature = c.req.header("payment-signature");
+
+		// ===== No payment → 402 Payment Required =====
+		if (!paymentSignature) {
+			const baseUrl = deps.config.agentUrl.replace(/\/$/, "");
+			const response = build402Response(deps, `${baseUrl}${c.req.path}`, c.req.method, c.req.path);
+
+			const encoded = Buffer.from(JSON.stringify(response)).toString("base64");
+			c.header("payment-required", encoded);
+			return c.json(response, 402);
+		}
+
+		// ===== Payment present → decode + settle + deliver =====
+		try {
+			let deliveredChallengeId: string | undefined;
+
+			const { paymentInfo, settleResponseBase64 } = await settleAndRecord(
+				deps,
+				paymentSignature,
+				c.req.method,
+				c.req.path,
+				(challengeId) => {
+					deliveredChallengeId = challengeId;
+				},
+			);
+
+			c.header("payment-response", settleResponseBase64);
+
+			if (deps.fetchResource) {
+				// STANDALONE MODE: proxy to backend
+				const rawHeaders: Record<string, string> = {};
+				c.req.raw.headers.forEach((v, k) => {
+					rawHeaders[k] = v;
+				});
+
+				let body: unknown;
+				try {
+					body = await c.req.raw.json();
+				} catch {
+					body = undefined;
+				}
+
+				const result = await deps.fetchResource({
+					paymentInfo,
+					method: c.req.method,
+					path: c.req.path,
+					headers: rawHeaders,
+					body,
+				});
+
+				for (const [k, v] of Object.entries(result.headers ?? {})) {
+					c.header(k, v);
+				}
+
+				if (deliveredChallengeId && deps.store && result.status >= 200 && result.status < 400) {
+					markDelivered(deps.store, deliveredChallengeId);
+				}
+
+				return c.json(result.body, result.status as any);
+			} else {
+				// EMBEDDED MODE: pass to local handler
+				c.set("key0Payment", paymentInfo);
+
+				await next();
+
+				if (deliveredChallengeId && deps.store && c.res.status >= 200 && c.res.status < 400) {
+					markDelivered(deps.store, deliveredChallengeId);
+				}
+			}
+		} catch (err: unknown) {
+			if (err instanceof Key0Error) {
+				return c.json(err.toJSON(), err.httpStatus as any);
+			}
+			return c.json(
+				{
+					type: "Error",
+					code: "PAYMENT_SETTLEMENT_FAILED",
+					message: err instanceof Error ? err.message : "Payment settlement failed",
+				},
+				500,
+			);
+		}
+	};
 }
 
 /**
@@ -876,14 +1275,14 @@ export function createFastifyPayPerRequest(
  *
  * // Embedded
  * fastify.get("/api/weather/:city",
- *   { preHandler: fastifyPayPerRequest({ routeId: "weather-query", config, seenTxStore }) },
+ *   { preHandler: fastifyPayPerRequest({ planId: "weather-query", config, seenTxStore }) },
  *   async (request, reply) => reply.send({ temp: 72 }),
  * );
  *
  * // Standalone (proxy)
  * fastify.get("/api/weather/:city",
  *   { preHandler: fastifyPayPerRequest({
- *     routeId: "weather-query",
+ *     planId: "weather-query",
  *     config,
  *     seenTxStore,
  *     proxyTo: { baseUrl: "https://weather-api.internal" },
@@ -893,7 +1292,104 @@ export function createFastifyPayPerRequest(
  * ```
  */
 export function fastifyPayPerRequest(opts: PayPerRequestConfig) {
-	return fastifyRoutePayPerRequestHandler(resolveFromStandaloneConfig(opts));
+	const deps = resolveFromConfig(opts);
+	return fastifyPayPerRequestHandler(deps);
+}
+
+function fastifyPayPerRequestHandler(deps: ResolvedDeps) {
+	return async (
+		request: {
+			method: string;
+			url: string;
+			headers: Record<string, unknown>;
+			routeOptions?: { url?: string };
+			body?: unknown;
+		},
+		reply: {
+			code: (code: number) => { send: (data: unknown) => unknown };
+			header: (name: string, value: string) => unknown;
+			statusCode: number;
+			raw: { on?: (event: string, cb: () => void) => void };
+			sent?: boolean;
+		},
+	) => {
+		const paymentSignature = request.headers["payment-signature"] as string | undefined;
+		const routePath = request.routeOptions?.url ?? request.url;
+
+		// ===== No payment → 402 Payment Required =====
+		if (!paymentSignature) {
+			const baseUrl = deps.config.agentUrl.replace(/\/$/, "");
+			const response = build402Response(
+				deps,
+				`${baseUrl}${request.url}`,
+				request.method,
+				routePath,
+			);
+
+			const encoded = Buffer.from(JSON.stringify(response)).toString("base64");
+			reply.header("payment-required", encoded);
+			return reply.code(402).send(response);
+		}
+
+		// ===== Payment present → decode + settle + deliver =====
+		try {
+			let deliveredChallengeId: string | undefined;
+
+			const { paymentInfo, settleResponseBase64 } = await settleAndRecord(
+				deps,
+				paymentSignature,
+				request.method,
+				routePath,
+				(challengeId) => {
+					deliveredChallengeId = challengeId;
+				},
+			);
+
+			reply.header("payment-response", settleResponseBase64);
+
+			if (deps.fetchResource) {
+				// STANDALONE MODE: proxy to backend
+				const result = await deps.fetchResource({
+					paymentInfo,
+					method: request.method,
+					path: routePath,
+					headers: request.headers as Record<string, string>,
+					body: request.body,
+				});
+
+				for (const [k, v] of Object.entries(result.headers ?? {})) {
+					reply.header(k, v);
+				}
+
+				if (deliveredChallengeId && deps.store && result.status >= 200 && result.status < 400) {
+					markDelivered(deps.store, deliveredChallengeId);
+				}
+
+				return reply.code(result.status).send(result.body);
+			} else {
+				// EMBEDDED MODE: pass to local handler
+				// Mark DELIVERED when response finishes successfully
+				if (deliveredChallengeId && deps.store) {
+					reply.raw.on?.("finish", () => {
+						if (reply.statusCode >= 200 && reply.statusCode < 400) {
+							markDelivered(deps.store!, deliveredChallengeId!);
+						}
+					});
+				}
+				(request as Record<string, unknown>)["key0Payment"] = paymentInfo;
+				// Do not return — Fastify preHandler continues to handler when no reply is sent
+			}
+		} catch (err: unknown) {
+			if (err instanceof Key0Error) {
+				return reply.code(err.httpStatus).send(err.toJSON());
+			}
+			return reply.code(500).send({
+				type: "Error",
+				code: "PAYMENT_SETTLEMENT_FAILED",
+				message: err instanceof Error ? err.message : "Payment settlement failed",
+			});
+		}
+	};
 }
 
 /**

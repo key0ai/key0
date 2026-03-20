@@ -5,8 +5,6 @@ export type { TokenClaims, TokenResult } from "./access-token.js";
 export { AccessTokenIssuer } from "./access-token.js";
 // Agent Card
 export { buildAgentCard } from "./agent-card.js";
-export type { RouteCatalogEntry } from "./route-catalog.js";
-export { findCatalogRoute, listCatalogRoutes } from "./route-catalog.js";
 export type { ChallengeEngineConfig } from "./challenge-engine.js";
 // Challenge Engine
 export { ChallengeEngine } from "./challenge-engine.js";

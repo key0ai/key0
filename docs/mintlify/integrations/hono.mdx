@@ -276,18 +276,18 @@ function honoValidateAccessToken(config: ValidateAccessTokenConfig): MiddlewareH
 
 ## Pay-Per-Request Routes
 
-`key0App` returns the Hono app **and** a `payPerRequest(routeId, opts?)` factory. Use it as Hono middleware on individual routes to gate them behind micro-payments — no JWT issued, payment settles inline.
+`key0App` returns the Hono app **and** a `payPerRequest(planId, opts?)` factory. Use it as Hono middleware on individual routes to gate them behind micro-payments — no JWT issued, payment settles inline.
 
 ```typescript
 const key0 = key0App({
   config: {
     // ...
-    routes: [
+    plans: [
       {
-        routeId: "weather-query",
-        method: "GET",
-        path: "/api/weather/:city",
+        planId: "weather-query",
         unitAmount: "$0.01",
+        mode: "per-request",
+        routes: [{ method: "GET", path: "/api/weather/:city" }],
       },
     ],
     fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),

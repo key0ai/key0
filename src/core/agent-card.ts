@@ -1,6 +1,5 @@
 import type { AgentCard, AgentExtension, AgentSkill, SellerConfig } from "../types/index.js";
 import { CHAIN_CONFIGS, CHAIN_ID_TO_NETWORK, X402_EXTENSION_URI } from "../types/index.js";
-import { listCatalogRoutes } from "./route-catalog.js";
 
 export function buildAgentCard(config: SellerConfig): AgentCard {
 	const networkConfig = CHAIN_CONFIGS[config.network];
@@ -52,22 +51,25 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 	];
 
 	// Per-request skills: one skill per route in config.routes.
-	for (const route of listCatalogRoutes(config)) {
+	for (const route of config.routes ?? []) {
 		const skillId = `ppr-${route.routeId}-${route.method.toLowerCase()}-${route.path.replace(/\//g, "-").replace(/[: ]/g, "")}`;
 
+		const explicitParams = route.params ?? [];
+		const queryParams = explicitParams.filter((p) => p.in === "query");
+		const bodyParams = explicitParams.filter((p) => p.in === "body");
 		// Build concrete example path (replace :param with <param>)
 		const examplePath = route.path.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, "<$1>");
 
 		const routeExamples = route.unitAmount
 			? [
-					`${route.method} ${baseUrl}${examplePath}`,
+					`POST ${baseUrl}/x402/access with { "routeId": "${route.routeId}", "resource": { "method": "${route.method}", "path": "${examplePath}"${queryParams.length > 0 ? ', "query": {...}' : ""}${bodyParams.length > 0 ? ', "body": {...}' : ""} } }`,
 					`Receive HTTP 402 with x402 payment requirements`,
-					`Retry the same ${route.method} request with PAYMENT-SIGNATURE after paying ${route.unitAmount} USDC on-chain`,
-					`Receive 200 with the backend response`,
+					`Pay ${route.unitAmount} USDC on-chain, retry with PAYMENT-SIGNATURE header`,
+					`Receive 200 with ResourceResponse`,
 				]
 			: [
-					`${route.method} ${baseUrl}${examplePath}`,
-					`Receive 200 with the backend response (no payment required)`,
+					`POST ${baseUrl}/x402/access with { "routeId": "${route.routeId}", "resource": { "method": "${route.method}", "path": "${examplePath}" } }`,
+					`Receive 200 with ResourceResponse (no payment required)`,
 				];
 
 		skills.push({
@@ -76,11 +78,89 @@ export function buildAgentCard(config: SellerConfig): AgentCard {
 			description:
 				route.description ??
 				(route.unitAmount
-					? `Pay-per-call route: ${route.unitAmount} USDC per request. Call ${route.method} ${baseUrl}${route.path} directly; Key0 returns a 402 first, then the backend response after payment.`
-					: `Free endpoint: call ${route.method} ${baseUrl}${route.path} directly.`),
+					? `Pay-per-call route: ${route.unitAmount} USDC per request. POST to ${baseUrl}/x402/access with routeId "${route.routeId}".`
+					: `Free endpoint: ${route.method} ${route.path}. POST to ${baseUrl}/x402/access with routeId "${route.routeId}".`),
 			tags: route.unitAmount ? ["pay-per-call", "x402"] : ["free"],
 			examples: routeExamples,
+			inputSchema: {
+				type: "object",
+				required: ["routeId", "resource"],
+				properties: {
+					routeId: { type: "string", const: route.routeId },
+					resource: {
+						type: "object",
+						required: ["method", "path"],
+						properties: {
+							method: { type: "string", const: route.method },
+							path: {
+								type: "string",
+								description: `Path pattern: ${route.path}. Example: ${examplePath}`,
+							},
+							...(queryParams.length > 0 ? { query: { type: "object" } } : {}),
+							...(bodyParams.length > 0 ? { body: { type: "object" } } : {}),
+						},
+					},
+				},
+			},
 		});
+	}
+
+	// Per-request skills from plan.routes: one skill per route for plans with mode="per-request".
+	// In embedded mode (no proxyTo), the endpoint points to the route URL directly.
+	// In standalone mode (proxyTo set), the endpoint points to /x402/access with a full workflow.
+	const isStandalone = !!config.proxyTo;
+	for (const plan of config.plans ?? []) {
+		if (plan.mode !== "per-request") continue;
+		for (const route of plan.routes ?? []) {
+			const safeRoute = route as { method: string; path: string; description?: string };
+			const pathSlug = safeRoute.path.replace(/\//g, "-").replace(/[: ]/g, "");
+			const skillId = `ppr-${plan.planId}-${safeRoute.method.toLowerCase()}${pathSlug}`;
+			const defaultDescription = `Pay-per-request: ${plan.unitAmount} USDC per call. Plan: ${plan.planId}.`;
+			if (isStandalone) {
+				skills.push({
+					id: skillId,
+					name: `${safeRoute.method} ${safeRoute.path}`,
+					description:
+						safeRoute.description ??
+						`${defaultDescription} POST to ${baseUrl}/x402/access with { planId: "${plan.planId}", resource: { method: "${safeRoute.method}", path: "<actual path>" } }.`,
+					tags: ["pay-per-request", "x402", plan.planId],
+					examples: [
+						`POST ${baseUrl}/x402/access with { "planId": "${plan.planId}", "resource": { "method": "${safeRoute.method}", "path": "<actual path>" } }`,
+						`Receive HTTP 402 with x402 payment requirements`,
+						`Pay ${plan.unitAmount} USDC on-chain, retry with PAYMENT-SIGNATURE header`,
+						`Receive 200 with ResourceResponse`,
+					],
+					inputSchema: {
+						type: "object",
+						required: ["planId", "resource"],
+						properties: {
+							planId: { type: "string", const: plan.planId },
+							resource: {
+								type: "object",
+								required: ["method", "path"],
+								properties: {
+									method: { type: "string", const: safeRoute.method },
+									path: { type: "string", description: `Path pattern: ${safeRoute.path}` },
+								},
+							},
+						},
+					},
+				} satisfies AgentSkill);
+			} else {
+				// Embedded mode: client calls the route directly with PAYMENT-SIGNATURE
+				skills.push({
+					id: skillId,
+					name: `${safeRoute.method} ${safeRoute.path}`,
+					description:
+						safeRoute.description ??
+						`${defaultDescription} Call ${safeRoute.method} ${baseUrl}${safeRoute.path} with PAYMENT-SIGNATURE header after paying on-chain.`,
+					tags: ["pay-per-request", "x402", plan.planId],
+					examples: [
+						`${safeRoute.method} ${baseUrl}${safeRoute.path} with PAYMENT-SIGNATURE header`,
+					],
+				} satisfies AgentSkill);
+			}
+		}
 	}
 
 	const x402Extension: AgentExtension = {
