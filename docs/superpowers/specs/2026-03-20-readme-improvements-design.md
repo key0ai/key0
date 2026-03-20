@@ -48,37 +48,36 @@ Per-request billing in embedded mode (the `key0.payPerRequest()` middleware) is 
 
 **Placement:** Inside `### Standalone Docker`, after the paragraph beginning "That gives agents multiple standard ways to discover and interact with your service out of the box: HTTP x402, A2A, MCP, generated onboarding files, and CLI distribution flows.", before the "Continue with" links.
 
-**Content:** One sentence intro, one request JSON block, one response JSON block. Use these exact field names, types, and representative values:
+**Content:** One sentence intro, one request JSON block, one response JSON block. Separated from the preceding paragraph with one blank line. No subheading.
 
-```
-After on-chain payment is verified, key0 POSTs to `ISSUE_TOKEN_API`:
+Field names and types sourced from `src/types/config.ts:10` (`IssueTokenParams`) and `src/helpers/docker-token-issuer.ts:30` (plan fields merged into body via `{ ...params, ...tier }`). Use these exact field names and representative values:
 
 ```json
 {
   "requestId": "550e8400-e29b-41d4-a716-446655440000",
   "challengeId": "7f3b2c1d-...",
+  "resourceId": "basic",
   "planId": "basic",
   "txHash": "0xabc123...",
   "unitAmount": "$0.10"
 }
 ```
 
+`unitAmount` is merged from the matching plan object — it is a dollar-prefixed string (e.g. `"$0.10"`). Any additional custom fields added to the plan are also merged into the body.
+
 Return any credential shape — key0 passes the response to the client as-is:
 
 ```json
 { "token": "eyJ...", "expiresAt": "2027-01-01T00:00:00Z" }
 ```
-```
 
-All keys are camelCase strings. `unitAmount` is a dollar-prefixed string (e.g. `"$0.10"`), not a numeric value.
-
-**Size:** ~18 lines.
+**Size:** ~20 lines.
 
 ---
 
 ### Addition 2: Settlement strategies
 
-**Placement:** New `## Settlement` section inserted after `## Quick Start` and before `## How It Works`. Developers who attempt the quick start often stall on settlement; this section surfaces the two options immediately after so they can unblock themselves without leaving the README.
+**Placement:** New `## Settlement` section inserted at the blank line immediately before `## How It Works` (currently README line 113). Developers who attempt the quick start often stall on settlement; this section surfaces the two options immediately after so they can unblock themselves without leaving the README. The `network` value does not appear in Settlement snippets — the `testnet` constraint from the Constraints section does not apply here.
 
 **Content:** Two subsections. No prose beyond what is required to configure each.
 
@@ -114,7 +113,7 @@ Each subsection: 2 lines of prose + one config/env snippet.
 - `key0.payPerRequest("routeId")` applied to a route as middleware
 - `req.key0Payment` access in the handler (txHash, amount)
 
-`req.key0Payment` is the `PaymentInfo` type (`src/types/config.ts:97`), confirmed to contain: `txHash` (`0x${string}`), `payer` (`string | undefined`), `planId`, `amount`, `method`, `path`, `challengeId`. The snippet should only show `txHash` and `amount` for brevity.
+`req.key0Payment` is the `PaymentInfo` type (`src/types/config.ts:97`), confirmed to contain: `txHash` (`0x${string}`), `payer` (`string | undefined`), `planId`, `amount`, `method`, `path`, `challengeId`. The snippet should only show `txHash` and `amount` for brevity. `amount` is a dollar-prefixed string (same format as `unitAmount`, e.g. `"$0.10"`).
 
 A note that Hono/Fastify variants are in the embedded quickstart.
 
