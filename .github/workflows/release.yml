@@ -56,7 +56,7 @@ jobs:
           username: key0ai
           password: ${{ secrets.KEY0_DOCKERHUB_TOKEN }}
 
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: key0ai/key0
