@@ -79,13 +79,13 @@ The client signs an EIP-3009 authorization off-chain and retries `POST /x402/acc
 
 All state transitions go through `ChallengeEngine`, which enforces the state machine invariants and logs every transition for auditability.
 
-## Per-Request Variant
+## Pay-Per-Call Variant
 
-For `mode: "per-request"` plans, the flow differs slightly: **no JWT is issued**. Instead, Key0 returns the API response directly.
+For paid `routes`, the flow differs slightly: **no JWT is issued**. Instead, Key0 returns the API response directly.
 
 ### Standalone (proxy mode)
 
-Add `proxyTo` (or `fetchResource`) to `SellerConfig`. Clients include a `resource` field in the `POST /x402/access` body specifying the route they want to call.
+Add `proxyTo` (or `fetchResource`) to `SellerConfig`. Clients call the paid route directly, receive a 402 challenge, then retry the same route with `payment-signature`.
 
 ```mermaid
 sequenceDiagram
@@ -94,12 +94,12 @@ sequenceDiagram
     participant Backend
 
     Note over Client,Key0: Phase 1 — Challenge
-    Client->>Key0: POST /x402/access { planId, resource: { method, path } }
+    Client->>Key0: GET /api/weather/london
     Key0-->>Key0: Create PENDING challenge
     Key0->>Client: 402 + PaymentRequirements
 
     Note over Client,Backend: Phase 2 — Settlement & Proxy
-    Client->>Key0: POST /x402/access + payment-signature
+    Client->>Key0: GET /api/weather/london + payment-signature
     Key0->>Key0: Settle on-chain (PENDING → PAID)
     Key0->>Backend: Forward request (injects x-key0-tx-hash, x-key0-plan-id)
     Backend->>Key0: Response data
@@ -109,7 +109,7 @@ sequenceDiagram
 
 ### Embedded (inline settlement)
 
-Use `key0.payPerRequest(planId)` middleware on each route. No `proxyTo` needed — Key0 settles on-chain and calls `next()`, so your route handler runs as normal.
+Use `key0.payPerRequest(routeId)` middleware on each route. No `proxyTo` needed — Key0 settles on-chain and calls `next()`, so your route handler runs as normal.
 
 ```mermaid
 sequenceDiagram

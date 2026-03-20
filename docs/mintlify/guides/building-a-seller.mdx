@@ -402,18 +402,16 @@ WALLET_ADDRESS=0x... ACCESS_TOKEN_SECRET=your-32-char-secret REDIS_URL=redis://l
 
 ## Pay-Per-Request Alternative
 
-The subscription model above issues a JWT that the buyer uses for subsequent requests. If you want to charge for each individual API call instead (no long-lived token), use `mode: "per-request"` plans with `key0.payPerRequest()` middleware:
+The subscription model above issues a JWT that the buyer uses for subsequent requests. If you want to charge for each individual API call instead (no long-lived token), define top-level `routes` and gate them with `key0.payPerRequest()` middleware:
 
 ```typescript
-plans: [
-  // Subscription plan (issues JWT)
-  { planId: "basic", unitAmount: "$0.10" },
-  // Per-request plan (no JWT — settles inline per call)
+routes: [
   {
-    planId: "weather-query",
+    routeId: "weather-query",
+    method: "GET",
+    path: "/api/weather/:city",
     unitAmount: "$0.01",
-    mode: "per-request",
-    routes: [{ method: "GET", path: "/api/weather/:city" }],
+    description: "Current weather for any city",
   },
 ],
 ```
@@ -430,7 +428,7 @@ app.get(
 );
 ```
 
-Subscription and per-request plans can coexist on the same server. Use the [ppr-embedded example](/examples/ppr-embedded) for a runnable walkthrough.
+Subscription plans and pay-per-call routes can coexist on the same server. Use the [ppr-embedded example](/examples/ppr-embedded) for a runnable walkthrough.
 
 ## Next Steps
 

@@ -37,10 +37,8 @@ export function validateSellerConfig(config: SellerConfig): void {
 	const hasPlans = (config.plans?.length ?? 0) > 0;
 	const hasRoutes = (config.routes?.length ?? 0) > 0;
 
-	// Subscription plans require fetchResourceCredentials
-	const hasSubscriptionPlans = (config.plans ?? []).some(
-		(p) => !p.free && p.mode !== "per-request",
-	);
+	// Plans require fetchResourceCredentials
+	const hasSubscriptionPlans = (config.plans ?? []).some((p) => !p.free);
 	if (hasSubscriptionPlans && typeof config.fetchResourceCredentials !== "function") {
 		throw new Error("fetchResourceCredentials is required when plans are configured");
 	}
@@ -77,12 +75,30 @@ export function validateSellerConfig(config: SellerConfig): void {
 					);
 				}
 			}
+
+			const rawPlan = plan as Record<string, unknown>;
+			if ("mode" in rawPlan) {
+				throw new Error(
+					`SellerConfig: plan "${plan.planId}" uses removed mode field. Pay-per-call must be defined with top-level routes.`,
+				);
+			}
+			if ("routes" in rawPlan) {
+				throw new Error(
+					`SellerConfig: plan "${plan.planId}" uses removed plans[].routes. Pay-per-call must be defined with top-level routes.`,
+				);
+			}
+			if ("proxyPath" in rawPlan || "proxyQuery" in rawPlan || "proxyMethod" in rawPlan) {
+				throw new Error(
+					`SellerConfig: plan "${plan.planId}" uses removed proxyPath-based pay-per-call config. Define callable endpoints with top-level routes instead.`,
+				);
+			}
 		}
 	}
 
 	// Validate each route
 	if (hasRoutes) {
 		const routeIds = new Set<string>();
+		const planIds = new Set((config.plans ?? []).map((plan) => plan.planId));
 		for (const route of config.routes!) {
 			if (!route.routeId?.trim()) throw new Error("each route must have a routeId");
 			if (!route.path?.startsWith("/"))
@@ -100,6 +116,11 @@ export function validateSellerConfig(config: SellerConfig): void {
 				}
 			}
 			if (routeIds.has(route.routeId)) throw new Error(`duplicate routeId: "${route.routeId}"`);
+			if (planIds.has(route.routeId)) {
+				throw new Error(
+					`route "${route.routeId}": routeId must not overlap an existing planId`,
+				);
+			}
 			routeIds.add(route.routeId);
 		}
 		if (config.proxyTo && !config.proxyTo.proxySecret) {

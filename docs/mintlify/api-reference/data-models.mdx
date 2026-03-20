@@ -55,11 +55,12 @@ Sent by the client agent to initiate a payment flow. The `requestId` serves as a
 ```typescript
 type AccessRequest = {
   readonly requestId: string;      // UUID, client-generated, idempotency key
-  readonly resourceId: string;     // Seller-defined resource identifier
-  readonly planId: string;         // Must match a Plan.planId in the seller's catalog
-  readonly clientAgentId: string;  // DID or URL of the client agent
+  readonly resourceId?: string;    // Seller-defined resource identifier for subscription flows
+  readonly planId?: string;        // Must match a Plan.planId for subscription access
+  readonly routeId?: string;       // Must match a Route.routeId for route-based access
+  readonly clientAgentId?: string; // DID or URL of the client agent
   readonly callbackUrl?: string;   // Optional async webhook for status updates
-  readonly resource?: {            // Per-request standalone: the backend route to call after payment
+  readonly resource?: {            // Standalone route flow: the backend route to call after payment
     readonly method: string;
     readonly path: string;
     readonly body?: unknown;
@@ -68,7 +69,7 @@ type AccessRequest = {
 ```
 
 <Note>
-  The `resource` field is only used for `mode: "per-request"` plans in **standalone** mode (when `proxyTo`/`fetchResource` is set on `SellerConfig`). After payment Key0 proxies to the specified method + path and returns a `ResourceResponse` instead of an `AccessGrant`. Omit it for subscription plans and for embedded per-request plans.
+  Provide either `planId` or `routeId`, not both. The `resource` field is only used for **standalone route-based calls** when `proxyTo` or `fetchResource` is set on `SellerConfig`. After payment Key0 proxies to the specified method + path and returns a `ResourceResponse` instead of an `AccessGrant`.
 </Note>
 
 **Used in:** A2A Executor `message/send` (as a data part), x402 HTTP request parsing.
@@ -85,13 +86,13 @@ type AccessRequest = {
 }
 ```
 
-**Per-request standalone example:**
+**Route-based standalone example:**
 
 ```json
 {
   "type": "AccessRequest",
   "requestId": "550e8400-e29b-41d4-a716-446655440000",
-  "planId": "weather-query",
+  "routeId": "weather-query",
   "clientAgentId": "did:example:client-agent",
   "resource": {
     "method": "GET",
@@ -111,7 +112,8 @@ type X402Challenge = {
   readonly type: "X402Challenge";
   readonly challengeId: string;        // Server-generated UUID
   readonly requestId: string;          // Echoed from AccessRequest
-  readonly planId: string;
+  readonly planId?: string;
+  readonly routeId?: string;
   readonly amount: string;             // Dollar string, e.g. "$0.10"
   readonly asset: "USDC";
   readonly chainId: number;            // e.g. 84532 (Base Sepolia) or 8453 (Base)
@@ -182,16 +184,17 @@ type PaymentProof = {
 
 ## ResourceResponse
 
-Returned instead of `AccessGrant` for `mode: "per-request"` plans in standalone mode. Contains the proxied backend API response — **no JWT is issued**.
+Returned instead of `AccessGrant` for **route-based standalone calls**. Contains the proxied backend API response — **no JWT is issued**.
 
 ```typescript
 type ResourceResponse = {
   readonly type: "ResourceResponse";
   readonly challengeId: string;
   readonly requestId: string;
-  readonly planId: string;
-  readonly txHash: `0x${string}`;
-  readonly explorerUrl: string;
+  readonly planId?: string;
+  readonly routeId?: string;
+  readonly txHash?: `0x${string}`;
+  readonly explorerUrl?: string;
   readonly resource: {
     readonly status: number;
     readonly headers?: Record<string, string>;
@@ -200,7 +203,7 @@ type ResourceResponse = {
 };
 ```
 
-**Used in:** x402 HTTP 200 response body for per-request standalone plans; A2A Executor and MCP `request_access` tool result when plan `mode` is `"per-request"`.
+**Used in:** x402 HTTP 200 response body for standalone route calls; A2A Executor and MCP `request_access` tool result for route purchases.
 
 **Example:**
 
@@ -209,7 +212,7 @@ type ResourceResponse = {
   "type": "ResourceResponse",
   "challengeId": "http-a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "requestId": "550e8400-e29b-41d4-a716-446655440000",
-  "planId": "weather-query",
+  "routeId": "weather-query",
   "txHash": "0x7f9fade1...",
   "explorerUrl": "https://sepolia.basescan.org/tx/0x7f9fade1...",
   "resource": {
@@ -219,7 +222,7 @@ type ResourceResponse = {
 }
 ```
 
-If the backend returns a non-2xx status, the challenge stays in `PAID` state (pending refund). The `resource.status` and `resource.body` reflect the backend's error response.
+If the backend returns a non-2xx status, the challenge stays in `PAID` state (pending refund). The `resource.status` and `resource.body` reflect the backend's error response. For free routes, `txHash` and `explorerUrl` are omitted.
 
 ---
 
@@ -369,21 +372,19 @@ Defines a pricing plan in the seller's catalog.
 
 ```typescript
 type Plan = {
-  readonly planId: string;                          // Unique identifier for this plan
-  readonly unitAmount: string;                      // Dollar string, e.g. "$0.10"
-  readonly description?: string;                    // Human-readable description
-  readonly mode?: "subscription" | "per-request";  // default: "subscription"
-  readonly routes?: readonly PlanRouteInfo[];       // Routes guarded by this per-request plan
+  readonly planId: string;        // Unique identifier for this plan
+  readonly unitAmount?: string;   // Dollar string, e.g. "$19.00"
+  readonly description?: string;  // Human-readable description
+  readonly free?: boolean;        // Set true for a free plan
 };
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `planId` | `string` | Yes | Unique plan identifier. |
-| `unitAmount` | `string` | Yes | Dollar-formatted price string (e.g. `"$0.10"`). |
+| `unitAmount` | `string` | No | Dollar-formatted price string (e.g. `"$19.00"`). Required unless `free: true`. |
 | `description` | `string` | No | Human-readable description of the plan. |
-| `mode` | `"subscription" \| "per-request"` | No | Billing mode. `"subscription"` (default) issues a JWT; `"per-request"` gates individual API calls without issuing a token. |
-| `routes` | `PlanRouteInfo[]` | No | Routes guarded by this per-request plan. Used in the agent card, discovery response, and MCP `discover_plans` tool. |
+| `free` | `boolean` | No | Marks the plan as free. Useful when you want catalog/discovery access without payment. |
 
 **Subscription plan example:**
 
@@ -395,40 +396,41 @@ type Plan = {
 }
 ```
 
-**Per-request plan example:**
+## Route
 
-```json
-{
-  "planId": "weather-query",
-  "unitAmount": "$0.01",
-  "mode": "per-request",
-  "description": "Current weather for any city",
-  "routes": [
-    { "method": "GET", "path": "/api/weather/:city", "description": "Current weather conditions" }
-  ]
-}
-```
-
----
-
-## PlanRouteInfo
-
-Describes a route guarded by a per-request plan.
+Defines a callable API route in the seller's route catalog. Routes are how you model free endpoints and pay-per-call endpoints.
 
 ```typescript
-type PlanRouteInfo = {
-  readonly method: string;        // HTTP method, e.g. "GET"
-  readonly path: string;          // Route path, e.g. "/api/weather/:city"
-  readonly description?: string;  // Human-readable description
+type Route = {
+  readonly routeId: string;
+  readonly method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+  readonly path: string;
+  readonly unitAmount?: string;
+  readonly description?: string;
+  readonly params?: readonly RouteParam[];
 };
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `method` | `string` | Yes | HTTP method (e.g. `"GET"`, `"POST"`). |
-| `path` | `string` | Yes | Route path including Express-style parameters (e.g. `"/api/weather/:city"`). |
+| `routeId` | `string` | Yes | Unique route identifier used in discovery and route-based purchase flows. |
+| `method` | `"GET" \| "POST" \| "PUT" \| "DELETE" \| "PATCH"` | Yes | HTTP method for the route. |
+| `path` | `string` | Yes | Route path including Express-style params such as `"/api/weather/:city"`. |
+| `unitAmount` | `string` | No | Dollar-formatted price string for pay-per-call routes. Omit for free routes. |
 | `description` | `string` | No | Human-readable description of the route. |
+| `params` | `RouteParam[]` | No | Explicit parameter metadata for query/body inputs. Path params are auto-derived. |
 
+**Paid route example:**
+
+```json
+{
+  "routeId": "weather-query",
+  "method": "GET",
+  "path": "/api/weather/:city",
+  "unitAmount": "$0.01",
+  "description": "Current weather for any city"
+}
+```
 ---
 
 ## X402PaymentRequiredResponse

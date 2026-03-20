@@ -172,7 +172,7 @@ Pass environment variables via `-e` flags, an `env_file`, or shell exports that 
 
 ## Per-Request Proxy Mode
 
-Set `PROXY_TO_BASE_URL` to enable per-request payment gateway mode. After a per-request plan payment is verified, Key0 proxies the request to this base URL and returns the backend response directly to the agent — no `ISSUE_TOKEN_API` call is made for per-request plans.
+Set `PROXY_TO_BASE_URL` to enable pay-per-call gateway mode. After a paid route purchase is verified, Key0 proxies the request to this base URL and returns the backend response directly to the agent — no `ISSUE_TOKEN_API` call is made for route-based purchases.
 
 ```bash
 docker run -d \
@@ -180,7 +180,7 @@ docker run -d \
   -p 3000:3000 \
   -e KEY0_WALLET_ADDRESS=0xYourWallet \
   -e PROXY_TO_BASE_URL=https://api.yourdomain.com \
-  -e PLANS='[{"planId":"weather","unitAmount":"$0.01","mode":"per-request"}]' \
+  -e ROUTES='[{"routeId":"weather","method":"GET","path":"/api/weather/:city","unitAmount":"$0.01"}]' \
   key0ai/key0:latest
 ```
 

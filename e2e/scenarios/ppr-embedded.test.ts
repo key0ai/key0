@@ -123,7 +123,7 @@ beforeAll(async () => {
 	const app = express();
 	app.use(express.json());
 
-	// Routes are top-level in SellerConfig (no mode: "per-request" on plans).
+	// Routes are top-level in SellerConfig (pay-per-call is not modeled inside plans).
 	// proxyTo is not required in embedded mode — key0.payPerRequest() calls next()
 	// and the route handler itself returns the response.
 	const key0 = key0Router({

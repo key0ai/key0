@@ -4,7 +4,8 @@
  * Two ways to access /api/weather/:city:
  *   1. Subscribe: POST /x402/access { planId: "basic" } → pay $5 → get Bearer token
  *      → call backend directly: GET /api/weather/london  (Authorization: Bearer <token>)
- *   2. Pay-per-use: POST /x402/access { planId: "weather-query", resource: { method: "GET", path: "/api/weather/london" } }
+ *   2. Pay-per-use: GET /api/weather/london
+ *      → 402 challenge → retry same route with PAYMENT-SIGNATURE
  *      → pay $0.10 → Key0 proxies to backend and returns data inline (no token issued)
  *
  * The backend (see backend.ts) accepts requests from EITHER path:
@@ -164,12 +165,10 @@ app.listen(GATEWAY_PORT, () => {
 	console.log(`    → GET http://localhost:3001/api/weather/london`);
 	console.log(`         Authorization: Bearer <token>   (Key0 not in path)`);
 	console.log(`\n  Pay-per-request flow (pay per call, Key0 proxies):`);
-	console.log(`    POST ${PUBLIC_URL}/x402/access`);
-	console.log(
-		`         { routeId: "weather-query", resource: { method: "GET", path: "/api/weather/london" } }`,
-	);
+	console.log(`    GET ${PUBLIC_URL}/api/weather/london`);
 	console.log(`    → 402 Payment Required ($0.10)`);
-	console.log(`    → Pay USDC on-chain → Key0 proxies to backend → 200 ResourceResponse`);
+	console.log(`    → Retry GET ${PUBLIC_URL}/api/weather/london with PAYMENT-SIGNATURE`);
+	console.log(`    → Key0 proxies to backend → 200 backend response`);
 	console.log(`\n  Backend: ${BACKEND_URL}`);
 	console.log(`  Network: ${NETWORK}`);
 	console.log(`  Wallet:  ${WALLET}\n`);

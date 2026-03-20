@@ -157,8 +157,8 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
     The `payment-response` header contains the full `X402SettleResponse` from the on-chain settlement, base64-encoded. The JSON body is the `AccessGrant` with the JWT and resource endpoint URL.
   </Tab>
 
-  <Tab title="Case 4: Per-Request Settlement">
-    For `mode: "per-request"` plans in standalone mode (seller has `proxyTo` or `fetchResource` configured), include a `resource` field in the body. After payment, Key0 proxies the request to the backend and returns a `ResourceResponse` — **no JWT issued**.
+  <Tab title="Case 4: Route-Based Settlement">
+    For standalone paid routes (seller has `proxyTo` or `fetchResource` configured), include `routeId` and a `resource` field in the body. After payment, Key0 proxies the request to the backend and returns a `ResourceResponse` — **no JWT issued**.
 
     ### Challenge request
 
@@ -166,7 +166,7 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
     curl -X POST https://api.example.com/x402/access \
       -H "Content-Type: application/json" \
       -d '{
-        "planId": "weather-query",
+        "routeId": "weather-query",
         "requestId": "550e8400-e29b-41d4-a716-446655440001",
         "resource": { "method": "GET", "path": "/api/weather/london" }
       }'
@@ -185,7 +185,7 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
           "amount": "10000",
           "payTo": "0xSellerWallet...",
           "maxTimeoutSeconds": 900,
-          "extra": { "name": "USDC", "version": "2", "planId": "weather-query" }
+          "extra": { "name": "USDC", "version": "2", "routeId": "weather-query" }
         }
       ],
       "challengeId": "http-a1b2c3d4-...",
@@ -200,7 +200,7 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
       -H "Content-Type: application/json" \
       -H "payment-signature: eyJ4NDAyVm..." \
       -d '{
-        "planId": "weather-query",
+        "routeId": "weather-query",
         "requestId": "550e8400-e29b-41d4-a716-446655440001",
         "resource": { "method": "GET", "path": "/api/weather/london" }
       }'
@@ -219,7 +219,7 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
       "type": "ResourceResponse",
       "challengeId": "http-a1b2c3d4-...",
       "requestId": "550e8400-e29b-41d4-a716-446655440001",
-      "planId": "weather-query",
+      "routeId": "weather-query",
       "txHash": "0xSettledTx...",
       "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx...",
       "resource": {
@@ -234,7 +234,7 @@ The x402 HTTP flow is the simplest way to interact with Key0. Plan discovery use
     If the backend returns a non-2xx status, the `ResourceResponse` still contains the backend's error body and status. The challenge stays in `PAID` state so the refund cron can process it.
 
     <Note>
-      The `resource` field is required for per-request standalone plans. For embedded per-request plans, the `payment-signature` header is sent directly on the route (e.g. `GET /api/weather/london`) — no `/x402/access` involved. See [Paying for Access](/guides/paying-for-access#embedded-per-request).
+      The `resource` field is required for standalone route purchases. For embedded per-request routes, the `payment-signature` header is sent directly on the route (e.g. `GET /api/weather/london`) — no `/x402/access` involved. See [Paying for Access](/guides/paying-for-access#embedded-per-request).
     </Note>
   </Tab>
 </Tabs>

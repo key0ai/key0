@@ -39,7 +39,7 @@ describe("buildSkillsMd", () => {
 		expect(text).toContain("Pay-Per-Call Routes");
 	});
 
-	it("includes per-request plan routes in the buyer guide", () => {
+	it("does not invent pay-per-call routes from plans", () => {
 		const text = buildSkillsMd(
 			makeSellerConfig({
 				agentName: "Weather Pro",
@@ -49,8 +49,7 @@ describe("buildSkillsMd", () => {
 					{
 						planId: "weather-query",
 						unitAmount: "$0.01",
-						mode: "per-request",
-						routes: [{ method: "GET", path: "/api/weather/:city", description: "Current weather" }],
+						description: "Subscription only",
 					},
 				],
 				routes: [],
@@ -63,6 +62,6 @@ describe("buildSkillsMd", () => {
 			},
 		);
 
-		expect(text).toContain("weather-query · GET /api/weather/:city");
+		expect(text).not.toContain("GET /api/weather/:city");
 	});
 });

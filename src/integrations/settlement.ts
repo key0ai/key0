@@ -3,6 +3,7 @@ import { createWalletClient, publicActions, http as viemHttp } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
 import { parseDollarToUsdcMicro } from "../adapter/index.js";
+import { findCatalogRoute, listCatalogRoutes } from "../core/route-catalog.js";
 import type {
 	FacilitatorVerifyResponse,
 	NetworkConfig,
@@ -109,7 +110,7 @@ export function buildHttpPaymentRequirements(
 ): X402PaymentRequiredResponse {
 	// Search plans first, then routes
 	const tier = (config.plans ?? []).find((t: Plan) => t.planId === planId);
-	const route = !tier ? (config.routes ?? []).find((r: Route) => r.routeId === planId) : undefined;
+	const route = !tier ? findCatalogRoute(config, planId) : undefined;
 
 	if (!tier && !route) {
 		throw new Key0Error("TIER_NOT_FOUND", `Plan or route "${planId}" not found`, 400);
@@ -178,7 +179,7 @@ export function buildDiscoveryResponse(config: SellerConfig) {
 			...(p.description ? { description: p.description } : {}),
 			...(p.free === true ? { free: true } : {}),
 		})),
-		routes: (config.routes ?? []).map((r) => ({
+		routes: listCatalogRoutes(config).map((r) => ({
 			routeId: r.routeId,
 			method: r.method,
 			path: r.path,

@@ -2,6 +2,7 @@ import { AGENT_CARD_PATH } from "@a2a-js/sdk";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parseDollarToUsdcMicro } from "../adapter/index.js";
 import type { ChallengeEngine } from "../core/index.js";
+import { findCatalogRoute } from "../core/index.js";
 import { createKey0, type Key0Config } from "../factory.js";
 import type { ValidateAccessTokenConfig } from "../middleware.js";
 import { validateToken } from "../middleware.js";
@@ -12,7 +13,6 @@ import type {
 	X402PaymentRequiredResponse,
 } from "../types/index.js";
 import { CHAIN_CONFIGS, Key0Error } from "../types/index.js";
-import { interpolateUrlTemplate } from "../utils/url-template.js";
 import type { PayPerRequestOptions } from "./pay-per-request.js";
 import { createFastifyPayPerRequest, resolveConfigFetchResource } from "./pay-per-request.js";
 import {
@@ -148,7 +148,7 @@ function mountFastifyRoutes(
 
 			// ===== routeId path: full standalone gateway flow =====
 			if (routeId !== undefined) {
-				const route = (opts.config.routes ?? []).find((r) => r.routeId === routeId);
+				const route = findCatalogRoute(opts.config, routeId);
 				if (!route) {
 					return reply.status(404).send({
 						type: "Error",
@@ -406,59 +406,20 @@ function mountFastifyRoutes(
 				requestId = `http-${crypto.randomUUID()}`;
 			}
 
-			// FREE PLAN FAST-PATH: proxy immediately without payment
 			const planDef = (opts.config.plans ?? []).find((p) => p.planId === planId);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const planDefAny = planDef as any;
-			if (planDefAny?.free === true) {
-				const fetchResourceFn = resolveConfigFetchResource(opts.config);
-				if (!fetchResourceFn || !planDefAny.proxyPath) {
-					return reply.code(400).send({
-						error: "FREE_PLAN_MISCONFIGURED",
-						message: "Free plan requires proxyTo and proxyPath to be configured.",
-					});
-				}
-				const rawParams = (body["params"] as Record<string, string> | undefined) ?? {};
-				let resolvedPath: string;
-				try {
-					resolvedPath = interpolateUrlTemplate(planDefAny.proxyPath, rawParams);
-				} catch (err) {
-					return reply.code(400).send({
-						error: "TEMPLATE_ERROR",
-						message: (err as Error).message,
-					});
-				}
-				const queryString = planDefAny.proxyQuery
-					? `?${new URLSearchParams(planDefAny.proxyQuery as Record<string, string>).toString()}`
-					: "";
-				const proxyResult = await fetchResourceFn({
-					method: planDefAny.proxyMethod ?? "GET",
-					path: resolvedPath + queryString,
-					headers: {},
-					paymentInfo: {
-						txHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-						payer: undefined,
-						planId,
-						amount: "$0",
-						method: planDefAny.proxyMethod ?? "GET",
-						path: resolvedPath,
-						challengeId: "free",
-					},
+			if (!planDef) {
+				return reply.code(404).send({
+					type: "Error",
+					code: "TIER_NOT_FOUND",
+					error: `Plan "${planId}" not found`,
 				});
-				const freeResponse: ResourceResponse = {
-					type: "ResourceResponse",
-					challengeId: "free",
-					requestId,
-					planId,
-					txHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-					explorerUrl: "",
-					resource: {
-						status: proxyResult.status,
-						...(proxyResult.headers !== undefined ? { headers: proxyResult.headers } : {}),
-						body: proxyResult.body,
-					},
-				};
-				return reply.code(200).send(freeResponse);
+			}
+			if (planDef.free === true) {
+				return reply.code(400).send({
+					type: "Error",
+					code: "UNSUPPORTED_FREE_PLAN",
+					message: "Free plans are not supported via /x402/access. Use free routes instead.",
+				});
 			}
 
 			// CASE 2: planId, no PAYMENT-SIGNATURE → Challenge

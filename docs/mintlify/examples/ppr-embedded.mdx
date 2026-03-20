@@ -10,8 +10,8 @@ A complete Express server that charges $0.01 per weather query and $0.005 per jo
 
 ## What it demonstrates
 
-- Defining `mode: "per-request"` plans alongside `fetchResourceCredentials` (required for the `/x402/access` endpoint, though not called for per-request routes)
-- Using `key0.payPerRequest(planId, opts?)` middleware to gate individual routes
+- Defining top-level `routes` for pay-per-call pricing
+- Using `key0.payPerRequest(routeId, opts?)` middleware to gate individual routes
 - Accessing `req.key0Payment` (containing `txHash`, `planId`, `amount`, `challengeId`) in route handlers
 - Discovery via `GET /discover` and agent card showing per-request skills with route metadata
 - Automatic `PENDING → PAID → DELIVERED` state transitions with refund safety (pass a `store` to enable)
@@ -80,34 +80,25 @@ Server starts on `http://localhost:3000`.
 
 ## Code walkthrough
 
-### 1. Define plans with `mode: "per-request"`
+### 1. Define top-level pay-per-call routes
 
 ```typescript
-plans: [
+routes: [
   {
-    planId: "weather-query",
+    routeId: "weather-query",
+    method: "GET",
+    path: "/api/weather/:city",
     unitAmount: "$0.01",
-    description: "Current weather for any city — $0.01 per request.",
-    mode: "per-request",
-    routes: [
-      {
-        method: "GET",
-        path: "/api/weather/:city",
-        description: "Current weather conditions for a given city",
-      },
-    ],
+    description: "Current weather conditions for a given city",
   },
   {
-    planId: "joke-of-the-day",
+    routeId: "joke-of-the-day",
+    method: "GET",
+    path: "/api/joke",
     unitAmount: "$0.005",
-    description: "A random programming joke — $0.005 per request.",
-    mode: "per-request",
-    routes: [{ method: "GET", path: "/api/joke" }],
+    description: "A random programming joke",
   },
 ],
-// fetchResourceCredentials is required by SellerConfig for the /x402/access endpoint
-// (subscription flow), but is NOT called for per-request routes.
-fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),
 ```
 
 ### 2. Mount `key0Router` and gate routes
@@ -135,22 +126,22 @@ app.get(
 
 ### 3. Discovery response
 
-Agents call `GET /discover` and see per-request plans with their routes:
+Agents call `GET /discover` and see pay-per-call routes directly:
 
 ```json
 {
-  "plans": [
+  "routes": [
     {
-      "planId": "weather-query",
-      "unitAmount": "$0.01",
-      "mode": "per-request",
-      "routes": [{ "method": "GET", "path": "/api/weather/:city" }]
+      "routeId": "weather-query",
+      "method": "GET",
+      "path": "/api/weather/:city",
+      "unitAmount": "$0.01"
     }
   ]
 }
 ```
 
-The agent card at `/.well-known/agent.json` includes these as skills with `"pay-per-request"` tags.
+The agent card at `/.well-known/agent.json` includes these as route skills.
 
 ## Testing with curl
 
@@ -185,7 +176,7 @@ curl -v http://localhost:3000/api/weather/london
     Full reference for key0Router and payPerRequest options.
   </Card>
   <Card title="SellerConfig Reference" icon="sliders" href="/sdk-reference/seller-config">
-    Plan mode, routes, and ProxyToConfig type definitions.
+    Routes, plans, and ProxyToConfig type definitions.
   </Card>
   <Card title="Building a Seller" icon="rocket" href="/guides/building-a-seller">
     End-to-end guide from install to production.

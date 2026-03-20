@@ -13,7 +13,7 @@ The primary x402 HTTP endpoint. It handles four distinct cases depending on the 
 1. **No `planId`** -- Returns HTTP 400 directing the client to `GET /discover`.
 2. **Challenge** -- `planId` in the body, no `PAYMENT-SIGNATURE` header. Returns HTTP 402 with payment requirements and a `challengeId`.
 3. **Settlement (subscription)** -- `planId` in the body and a `PAYMENT-SIGNATURE` header. Settles the payment on-chain and returns HTTP 200 with an `AccessGrant` (JWT).
-4. **Settlement (per-request standalone)** -- Same as (3) but with a `resource` field in the body for `mode: "per-request"` plans. Key0 proxies to the backend and returns a `ResourceResponse` (backend data, no token).
+4. **Settlement (route-based standalone)** -- Same as (3) but with a `routeId` and `resource` in the body. Key0 proxies to the backend and returns a `ResourceResponse` (backend data, no token).
 
 ---
 
@@ -50,9 +50,7 @@ Sending a body without `planId` returns HTTP 400 with a pointer to the discovery
 
 ## Case 2: Challenge
 
-Send a `planId` in the body without a `PAYMENT-SIGNATURE` header. The server creates a PENDING challenge record and returns payment requirements.
-
-For `mode: "per-request"` plans in standalone mode, also include a `resource` field specifying the route you want to call. Omitting `resource` for a per-request plan in standalone mode returns a `400 RESOURCE_REQUIRED` error.
+Send a `planId` in the body without a `PAYMENT-SIGNATURE` header to purchase a subscription. For standalone route calls, send `routeId` plus a `resource` field without a `PAYMENT-SIGNATURE` header. The server creates a PENDING challenge record and returns payment requirements.
 
 <Tabs>
   <Tab title="Request">
@@ -68,23 +66,24 @@ For `mode: "per-request"` plans in standalone mode, also include a `resource` fi
       }'
     ```
 
-    **Per-request plan (standalone mode):**
+    **Route-based standalone call:**
 
     ```bash
     curl -X POST https://api.example.com/x402/access \
       -H "Content-Type: application/json" \
       -d '{
-        "planId": "weather-query",
+        "routeId": "weather-query",
         "resource": { "method": "GET", "path": "/api/weather/london" }
       }'
     ```
 
     | Field | Type | Required | Description |
     |-------|------|----------|-------------|
-    | `planId` | string | Yes | Must match a `Plan.planId` from the seller's catalog. |
+    | `planId` | string | Subscription only | Must match a `Plan.planId` from the seller's catalog. |
+    | `routeId` | string | Route-based only | Must match a `Route.routeId` from the seller's route catalog. |
     | `requestId` | string | No | Client-generated UUID. Auto-generated if omitted. Used as an idempotency key. |
-    | `resourceId` | string | No | Defaults to `"default"`. Ignored for per-request plans. |
-    | `resource` | `{ method, path }` | Per-request only | Required for `mode: "per-request"` plans in standalone mode. Specifies the backend route to call after payment. |
+    | `resourceId` | string | No | Defaults to `"default"` for subscription flows. |
+    | `resource` | `{ method, path }` | Route-based only | Required for standalone route calls. Specifies the backend route to call after payment. |
   </Tab>
   <Tab title="Response">
     **HTTP 402 Payment Required**
@@ -164,7 +163,7 @@ For `mode: "per-request"` plans in standalone mode, also include a `resource` fi
 
 ## Case 3: Settlement
 
-Resend the same request with a `PAYMENT-SIGNATURE` header containing a base64url-encoded `X402PaymentPayload`. The server settles the payment on-chain and returns either an `AccessGrant` (subscription) or a `ResourceResponse` (per-request standalone).
+Resend the same request with a `PAYMENT-SIGNATURE` header containing a base64url-encoded `X402PaymentPayload`. The server settles the payment on-chain and returns either an `AccessGrant` (subscription) or a `ResourceResponse` (route-based standalone).
 
 <Tabs>
   <Tab title="Request">
@@ -210,7 +209,7 @@ Resend the same request with a `PAYMENT-SIGNATURE` header containing a base64url
     The `accepted` field echoes back the payment requirements from the 402 response. The `payload.signature` is the EIP-3009 `transferWithAuthorization` signature. The `payload.authorization` contains the EIP-3009 parameters.
 
     <Note>
-      If `planId` is missing from the request body but present in the `PAYMENT-SIGNATURE` payload's `accepted.extra.planId`, the server extracts it automatically. This supports standard x402 clients that replay the exact same request with only the header added.
+      If `planId` or `routeId` is missing from the request body but present in the `PAYMENT-SIGNATURE` payload's `accepted.extra`, the server extracts it automatically. This supports standard x402 clients that replay the exact same request with only the header added.
     </Note>
   </Tab>
   <Tab title="Response">
@@ -263,16 +262,16 @@ Key0 supports two settlement strategies, configured via `SellerConfig`:
 | **Facilitator** (default) | `facilitatorUrl` or network default | Sends the EIP-3009 authorization to the Coinbase facilitator for verification and on-chain settlement. The facilitator pays gas. |
 | **Gas Wallet** | `gasWalletPrivateKey` | Verifies and settles the EIP-3009 authorization directly using your own gas wallet. You pay gas. Supports distributed locking via Redis for multi-instance deployments. |
 
-## Case 4: Per-Request Standalone Response
+## Case 4: Route-Based Standalone Response
 
-When settlement succeeds for a `mode: "per-request"` plan (with `proxyTo`/`fetchResource` configured), the response is a `ResourceResponse` containing the backend's data — **no JWT is issued**:
+When settlement succeeds for a route-based call (with `proxyTo` or `fetchResource` configured), the response is a `ResourceResponse` containing the backend's data — **no JWT is issued**:
 
 ```json
 {
   "type": "ResourceResponse",
   "challengeId": "http-a1b2c3d4-...",
   "requestId": "550e8400-...",
-  "planId": "weather-query",
+  "routeId": "weather-query",
   "txHash": "0xSettledTx...",
   "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx...",
   "resource": {
@@ -302,7 +301,7 @@ This prevents burning USDC on duplicate settlements.
 |-------------|------------|------|
 | 400 | `TIER_NOT_FOUND` | `planId` does not match any plan in the catalog. |
 | 400 | `INVALID_REQUEST` | Malformed `PAYMENT-SIGNATURE` header or request body. |
-| 400 | `RESOURCE_REQUIRED` | Per-request plan in standalone mode but `resource` field missing from request body. |
+| 400 | `RESOURCE_REQUIRED` | Route-based standalone request missing the `resource` field. |
 | 402 | `PAYMENT_FAILED` | EIP-3009 verification or on-chain settlement failed. |
 | 409 | `TX_ALREADY_REDEEMED` | The transaction hash was already used for a different challenge. |
 | 410 | `CHALLENGE_EXPIRED` | The challenge expired or was cancelled before payment arrived. |

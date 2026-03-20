@@ -140,7 +140,7 @@ describe("PPR Standalone: validation and error cases", () => {
 	test("missing resource field → 400 error", async () => {
 		const client = makeClientE2eClient(PPR_KEY0_URL);
 
-		// Call /x402/access without resource field for a per-request plan
+		// Call /x402/access without resource field for a standalone paid route
 		const res = await fetch(`${PPR_KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -152,7 +152,7 @@ describe("PPR Standalone: validation and error cases", () => {
 			}),
 		});
 
-		// per-request plan without resource should be rejected
+		// standalone route purchase without resource should be rejected
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as Record<string, unknown>;
 		expect(body["type"]).toBe("Error");

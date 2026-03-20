@@ -1,17 +1,17 @@
 ---
 title: "Pay-Per-Request: Standalone Gateway"
 sidebarTitle: "PPR (Standalone)"
-description: "Key0 running as a separate payment gateway — clients POST to /x402/access, Key0 settles the payment, proxies to your backend, and returns the response directly. Works for HTTP, A2A, and MCP clients."
+description: "Key0 running as a separate payment gateway — clients call paid routes directly, Key0 settles the payment, proxies to your backend, and returns the response directly. Works for HTTP, A2A, and MCP clients."
 ---
 
-A two-process setup: a Key0 payment gateway (port 3000) in front of a backend API (port 3001). Clients never talk to the backend directly — all traffic flows through `POST /x402/access`. After payment, Key0 proxies the request and returns the backend's response as a `ResourceResponse`.
+A two-process setup: a Key0 payment gateway (port 3000) in front of a backend API (port 3001). Clients never talk to the backend directly — they call the gateway route they want to buy, Key0 returns a `402`, then proxies the request after payment and returns the backend's response as a `ResourceResponse`.
 
 **Source:** [`examples/ppr-standalone`](https://github.com/key0ai/key0/tree/main/examples/ppr-standalone)
 
 ## What it demonstrates
 
 - `proxyTo` on `SellerConfig` to enable standalone per-request gateway mode
-- Unified `/x402/access` endpoint handling both subscription (AccessGrant) and per-request (ResourceResponse) plans
+- Direct route calls for pay-per-use plus `/x402/access` for subscription token purchases
 - Automatic payment header injection (`x-key0-tx-hash`, `x-key0-plan-id`, `x-key0-amount`) so the backend can log/audit payments
 - A shared secret (`x-gateway-secret`) that the backend uses to reject requests that bypass the gateway
 - Full HTTP, A2A, and MCP client support with no separate route registrations needed
@@ -25,15 +25,13 @@ Client                    Key0 Gateway (port 3000)         Backend (port 3001)
   |-- GET /discover             |                                |
   |<-- plan catalog + routes     |                                |
   |                              |                                |
-  |-- POST /x402/access          |                                |
-  |   { planId, resource:        |                                |
-  |     { method, path } }       |                                |
+  |-- GET /api/weather/london    |                                |
   |                              |-- create PENDING challenge      |
   |<-- HTTP 402 + requirements  |                                |
   |                              |                                |
   |  ... signs EIP-3009 off-chain ...
   |                              |                                |
-  |-- POST /x402/access          |                                |
+  |-- GET /api/weather/london    |                                |
   |   + PAYMENT-SIGNATURE        |                                |
   |                              |-- settle on-chain               |
   |                              |-- PENDING → PAID                |
@@ -54,10 +52,10 @@ Client                    Key0 Gateway (port 3000)         Backend (port 3001)
 | | Embedded | Standalone |
 |---|---|---|
 | **Where Key0 runs** | Inside your application | Separate gateway process |
-| **Route registration** | `app.get("/api/…", key0.payPerRequest())` | None — traffic via `/x402/access` |
+| **Route registration** | `app.get("/api/…", key0.payPerRequest())` | Key0 auto-mounts configured routes |
 | **Backend call** | Handler runs in-process | Key0 proxies to `proxyTo.baseUrl` |
 | **Response to client** | Your handler's response | `ResourceResponse` wrapper |
-| **A2A / MCP support** | HTTP-only for per-request | Full A2A + MCP via `/x402/access` |
+| **A2A / MCP support** | HTTP-only for per-request | HTTP direct routes plus A2A/MCP route discovery |
 | **Backend auth** | N/A | Shared secret via `proxyTo.headers` |
 
 ## Running locally
@@ -104,15 +102,15 @@ bun run start:gateway    # Starts on port 3000
 const key0 = key0Router({
   config: {
     // ...
-    plans: [
+    routes: [
       {
-        planId: "weather-query",
+        routeId: "weather-query",
+        method: "GET",
+        path: "/api/weather/:city",
         unitAmount: "$0.01",
-        mode: "per-request",
-        routes: [{ method: "GET", path: "/api/weather/:city" }],
+        description: "Current weather — $0.01 per call",
       },
     ],
-    fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),
 
     // proxyTo enables standalone mode:
     // After payment, Key0 forwards to BACKEND_URL and returns the response.
@@ -126,23 +124,19 @@ const key0 = key0Router({
 });
 
 app.use(key0);
-// No app.get() needed — all per-request plans flow through /x402/access
+// No app.get() needed — Key0 auto-mounts the configured paid routes
 ```
 
 ### 2. Client request (HTTP)
 
 ```bash
 # Step 1: Challenge
-curl -X POST http://localhost:3000/x402/access \
-  -H "Content-Type: application/json" \
-  -d '{ "planId": "weather-query", "resource": { "method": "GET", "path": "/api/weather/london" } }'
+curl http://localhost:3000/api/weather/london
 # → HTTP 402 + PaymentRequirements
 
 # Step 2: Settle (add PAYMENT-SIGNATURE header)
-curl -X POST http://localhost:3000/x402/access \
-  -H "Content-Type: application/json" \
+curl http://localhost:3000/api/weather/london \
   -H "PAYMENT-SIGNATURE: eyJ4NDAy..." \
-  -d '{ "planId": "weather-query", "resource": { "method": "GET", "path": "/api/weather/london" } }'
 # → 200 ResourceResponse
 ```
 
@@ -153,7 +147,7 @@ curl -X POST http://localhost:3000/x402/access \
   "type": "ResourceResponse",
   "challengeId": "http-a1b2c3d4-...",
   "requestId": "550e8400-...",
-  "planId": "weather-query",
+  "routeId": "weather-query",
   "txHash": "0x7f9fade1...",
   "explorerUrl": "https://sepolia.basescan.org/tx/0x7f9fade1...",
   "resource": {
@@ -191,7 +185,7 @@ If the backend returns 4xx/5xx, Key0 wraps it in a `ResourceResponse` and the ch
 
 ## A2A client flow
 
-A2A agents use the same `/x402/access` endpoint with the `X-A2A-Extensions` header (Express only). The `resource` field is included in the `AccessRequest` data part:
+A2A agents discover the same route catalog and request access with `routeId` plus the concrete backend path they want to proxy:
 
 ```json
 {
@@ -202,7 +196,7 @@ A2A agents use the same `/x402/access` endpoint with the `X-A2A-Extensions` head
         "kind": "data",
         "data": {
           "type": "AccessRequest",
-          "planId": "weather-query",
+          "routeId": "weather-query",
           "resource": { "method": "GET", "path": "/api/weather/london" }
         }
       }]
@@ -215,13 +209,13 @@ After settlement, the executor returns a completed task with a `ResourceResponse
 
 ## MCP client flow
 
-MCP clients (Claude Code, Cursor) call the `request_access` tool with a `resource` field. Set `mcp: true` in `SellerConfig` to enable:
+MCP clients (Claude Code, Cursor) call the `request_access` tool with `routeId` and a `resource` field. Set `mcp: true` in `SellerConfig` to enable:
 
 ```json
 {
   "name": "request_access",
   "arguments": {
-    "planId": "weather-query",
+    "routeId": "weather-query",
     "resource": { "method": "GET", "path": "/api/weather/london" }
   }
 }

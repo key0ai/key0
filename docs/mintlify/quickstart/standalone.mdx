@@ -6,7 +6,7 @@ description: "Run Key0 as a standalone Docker container alongside your existing 
 
 By the end of this guide you will have a running Key0 Docker container that:
 - Accepts USDC payments from AI agents
-- Either calls your `ISSUE_TOKEN_API` to fetch credentials (subscription plans), or proxies to your backend and returns data directly (per-request plans)
+- Either calls your `ISSUE_TOKEN_API` to fetch credentials (subscription plans), or proxies to your backend and returns data directly (pay-per-call routes)
 - Automatically refunds agents if your token endpoint fails or the backend returns an error
 - Exposes `GET /discover`, `POST /x402/access`, and the generated buyer-onboarding bundle
 
@@ -174,38 +174,40 @@ Your endpoint returns any credential shape you need. Key0 forwards the response 
   If your `ISSUE_TOKEN_API` endpoint returns an error or is unreachable, Key0 automatically initiates an on-chain refund to the paying agent. See [Automatic Refunds](/architecture/refunds) for details.
 </Note>
 
-## Per-Request Mode (PROXY_TO_BASE_URL)
+## Pay-Per-Call Routes (PROXY_TO_BASE_URL)
 
-For `mode: "per-request"` plans, Key0 settles the payment and then proxies the request to your backend — no `ISSUE_TOKEN_API` call is made for these plans. The agent receives a `ResourceResponse` containing the backend's actual response data.
+For top-level `routes`, Key0 settles the payment and then proxies the request to your backend — no `ISSUE_TOKEN_API` call is made for these route purchases. The agent receives a `ResourceResponse` containing the backend's actual response data.
 
 ```
 ┌──────────────┐     ┌──────────────────────┐     ┌──────────────────┐
 │ Client Agent │     │    key0 (Docker)      │     │  Your Backend    │
-│              │────▶│  POST /x402/access    │     │                  │
-│              │◀────│  { planId, resource } │     │                  │
+│              │────▶│  GET /api/...         │     │                  │
+│              │◀────│  402 + requirements   │     │                  │
 │              │     │  402 + requirements   │     │                  │
 │              │     │                       │     │                  │
 │              │     │  verify on-chain      │     │                  │
+│              │────▶│  GET /api/... +       │     │                  │
+│              │     │  PAYMENT-SIGNATURE    │     │                  │
 │              │     │  proxy request ───────│────▶│  GET /api/...    │
 │              │◀────│  ResourceResponse     │◀────│  200 {data}      │
 └──────────────┘     └──────────────────────┘     └──────────────────┘
 ```
 
-Set `PROXY_TO_BASE_URL` to your backend's base URL and add per-request plans to `PLANS`:
+Set `PROXY_TO_BASE_URL` to your backend's base URL and add pay-per-call routes to `ROUTES`:
 
 ```bash
 docker run \
   -e KEY0_WALLET_ADDRESS=0xYourWallet \
   -e PROXY_TO_BASE_URL=https://api.yourdomain.com \
-  -e PLANS='[{"planId":"weather-query","unitAmount":"$0.01","mode":"per-request","description":"Current weather — $0.01 per call","routes":[{"method":"GET","path":"/api/weather/:city"}]}]' \
+  -e ROUTES='[{"routeId":"weather-query","method":"GET","path":"/api/weather/:city","unitAmount":"$0.01","description":"Current weather — $0.01 per call"}]' \
   -p 3000:3000 \
   key0ai/key0:latest
 ```
 
 When `PROXY_TO_BASE_URL` is set:
-- Per-request plans (`mode: "per-request"`) are handled by the proxy — agents call `POST /x402/access` with a `resource` field, Key0 settles and forwards to `PROXY_TO_BASE_URL + path`.
-- Subscription plans (`mode: "subscription"`, the default) still call `ISSUE_TOKEN_API` as normal.
-- Both plan types can coexist in `PLANS`.
+- Pay-per-call routes are handled by the proxy — agents call the route directly, Key0 settles and forwards to `PROXY_TO_BASE_URL + path`.
+- Subscription plans still call `ISSUE_TOKEN_API` as normal.
+- Routes and plans can coexist in the same config.
 
 Key0 injects payment metadata headers on every proxied request so your backend can log or verify the payment without a round-trip:
 
@@ -217,7 +219,7 @@ Key0 injects payment metadata headers on every proxied request so your backend c
 | `x-key0-payer` | Payer wallet address (when available) |
 
 <Note>
-  `ISSUE_TOKEN_API` is **not** called for per-request plans when `PROXY_TO_BASE_URL` is set. You can omit it entirely if all your plans are per-request.
+  `ISSUE_TOKEN_API` is **not** called for pay-per-call routes when `PROXY_TO_BASE_URL` is set. You can omit it entirely if all you are selling is route access.
 </Note>
 
 ---
@@ -271,12 +273,10 @@ curl -X POST http://localhost:3000/x402/access \
 
 The discovery call returns all available plans — start here to find a valid `planId`. The access request returns an x402 challenge with the payment amount and destination wallet. An agent completes the flow by signing an EIP-3009 authorization and submitting proof. See [Paying for Access](/guides/paying-for-access) for the full client walkthrough.
 
-If you have per-request plans configured (with `PROXY_TO_BASE_URL`), test the per-request flow by including a `resource` field:
+If you have pay-per-call routes configured (with `PROXY_TO_BASE_URL`), test the route flow by calling the route directly:
 
-```bash Request per-request plan (returns 402 challenge)
-curl -X POST http://localhost:3000/x402/access \
-  -H "Content-Type: application/json" \
-  -d '{"planId": "weather-query", "resource": {"method": "GET", "path": "/api/weather/london"}}'
+```bash Request a paid route (returns 402 challenge)
+curl http://localhost:3000/api/weather/london
 ```
 
 ```json Expected output (HTTP 402 — same as subscription)

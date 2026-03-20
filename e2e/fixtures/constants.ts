@@ -17,8 +17,8 @@ export const PPR_KEY0_URL = "http://localhost:3002";
 export const PPR_WEATHER_ROUTE_ID = "weather-query";
 export const PPR_JOKE_ROUTE_ID = "joke-of-the-day";
 export const GATEWAY_KEY0_URL = PPR_KEY0_URL;
-export const GATEWAY_FREE_PLAN_ID = "status";
-export const GATEWAY_SIGNAL_PLAN_ID = "weather-by-city";
+export const GATEWAY_FREE_ROUTE_ID = "status";
+export const GATEWAY_WEATHER_ROUTE_ID = PPR_WEATHER_ROUTE_ID;
 export const GATEWAY_PROXY_SECRET = "e2e-gateway-proxy-secret-32-chars!";
 
 /** Refund-fail stack constants (refund-failure.test.ts) */

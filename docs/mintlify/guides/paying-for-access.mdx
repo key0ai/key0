@@ -20,7 +20,7 @@ By the end of this guide you will understand how to:
   **Two buyer flows:** This guide covers both.
 
   - **Subscription plans** (`mode: "subscription"`, the default) — the server returns an `AccessGrant` containing a signed JWT. You use the JWT as a Bearer token to call protected endpoints repeatedly until it expires.
-  - **Per-request plans** (`mode: "per-request"`) — the server returns a `ResourceResponse` containing the actual API data. No JWT is issued; every call requires a fresh payment.
+  - **Pay-per-call routes** — the server returns a `ResourceResponse` containing the actual API data. No JWT is issued; every call requires a fresh payment.
 
   Steps 1–5 below cover the subscription flow. See [Per-Request Flow](#per-request-flow) at the bottom of this page for per-request.
 </Info>
@@ -438,15 +438,15 @@ console.log("Protected data:", await data.json());
 
 ## Per-Request Flow
 
-For `mode: "per-request"` plans, every API call requires its own payment. No JWT is issued — the server returns the API response directly. Two deployment styles exist:
+For pay-per-call routes, every API call requires its own payment. No JWT is issued — the server returns the API response directly. Two deployment styles exist:
 
-### Standalone per-request
+### Standalone pay-per-call
 
-The seller runs Key0 as a payment gateway. You call `POST /x402/access` with a `resource` field specifying the backend route you want to call. After payment, Key0 proxies to the backend and returns a `ResourceResponse` with the data.
+The seller runs Key0 as a payment gateway. You call the paid route directly, Key0 returns `402`, and after payment it proxies to the backend and returns a `ResourceResponse` with the data.
 
-**Step 1: Discover per-request plans**
+**Step 1: Discover paid routes**
 
-Check the discovery response for plans with `mode: "per-request"`. The `routes` array tells you which paths are available:
+Check the discovery response for the `routes` array:
 
 ```bash
 curl https://api.example.com/discover
@@ -456,50 +456,39 @@ curl https://api.example.com/discover
 {
   "agentName": "Weather Pro",
   "description": "Paid weather API",
-  "plans": [
+  "plans": [],
+  "routes": [
     {
-      "planId": "weather-query",
+      "routeId": "weather-query",
+      "method": "GET",
+      "path": "/api/weather/:city",
       "unitAmount": "$0.01",
-      "description": "Current weather — $0.01 per call",
-      "mode": "per-request"
+      "description": "Current weather — $0.01 per call"
     }
   ]
 }
 ```
 
-**Step 2: Request a challenge (with resource)**
+**Step 2: Request a challenge**
 
-Include the `resource` field specifying which backend route you want:
+Call the route directly:
 
 ```bash
-curl -X POST https://api.example.com/x402/access \
-  -H "Content-Type: application/json" \
-  -d '{
-    "planId": "weather-query",
-    "requestId": "550e8400-e29b-41d4-a716-446655440001",
-    "resource": { "method": "GET", "path": "/api/weather/london" }
-  }'
+curl https://api.example.com/api/weather/london
 ```
 
-Response is a standard `402` with payment requirements. The `requestId` scopes the payment to this specific resource call.
+Response is a standard `402` with payment requirements scoped to that exact route call.
 
 **Step 3: Sign and submit (same as subscription)**
 
-Sign an EIP-3009 authorization using the same process as Steps 3–4 in the subscription flow above. Include the `resource` field again in the settlement request:
+Sign an EIP-3009 authorization using the same process as Steps 3–4 in the subscription flow above, then retry the same route with `payment-signature`:
 
 ```typescript
-const accessRes = await fetch("https://api.example.com/x402/access", {
-  method: "POST",
+const accessRes = await fetch("https://api.example.com/api/weather/london", {
+  method: "GET",
   headers: {
-    "Content-Type": "application/json",
     "payment-signature": paymentSignature,
   },
-  body: JSON.stringify({
-    planId: "weather-query",
-    requestId: "550e8400-e29b-41d4-a716-446655440001",
-    resource: { method: "GET", path: "/api/weather/london" },
-    clientAgentId: `agent://${account.address}`,
-  }),
 });
 
 const result = await accessRes.json();
@@ -514,7 +503,7 @@ Unlike a subscription, there is no token to store. The response contains the bac
   "type": "ResourceResponse",
   "challengeId": "http-a1b2c3d4-...",
   "requestId": "550e8400-e29b-41d4-a716-446655440001",
-  "planId": "weather-query",
+  "routeId": "weather-query",
   "txHash": "0xSettledTx...",
   "explorerUrl": "https://sepolia.basescan.org/tx/0xSettledTx...",
   "resource": {
@@ -527,7 +516,7 @@ Unlike a subscription, there is no token to store. The response contains the bac
 Use `result.resource.body` directly — no Bearer token needed, no follow-up request.
 
 <Note>
-  Every per-request call requires a fresh payment with a unique `requestId` and EIP-3009 `nonce`. Never reuse them.
+  Every pay-per-call request requires a fresh payment with a unique `requestId` and EIP-3009 `nonce`. Never reuse them.
 </Note>
 
 ---

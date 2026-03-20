@@ -151,12 +151,12 @@ This endpoint handles the full x402 payment flow over plain HTTP. It responds di
 const key0 = key0Router({
   config: {
     // ...
-    plans: [
+    routes: [
       {
-        planId: "weather-query",
+        routeId: "weather-query",
+        method: "GET",
+        path: "/api/weather/:city",
         unitAmount: "$0.01",
-        mode: "per-request",
-        routes: [{ method: "GET", path: "/api/weather/:city" }],
       },
     ],
     fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),
@@ -182,15 +182,14 @@ Without a `PAYMENT-SIGNATURE` header the middleware returns `402` with x402 paym
 
 ### Standalone mode (proxy via `/x402/access`)
 
-Add `proxyTo` to `SellerConfig`. No separate route registrations needed — all per-request traffic flows through `POST /x402/access`.
+Add `proxyTo` to `SellerConfig`. No separate route registrations needed — Key0 auto-mounts the configured routes.
 
 ```typescript
 const key0 = key0Router({
   config: {
     // ...
-    plans: [
-      { planId: "weather-query", unitAmount: "$0.01", mode: "per-request",
-        routes: [{ method: "GET", path: "/api/weather/:city" }] },
+    routes: [
+      { routeId: "weather-query", method: "GET", path: "/api/weather/:city", unitAmount: "$0.01" },
     ],
     fetchResourceCredentials: async (params) => tokenIssuer.sign(params, 3600),
     proxyTo: {
@@ -202,16 +201,13 @@ const key0 = key0Router({
   adapter, store, seenTxStore,
 });
 app.use(key0);
-// No app.get() needed — all per-request plans are handled by /x402/access
+// No app.get() needed — Key0 auto-mounts /api/weather/:city
 ```
 
 Client request (HTTP):
 
 ```http
-POST /x402/access
-Content-Type: application/json
-
-{ "planId": "weather-query", "resource": { "method": "GET", "path": "/api/weather/london" } }
+GET /api/weather/london
 ```
 
 Server returns `ResourceResponse` (the backend's response body, not a JWT):
@@ -220,7 +216,7 @@ Server returns `ResourceResponse` (the backend's response body, not a JWT):
 {
   "type": "ResourceResponse",
   "challengeId": "...",
-  "planId": "weather-query",
+  "routeId": "weather-query",
   "txHash": "0x...",
   "resource": { "status": 200, "body": { "city": "london", "tempF": 65 } }
 }
@@ -231,7 +227,7 @@ Server returns `ResourceResponse` (the backend's response body, not a JWT):
 | Parameter | Type | Description |
 |---|---|---|
 | `onPayment` | `(info: PaymentInfo) => void \| Promise<void>` | Called after successful settlement, before the route handler. Fire-and-forget. |
-| `route` | `PlanRouteInfo` | Explicit route metadata for discovery — useful when you want to override the auto-captured path. |
+| `route` | `{ method: string; path: string; description?: string }` | Explicit route metadata for discovery — useful when you want to override the auto-captured path. |
 | `fetchResource` | `FetchResourceParams => Promise<FetchResourceResult>` | Override or provide a custom backend call for this specific route (standalone mode). |
 | `proxyTo` | `ProxyToConfig` | Shorthand proxy config for this specific route (standalone mode). |
 

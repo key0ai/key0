@@ -33,7 +33,6 @@ export type {
 	NetworkName,
 	PaymentInfo,
 	Plan,
-	PlanRouteInfo,
 	ProxyToConfig,
 	Route,
 	SellerConfig,

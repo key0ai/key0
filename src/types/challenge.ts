@@ -10,11 +10,12 @@ export type ChallengeState =
 
 export type AccessRequest = {
 	readonly requestId: string; // UUID, client-generated, idempotency key
-	readonly resourceId: string; // seller-defined resource identifier
-	readonly planId: string; // must match a Plan.planId
-	readonly clientAgentId: string; // DID or URL of client agent
+	readonly resourceId?: string; // seller-defined resource identifier (subscription flows)
+	readonly planId?: string; // must match a Plan.planId for subscription flows
+	readonly routeId?: string; // must match a Route.routeId for route-based flows
+	readonly clientAgentId?: string; // DID or URL of client agent
 	readonly callbackUrl?: string; // optional async webhook
-	/** For per-request plans in standalone mode: the backend resource to call after payment. */
+	/** For standalone route-based access: the backend resource to call after payment. */
 	readonly resource?: {
 		readonly method: string;
 		readonly path: string;
@@ -26,7 +27,8 @@ export type X402Challenge = {
 	readonly type: "X402Challenge";
 	readonly challengeId: string; // server-generated UUID
 	readonly requestId: string; // echoed from AccessRequest
-	readonly planId: string;
+	readonly planId?: string;
+	readonly routeId?: string;
 	readonly amount: string; // "$0.10"
 	readonly asset: "USDC";
 	readonly chainId: number;

@@ -220,10 +220,10 @@ describe("per-route skills from config.routes", () => {
 		const routeSkill = card.skills.find((s) => s.id.startsWith("ppr-weather"));
 		expect(routeSkill).toBeDefined();
 		expect(routeSkill?.description).toContain("weather");
-		expect(routeSkill?.examples?.some((ex) => ex.includes("routeId"))).toBe(true);
+		expect(routeSkill?.examples?.some((ex) => ex.includes("/api/weather/<city>"))).toBe(true);
 	});
 
-	it("does NOT build skills from plans[].routes (old API)", () => {
+	it("does NOT invent pay-per-call skills when config.routes is empty", () => {
 		const config = makeSellerConfig();
 		const card = buildAgentCard(config);
 		// No skills with ppr- prefix when config.routes is empty
