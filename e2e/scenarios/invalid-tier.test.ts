@@ -9,7 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { KEY0_URL } from "../fixtures/constants.ts";
 
 describe("Invalid Plan", () => {
-	test("nonexistent planId returns 400 TIER_NOT_FOUND", async () => {
+	test("nonexistent planId returns 404 TIER_NOT_FOUND", async () => {
 		const res = await fetch(`${KEY0_URL}/x402/access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -20,7 +20,7 @@ describe("Invalid Plan", () => {
 			}),
 		});
 
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(404);
 		const body = (await res.json()) as Record<string, unknown>;
 		expect(body["code"]).toBe("TIER_NOT_FOUND");
 	});

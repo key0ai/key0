@@ -3,7 +3,7 @@
  *   - Free routes bypass x402 payment and proxy directly to the backend
  *   - X-Key0-Internal-Token is forwarded on every proxied request
  *   - Paid routes proxy and return ResourceResponse
- *   - Paid route failures initiate refunds
+ *   - Paid route backend failures return a ResourceResponse and leave the challenge PAID
  *
  * Uses the same PPR Docker stack (docker-compose.e2e-ppr.yml, port 3002) with
  * an additional free route in ROUTES:
@@ -21,7 +21,6 @@ import {
 	GATEWAY_KEY0_URL,
 	GATEWAY_PROXY_SECRET,
 	GATEWAY_WEATHER_ROUTE_ID,
-	REFUND_POLL_TIMEOUT_MS,
 } from "../fixtures/constants.ts";
 import { makeClientE2eClient } from "../fixtures/wallets.ts";
 import {
@@ -127,7 +126,7 @@ describe("Gateway Proxy: paid route", () => {
 		expect((body["txHash"] as string).startsWith("0x")).toBe(true);
 	}, 120_000);
 
-	test("backend non-2xx initiates refund for paid route", async () => {
+	test("backend non-2xx returns ResourceResponse and keeps the challenge PAID", async () => {
 		const client = makeClientE2eClient(GATEWAY_KEY0_URL);
 
 		await fetch(`${BACKEND_URL}/test/set-ppr-mode`, {
@@ -158,15 +157,13 @@ describe("Gateway Proxy: paid route", () => {
 				paymentRequired,
 			});
 
-			expect(result.status).toBe(502);
-			expect(result.resourceResponse).toBeUndefined();
-			expect(result.error?.["error"]).toBe("PROXY_ERROR");
+			expect(result.status).toBe(200);
+			expect(result.error).toBeUndefined();
+			expect(result.resourceResponse?.type).toBe("ResourceResponse");
+			expect(result.resourceResponse?.resource.status).toBe(500);
 
-			const state = await pollUntil(async () => {
-				const current = await readGatewayChallengeState(challengeId);
-				return current && current !== "PAID" ? current : null;
-			}, REFUND_POLL_TIMEOUT_MS);
-			expect(["REFUND_PENDING", "REFUNDED"]).toContain(state);
+			const state = await pollUntil(async () => readGatewayChallengeState(challengeId), 10_000);
+			expect(state).toBe("PAID");
 		} finally {
 			await fetch(`${BACKEND_URL}/test/set-ppr-mode`, {
 				method: "POST",
