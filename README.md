@@ -235,6 +235,13 @@ bun run build
 
 E2E setup and wallet funding notes live in [`e2e/README.md`](./e2e/README.md).
 
+## Networks
+
+| Network | Chain | Chain ID | USDC Contract |
+|---|---|---|---|
+| `testnet` | Base Sepolia | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| `mainnet` | Base | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+
 ## Repository Docs
 
 - [`SPEC.md`](./SPEC.md)
