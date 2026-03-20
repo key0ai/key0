@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/key0ai/key0)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-key0.ai-blue)](https://docs.key0.ai/introduction/overview)
 
-key0 is the commercial gateway for your AI agents and APIs. Let AI agents discover, pay for, and access your APIs autonomously — no human in the loop. It handles payments in USDC on Base via HTTP x402, A2A, and MCP, and generates `llms.txt`, `skills.md`, and related agent-facing surfaces so agents can find and interact with your service out of the box.
+key0 is the open-source commercial gateway for your AI agents and APIs. Let AI agents discover, pay for, and access your APIs autonomously — no human in the loop. It handles payments in USDC on Base via HTTP x402, A2A, and MCP, and generates `llms.txt`, `skills.md`, and related agent-facing surfaces so agents can find and interact with your service out of the box.
 
 For integration, deployment, protocol, and API reference docs, see [docs.key0.ai](https://docs.key0.ai/introduction/overview).
 

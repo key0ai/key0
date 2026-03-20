@@ -1,7 +1,7 @@
 {
 	"name": "@key0ai/key0",
 	"version": "0.5.1",
-	"description": "The commercial gateway for your AI agents and APIs. Let AI agents discover, pay for, and access your APIs autonomously — no human in the loop.",
+	"description": "The open-source commercial gateway for your AI agents and APIs. Let AI agents discover, pay for, and access your APIs autonomously — no human in the loop.",
 	"license": "AGPL-3.0",
 	"type": "module",
 	"main": "./src/index.ts",
