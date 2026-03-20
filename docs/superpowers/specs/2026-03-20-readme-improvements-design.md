@@ -46,27 +46,39 @@ Per-request billing in embedded mode (the `key0.payPerRequest()` middleware) is 
 
 ### Addition 1: ISSUE_TOKEN_API contract
 
-**Placement:** Inside `### Standalone Docker`, after the quick-start bash block and the paragraph describing auto-hosted endpoints, before the "Continue with" links.
+**Placement:** Inside `### Standalone Docker`, after the paragraph beginning "That gives agents multiple standard ways to discover and interact with your service out of the box: HTTP x402, A2A, MCP, generated onboarding files, and CLI distribution flows.", before the "Continue with" links.
 
-**Content:** One sentence intro, one request JSON block, one response JSON block.
+**Content:** One sentence intro, one request JSON block, one response JSON block. Use these exact field names, types, and representative values:
 
 ```
 After on-chain payment is verified, key0 POSTs to `ISSUE_TOKEN_API`:
 
-{request JSON block showing: requestId, challengeId, planId, txHash, unitAmount}
+```json
+{
+  "requestId": "550e8400-e29b-41d4-a716-446655440000",
+  "challengeId": "7f3b2c1d-...",
+  "planId": "basic",
+  "txHash": "0xabc123...",
+  "unitAmount": "$0.10"
+}
+```
 
 Return any credential shape — key0 passes the response to the client as-is:
 
-{response JSON block showing: token, expiresAt}
+```json
+{ "token": "eyJ...", "expiresAt": "2027-01-01T00:00:00Z" }
+```
 ```
 
-**Size:** ~15 lines.
+All keys are camelCase strings. `unitAmount` is a dollar-prefixed string (e.g. `"$0.10"`), not a numeric value.
+
+**Size:** ~18 lines.
 
 ---
 
 ### Addition 2: Settlement strategies
 
-**Placement:** New `## Settlement` section inserted after `## How It Works`.
+**Placement:** New `## Settlement` section inserted after `## Quick Start` and before `## How It Works`. Developers who attempt the quick start often stall on settlement; this section surfaces the two options immediately after so they can unblock themselves without leaving the README.
 
 **Content:** Two subsections. No prose beyond what is required to configure each.
 
@@ -96,11 +108,13 @@ Each subsection: 2 lines of prose + one config/env snippet.
 
 ### Addition 4: `payPerRequest` embedded middleware
 
-**Placement:** Inside `### Embedded SDK`, after the subscription plan code block and its "Continue with" links. Before `## How It Works`.
+**Placement:** Inside `### Embedded SDK`, after the subscription plan code block but *before* the "Continue with" links for that section. The `payPerRequest` content is a second pattern within the same section — it is not a separate section and does not get its own "Continue with" block.
 
 **Content:** One-sentence intro explaining this is for per-request billing (no JWT, inline settlement). One Express code snippet showing:
 - `key0.payPerRequest("routeId")` applied to a route as middleware
 - `req.key0Payment` access in the handler (txHash, amount)
+
+`req.key0Payment` is the `PaymentInfo` type (`src/types/config.ts:97`), confirmed to contain: `txHash` (`0x${string}`), `payer` (`string | undefined`), `planId`, `amount`, `method`, `path`, `challengeId`. The snippet should only show `txHash` and `amount` for brevity.
 
 A note that Hono/Fastify variants are in the embedded quickstart.
 
