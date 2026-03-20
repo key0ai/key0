@@ -1,4 +1,4 @@
-<img src="docs/logo.png" alt="Key0" width="260" />
+<img src="https://raw.githubusercontent.com/key0ai/key0/main/docs/logo.png" alt="Key0" width="260" />
 
 [![npm version](https://img.shields.io/npm/v/@key0ai/key0)](https://www.npmjs.com/package/@key0ai/key0)
 [![Docker](https://img.shields.io/docker/v/key0ai/key0?label=docker)](https://hub.docker.com/r/key0ai/key0)
