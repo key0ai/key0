@@ -177,6 +177,29 @@ describe("MCP 'access' tool — routeId (per-request flow)", () => {
 		expect(result.isError).toBe(true);
 	});
 
+	it("emits route-shaped payment instructions for route access", async () => {
+		const config = makeSellerConfig({
+			plans: [],
+			routes: [{ routeId: "weather", method: "GET", path: "/weather", unitAmount: "$0.01" }],
+			proxyTo: { baseUrl: "http://localhost:9999" },
+		});
+		const server = createMcpServer(
+			makeEngine({ plans: [], routes: config.routes, proxyTo: config.proxyTo }),
+			config,
+		);
+
+		const result = (await callTool(server, "access", {
+			routeId: "weather",
+			resource: { method: "GET", path: "/weather" },
+		})) as { isError: boolean; content: Array<{ type: string; text: string }> };
+
+		expect(result.isError).toBe(true);
+		const parsed = JSON.parse(result.content[0]?.text ?? "{}");
+		expect(parsed.paymentInstructions).toContain('"routeId":"weather"');
+		expect(parsed.paymentInstructions).toContain('"resource":{"method":"GET","path":"/weather"}');
+		expect(parsed.paymentInstructions).not.toContain('"planId":"weather"');
+	});
+
 	it("returns error for unknown routeId", async () => {
 		const config = makeSellerConfig({
 			plans: [],

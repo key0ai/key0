@@ -57,9 +57,9 @@ type HonoMiddleware = (
  */
 export type Key0HonoApp = Hono & {
 	/**
-	 * Create a per-request payment middleware for the given plan.
+	 * Create a per-request payment middleware for the given route.
 	 *
-	 * @param planId - Which plan from `config.plans` to charge per request
+	 * @param routeId - Which route from `config.routes` to charge per request
 	 * @param options - Optional callbacks (e.g. `onPayment`)
 	 */
 	payPerRequest: (routeId: string, options?: PayPerRequestOptions) => HonoMiddleware;
@@ -540,11 +540,13 @@ export function key0App(opts: Key0Config): Key0HonoApp {
 		return c.json(discoveryResponse);
 	});
 
-	// Auto-mount transparent proxy routes from config.routes
-	for (const route of opts.config.routes ?? []) {
-		const method = route.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		(app as any)[method](route.path, createHonoPayPerRequest(route.routeId, pprDeps));
+	// Auto-mount transparent proxy routes from config.routes in standalone gateway mode.
+	if (resolveConfigFetchResource(opts.config)) {
+		for (const route of opts.config.routes ?? []) {
+			const method = route.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(app as any)[method](route.path, createHonoPayPerRequest(route.routeId, pprDeps));
+		}
 	}
 
 	return app;

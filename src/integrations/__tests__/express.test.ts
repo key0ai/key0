@@ -82,4 +82,20 @@ describe("transparent proxy route mounting", () => {
 			.filter(Boolean);
 		expect(paths).toContain("/health");
 	});
+
+	it("auto-mounts routes when standalone mode is provided via fetchResource", () => {
+		const router = key0Router({
+			config: makeSellerConfig({
+				plans: [],
+				routes: [{ routeId: "health", method: "GET", path: "/health", unitAmount: "$0.01" }],
+				fetchResource: async () => ({ status: 200, body: { ok: true } }),
+			}),
+			store: new TestChallengeStore(),
+			seenTxStore: new TestSeenTxStore(),
+		});
+		const paths = router.stack
+			.map((l: { route?: { path: string } }) => l.route?.path)
+			.filter(Boolean);
+		expect(paths).toContain("/health");
+	});
 });

@@ -46,7 +46,7 @@ export type Key0Fastify = {
 	/** Register as Fastify plugin: `fastify.register(key0.plugin)` */
 	readonly plugin: (fastify: FastifyInstance) => Promise<void>;
 	/**
-	 * Create a per-request payment preHandler for the given plan.
+	 * Create a per-request payment preHandler for the given route.
 	 *
 	 * @param routeId - Which route from `config.routes` to charge per request
 	 * @param options - Optional callbacks (e.g. `onPayment`)
@@ -526,11 +526,13 @@ function mountFastifyRoutes(
 		return reply.send(discoveryResponse);
 	});
 
-	// Auto-mount transparent proxy routes from config.routes
-	for (const route of opts.config.routes ?? []) {
-		const method = route.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		(fastify as any)[method](route.path, createFastifyPayPerRequest(route.routeId, pprDeps));
+	// Auto-mount transparent proxy routes from config.routes in standalone gateway mode.
+	if (resolveConfigFetchResource(opts.config)) {
+		for (const route of opts.config.routes ?? []) {
+			const method = route.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(fastify as any)[method](route.path, createFastifyPayPerRequest(route.routeId, pprDeps));
+		}
 	}
 }
 

@@ -26,14 +26,23 @@ import { buildHttpPaymentRequirements, settlePayment } from "./settlement.js";
  * @see https://github.com/coinbase/x402/blob/main/specs/transports-v2/mcp.md
  */
 function buildPaymentRequiredResult(
-	planId: string,
-	resourceId: string,
+	target: { kind: "plan"; id: string; resourceId: string } | { kind: "route"; id: string; path: string },
 	config: SellerConfig,
 	networkConfig: NetworkConfig,
 ) {
 	const baseUrl = config.agentUrl.replace(/\/$/, "");
 	const x402PaymentUrl = `${baseUrl}/x402/access`;
-	const paymentRequired = buildHttpPaymentRequirements(planId, resourceId, config, networkConfig);
+	const chargedResource = target.kind === "plan" ? target.resourceId : target.path;
+	const paymentRequired = buildHttpPaymentRequirements(
+		target.id,
+		chargedResource,
+		config,
+		networkConfig,
+	);
+	const requestBody =
+		target.kind === "plan"
+			? `{"planId":"${target.id}","resourceId":"${target.resourceId}"}`
+			: `{"routeId":"${target.id}","resource":{"method":"GET","path":"${target.path}"}}`;
 
 	const structuredContent = {
 		...paymentRequired,
@@ -51,14 +60,14 @@ function buildPaymentRequiredResult(
 		content: [
 			{
 				type: "text" as const,
-				text: JSON.stringify(
-					{
-						...structuredContent,
-						x402PaymentUrl,
-						paymentInstructions: `To complete payment, use make_http_request_with_x402 with: URL="${x402PaymentUrl}", method="POST", body={"planId":"${planId}","resourceId":"${resourceId}"}, and pass the accepts array as paymentRequirements.`,
-					},
-					null,
-					2,
+					text: JSON.stringify(
+						{
+							...structuredContent,
+							x402PaymentUrl,
+							paymentInstructions: `To complete payment, use make_http_request_with_x402 with: URL="${x402PaymentUrl}", method="POST", body=${requestBody}, and pass the accepts array as paymentRequirements.`,
+						},
+						null,
+						2,
 				),
 			},
 		],
@@ -228,7 +237,7 @@ export function createMcpServer(
 				"For plan-based access: call without payment to get requirements, then re-call with x402 payment to receive an access token.",
 				"For route-based access: provide routeId instead of planId.",
 				"Call it to get payment requirements (amount, wallet, chainId, x402PaymentUrl).",
-				"Then use make_http_request_with_x402 to POST to the x402PaymentUrl with {planId, resourceId} in the body.",
+				"Then use make_http_request_with_x402 to POST to the x402PaymentUrl with either {planId, resourceId} for plan access or {routeId, resource} for route access.",
 				"The x402 endpoint handles EIP-3009 payment signing and settlement automatically.",
 			].join(" "),
 			inputSchema: accessInputSchema,
@@ -249,8 +258,7 @@ export function createMcpServer(
 
 				if (!paymentPayload) {
 					return buildPaymentRequiredResult(
-						routeId,
-						resource?.path ?? routeId,
+						{ kind: "route", id: routeId, path: resource?.path ?? route.path },
 						config,
 						networkConfig,
 					);
@@ -407,7 +415,11 @@ export function createMcpServer(
 							400,
 						);
 					}
-					return buildPaymentRequiredResult(effectivePlanId, resourceId, config, networkConfig);
+					return buildPaymentRequiredResult(
+						{ kind: "plan", id: effectivePlanId, resourceId },
+						config,
+						networkConfig,
+					);
 				}
 
 				const { txHash, settleResponse, payer } = await settlePayment(
@@ -462,13 +474,12 @@ export function createMcpServer(
 					}
 
 					// Settlement / payment errors — return PaymentRequired with error reason
-					if (err.code === "PAYMENT_FAILED" || err.httpStatus === 402) {
-						const failResult = buildPaymentRequiredResult(
-							effectivePlanId,
-							resourceId,
-							config,
-							networkConfig,
-						);
+						if (err.code === "PAYMENT_FAILED" || err.httpStatus === 402) {
+							const failResult = buildPaymentRequiredResult(
+								{ kind: "plan", id: effectivePlanId, resourceId },
+								config,
+								networkConfig,
+							);
 						const failContent = {
 							...(failResult.structuredContent as Record<string, unknown>),
 							error: err.message,
