@@ -76,6 +76,6 @@
 		"mintlify": "^3.0.98",
 		"postgres": "^3.4.8",
 		"supertest": "^7.2.2",
-		"typescript": "^5.7.0"
+		"typescript": "^6.0.2"
 	}
 }
