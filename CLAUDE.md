@@ -109,6 +109,7 @@ When `a2a: false` is set, the A2A agent card endpoints (`/.well-known/agent.json
 ## Related Documentation
 
 - `SPEC.md` — Requirements and security invariants
+- `AGENT_CARD.md` — Complete field-by-field documentation of the Agent Card format
 
 ## Available Agents
 
@@ -118,3 +119,5 @@ When `a2a: false` is set, the A2A agent card endpoints (`/.well-known/agent.json
 ## Agent Invocation Rules
 
 **Always invoke `@security-reviewer` after any edit to payment-critical files** (see agent definition for the full file list). Do not skip this even for small changes.
+
+**Always run `/agent-card-updater` after any edit to `src/types/agent-card.ts` or `src/core/agent-card.ts`.**
