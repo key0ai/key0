@@ -74,7 +74,7 @@
 		"hono": "^4.6.0",
 		"ioredis": "^5.0.0",
 		"mintlify": "^3.0.98",
-		"postgres": "^3.4.8",
+		"postgres": "^4.0.0",
 		"supertest": "^7.2.2",
 		"typescript": "^5.7.0"
 	}
